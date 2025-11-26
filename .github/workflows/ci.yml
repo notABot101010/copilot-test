@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Run tests
+        run: cargo test --workspace --verbose
+
+      - name: Run clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
