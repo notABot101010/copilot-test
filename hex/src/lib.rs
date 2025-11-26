@@ -135,7 +135,6 @@ pub fn encode_with(data: &[u8], alphabet: &[u8; 16]) -> String {
     }
 
     // All bytes in output are valid ASCII (from alphabet), so this won't fail
-    // SAFETY: The encode table only contains bytes from the alphabet which are valid ASCII
     String::from_utf8(output).expect("hex output is always valid UTF-8")
 }
 

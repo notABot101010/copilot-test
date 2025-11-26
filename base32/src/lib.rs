@@ -278,57 +278,35 @@ pub fn decode_with(base32_input: &str, alphabet: &[u8; 32]) -> Result<Vec<u8>, E
     // Process complete 8-character groups with unrolled loop
     let mut i = 0;
     while i + 8 <= input_len {
-        let c0 = input_bytes[i];
-        let c1 = input_bytes[i + 1];
-        let c2 = input_bytes[i + 2];
-        let c3 = input_bytes[i + 3];
-        let c4 = input_bytes[i + 4];
-        let c5 = input_bytes[i + 5];
-        let c6 = input_bytes[i + 6];
-        let c7 = input_bytes[i + 7];
+        // Read all 8 characters at once
+        let chars = [
+            input_bytes[i],
+            input_bytes[i + 1],
+            input_bytes[i + 2],
+            input_bytes[i + 3],
+            input_bytes[i + 4],
+            input_bytes[i + 5],
+            input_bytes[i + 6],
+            input_bytes[i + 7],
+        ];
 
-        let v0 = decode_table[c0 as usize];
-        let v1 = decode_table[c1 as usize];
-        let v2 = decode_table[c2 as usize];
-        let v3 = decode_table[c3 as usize];
-        let v4 = decode_table[c4 as usize];
-        let v5 = decode_table[c5 as usize];
-        let v6 = decode_table[c6 as usize];
-        let v7 = decode_table[c7 as usize];
-
-        if v0 == 255 {
-            return Err(Error::InvalidCharacter(c0 as char));
-        }
-        if v1 == 255 {
-            return Err(Error::InvalidCharacter(c1 as char));
-        }
-        if v2 == 255 {
-            return Err(Error::InvalidCharacter(c2 as char));
-        }
-        if v3 == 255 {
-            return Err(Error::InvalidCharacter(c3 as char));
-        }
-        if v4 == 255 {
-            return Err(Error::InvalidCharacter(c4 as char));
-        }
-        if v5 == 255 {
-            return Err(Error::InvalidCharacter(c5 as char));
-        }
-        if v6 == 255 {
-            return Err(Error::InvalidCharacter(c6 as char));
-        }
-        if v7 == 255 {
-            return Err(Error::InvalidCharacter(c7 as char));
+        // Decode and validate all 8 characters
+        let mut vals = [0u8; 8];
+        for j in 0..8 {
+            vals[j] = decode_table[chars[j] as usize];
+            if vals[j] == 255 {
+                return Err(Error::InvalidCharacter(chars[j] as char));
+            }
         }
 
-        let n = ((v0 as u64) << 35)
-            | ((v1 as u64) << 30)
-            | ((v2 as u64) << 25)
-            | ((v3 as u64) << 20)
-            | ((v4 as u64) << 15)
-            | ((v5 as u64) << 10)
-            | ((v6 as u64) << 5)
-            | (v7 as u64);
+        let n = ((vals[0] as u64) << 35)
+            | ((vals[1] as u64) << 30)
+            | ((vals[2] as u64) << 25)
+            | ((vals[3] as u64) << 20)
+            | ((vals[4] as u64) << 15)
+            | ((vals[5] as u64) << 10)
+            | ((vals[6] as u64) << 5)
+            | (vals[7] as u64);
 
         result.push(((n >> 32) & 0xFF) as u8);
         result.push(((n >> 24) & 0xFF) as u8);
