@@ -31,12 +31,6 @@ fn build_decode_table(alphabet: &[u8; 32]) -> [u8; 256] {
     let mut table = [255u8; 256];
     for (i, &c) in alphabet.iter().enumerate() {
         table[c as usize] = i as u8;
-        // Also handle lowercase for case-insensitive decoding
-        if c.is_ascii_uppercase() {
-            table[(c + 32) as usize] = i as u8;
-        } else if c.is_ascii_lowercase() {
-            table[(c - 32) as usize] = i as u8;
-        }
     }
     table
 }
@@ -452,19 +446,6 @@ mod tests {
         assert_eq!(
             decode_with("JBSWY3DPFQQFO33SNRSCC===", ALPHABET_STANDARD).unwrap(),
             b"Hello, World!"
-        );
-    }
-
-    #[test]
-    fn test_decode_lowercase() {
-        // Base32 is case-insensitive
-        assert_eq!(
-            decode_with("jbswy3dp", ALPHABET_STANDARD).unwrap(),
-            b"Hello"
-        );
-        assert_eq!(
-            decode_with("JbSwY3Dp", ALPHABET_STANDARD).unwrap(),
-            b"Hello"
         );
     }
 
