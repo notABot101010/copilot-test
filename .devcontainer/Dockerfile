@@ -24,8 +24,5 @@ RUN useradd -m -s /bin/bash dev
 USER dev
 WORKDIR /home/dev
 
-# Initialize rustup with the stable toolchain
-RUN rustup default stable
-
 # Add cargo to PATH
 ENV PATH="/home/dev/.cargo/bin:${PATH}"
