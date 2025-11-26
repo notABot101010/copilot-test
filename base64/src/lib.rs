@@ -116,45 +116,49 @@ pub fn encode_with(data: &[u8], alphabet: &[u8; 64], padding: bool) -> String {
         return String::new();
     }
 
-    let mut result = String::with_capacity(encoded_len(data.len(), padding));
+    let output_len = encoded_len(data.len(), padding);
+    let mut output = Vec::with_capacity(output_len);
 
     // Process complete 3-byte groups
     let chunks = data.chunks_exact(3);
     let remainder = chunks.remainder();
 
     for chunk in chunks {
+        // Combine 3 bytes into a 24-bit number
         let n = ((chunk[0] as u32) << 16) | ((chunk[1] as u32) << 8) | (chunk[2] as u32);
 
-        result.push(alphabet[((n >> 18) & 0x3F) as usize] as char);
-        result.push(alphabet[((n >> 12) & 0x3F) as usize] as char);
-        result.push(alphabet[((n >> 6) & 0x3F) as usize] as char);
-        result.push(alphabet[(n & 0x3F) as usize] as char);
+        // Extract 4 6-bit groups and encode
+        output.push(alphabet[((n >> 18) & 0x3F) as usize]);
+        output.push(alphabet[((n >> 12) & 0x3F) as usize]);
+        output.push(alphabet[((n >> 6) & 0x3F) as usize]);
+        output.push(alphabet[(n & 0x3F) as usize]);
     }
 
     // Handle remaining bytes
     match remainder.len() {
         1 => {
             let n = (remainder[0] as u32) << 16;
-            result.push(alphabet[((n >> 18) & 0x3F) as usize] as char);
-            result.push(alphabet[((n >> 12) & 0x3F) as usize] as char);
+            output.push(alphabet[((n >> 18) & 0x3F) as usize]);
+            output.push(alphabet[((n >> 12) & 0x3F) as usize]);
             if padding {
-                result.push('=');
-                result.push('=');
+                output.push(b'=');
+                output.push(b'=');
             }
         }
         2 => {
             let n = ((remainder[0] as u32) << 16) | ((remainder[1] as u32) << 8);
-            result.push(alphabet[((n >> 18) & 0x3F) as usize] as char);
-            result.push(alphabet[((n >> 12) & 0x3F) as usize] as char);
-            result.push(alphabet[((n >> 6) & 0x3F) as usize] as char);
+            output.push(alphabet[((n >> 18) & 0x3F) as usize]);
+            output.push(alphabet[((n >> 12) & 0x3F) as usize]);
+            output.push(alphabet[((n >> 6) & 0x3F) as usize]);
             if padding {
-                result.push('=');
+                output.push(b'=');
             }
         }
         _ => {}
     }
 
-    result
+    // All bytes in output are valid ASCII (from alphabet or '='), so this won't fail
+    String::from_utf8(output).expect("base64 output is always valid UTF-8")
 }
 
 /// Decodes a base64 string to binary data using the specified alphabet.
@@ -194,78 +198,102 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
         &owned_table
     };
 
-    // Remove padding and calculate expected output size
-    let input = base64_input.trim_end_matches('=');
-    let padding_len = base64_input.len() - input.len();
+    let input_bytes = base64_input.as_bytes();
 
-    // Validate padding
+    // Count and validate padding
+    let padding_len = input_bytes.iter().rev().take_while(|&&b| b == b'=').count();
     if padding_len > 2 {
         return Err(Error::InvalidPadding);
     }
 
     // Validate input length (with padding should be multiple of 4)
-    if !base64_input.is_empty() && padding_len > 0 && !base64_input.len().is_multiple_of(4) {
+    if padding_len > 0 && !input_bytes.len().is_multiple_of(4) {
         return Err(Error::InvalidLength);
     }
 
-    let input_bytes: Vec<u8> = input.bytes().collect();
-    let input_len = input_bytes.len();
+    let input_len = input_bytes.len() - padding_len;
 
-    // Calculate output size
-    let output_len = (input_len * 3) / 4;
+    // Calculate output size: each 4 input chars = 3 output bytes
+    // For partial groups: 2 chars = 1 byte, 3 chars = 2 bytes
+    let full_groups = input_len / 4;
+    let remainder_len = input_len % 4;
+    let output_len = full_groups * 3
+        + match remainder_len {
+            0 => 0,
+            2 => 1,
+            3 => 2,
+            1 => return Err(Error::InvalidLength),
+            _ => unreachable!(),
+        };
+
     let mut result = Vec::with_capacity(output_len);
 
-    // Process complete 4-character groups
-    let chunks = input_bytes.chunks_exact(4);
-    let remainder = chunks.remainder();
+    // Process complete 4-character groups using direct byte access
+    let mut i = 0;
+    while i + 4 <= input_len {
+        let c0 = input_bytes[i];
+        let c1 = input_bytes[i + 1];
+        let c2 = input_bytes[i + 2];
+        let c3 = input_bytes[i + 3];
 
-    for chunk in chunks {
-        let mut values = [0u8; 4];
-        for (i, &c) in chunk.iter().enumerate() {
-            let val = decode_table[c as usize];
-            if val == 255 {
-                return Err(Error::InvalidCharacter(c as char));
-            }
-            values[i] = val;
+        let v0 = decode_table[c0 as usize];
+        let v1 = decode_table[c1 as usize];
+        let v2 = decode_table[c2 as usize];
+        let v3 = decode_table[c3 as usize];
+
+        if v0 == 255 {
+            return Err(Error::InvalidCharacter(c0 as char));
+        }
+        if v1 == 255 {
+            return Err(Error::InvalidCharacter(c1 as char));
+        }
+        if v2 == 255 {
+            return Err(Error::InvalidCharacter(c2 as char));
+        }
+        if v3 == 255 {
+            return Err(Error::InvalidCharacter(c3 as char));
         }
 
-        result.push((values[0] << 2) | (values[1] >> 4));
-        result.push((values[1] << 4) | (values[2] >> 2));
-        result.push((values[2] << 6) | values[3]);
+        result.push((v0 << 2) | (v1 >> 4));
+        result.push((v1 << 4) | (v2 >> 2));
+        result.push((v2 << 6) | v3);
+
+        i += 4;
     }
 
     // Handle remaining characters
-    match remainder.len() {
+    match remainder_len {
         2 => {
-            let val0 = decode_table[remainder[0] as usize];
-            let val1 = decode_table[remainder[1] as usize];
-            if val0 == 255 {
-                return Err(Error::InvalidCharacter(remainder[0] as char));
+            let c0 = input_bytes[i];
+            let c1 = input_bytes[i + 1];
+            let v0 = decode_table[c0 as usize];
+            let v1 = decode_table[c1 as usize];
+            if v0 == 255 {
+                return Err(Error::InvalidCharacter(c0 as char));
             }
-            if val1 == 255 {
-                return Err(Error::InvalidCharacter(remainder[1] as char));
+            if v1 == 255 {
+                return Err(Error::InvalidCharacter(c1 as char));
             }
-            result.push((val0 << 2) | (val1 >> 4));
+            result.push((v0 << 2) | (v1 >> 4));
         }
         3 => {
-            let val0 = decode_table[remainder[0] as usize];
-            let val1 = decode_table[remainder[1] as usize];
-            let val2 = decode_table[remainder[2] as usize];
-            if val0 == 255 {
-                return Err(Error::InvalidCharacter(remainder[0] as char));
+            let c0 = input_bytes[i];
+            let c1 = input_bytes[i + 1];
+            let c2 = input_bytes[i + 2];
+            let v0 = decode_table[c0 as usize];
+            let v1 = decode_table[c1 as usize];
+            let v2 = decode_table[c2 as usize];
+            if v0 == 255 {
+                return Err(Error::InvalidCharacter(c0 as char));
             }
-            if val1 == 255 {
-                return Err(Error::InvalidCharacter(remainder[1] as char));
+            if v1 == 255 {
+                return Err(Error::InvalidCharacter(c1 as char));
             }
-            if val2 == 255 {
-                return Err(Error::InvalidCharacter(remainder[2] as char));
+            if v2 == 255 {
+                return Err(Error::InvalidCharacter(c2 as char));
             }
-            result.push((val0 << 2) | (val1 >> 4));
-            result.push((val1 << 4) | (val2 >> 2));
-        }
-        1 => {
-            // Single character is invalid for base64
-            return Err(Error::InvalidLength);
+            result.push((v0 << 2) | (v1 >> 4));
+            result.push((v1 << 4) | (v2 >> 2));
         }
         _ => {}
     }
