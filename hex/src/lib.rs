@@ -28,20 +28,20 @@ fn build_encode_table(alphabet: &[u8; 16]) -> [[u8; 2]; 256] {
     table
 }
 
-/// Pre-computed decode table for hexadecimal (handles both cases).
-static DECODE_TABLE: LazyLock<[u8; 256]> = LazyLock::new(|| {
+/// Pre-computed decode table for lowercase alphabet.
+static DECODE_TABLE_LOWER: LazyLock<[u8; 256]> = LazyLock::new(|| build_decode_table(ALPHABET_LOWER));
+
+/// Pre-computed decode table for uppercase alphabet.
+static DECODE_TABLE_UPPER: LazyLock<[u8; 256]> = LazyLock::new(|| build_decode_table(ALPHABET_UPPER));
+
+/// Builds a decode lookup table for the given alphabet.
+fn build_decode_table(alphabet: &[u8; 16]) -> [u8; 256] {
     let mut table = [255u8; 256];
-    for (i, c) in b"0123456789".iter().enumerate() {
-        table[*c as usize] = i as u8;
-    }
-    for (i, c) in b"abcdef".iter().enumerate() {
-        table[*c as usize] = (i + 10) as u8;
-    }
-    for (i, c) in b"ABCDEF".iter().enumerate() {
-        table[*c as usize] = (i + 10) as u8;
+    for (i, &c) in alphabet.iter().enumerate() {
+        table[c as usize] = i as u8;
     }
     table
-});
+}
 
 /// Error type for hexadecimal decoding operations.
 #[derive(Debug, PartialEq, Eq)]
@@ -138,12 +138,12 @@ pub fn encode_with(data: &[u8], alphabet: &[u8; 16]) -> String {
     String::from_utf8(output).expect("hex output is always valid UTF-8")
 }
 
-/// Decodes a hexadecimal string to binary data.
+/// Decodes a hexadecimal string to binary data using the specified alphabet.
 ///
 /// # Arguments
 ///
 /// * `hex_input` - The hexadecimal-encoded string to decode.
-/// * `_alphabet` - Unused, kept for API consistency (decoding handles both cases).
+/// * `alphabet` - A 16-character alphabet used for decoding.
 ///
 /// # Returns
 ///
@@ -152,17 +152,16 @@ pub fn encode_with(data: &[u8], alphabet: &[u8; 16]) -> String {
 /// # Example
 ///
 /// ```
-/// use hex::{decode_with, ALPHABET_LOWER};
+/// use hex::{decode_with, ALPHABET_LOWER, ALPHABET_UPPER};
 ///
 /// let decoded = decode_with("48656c6c6f", ALPHABET_LOWER).unwrap();
 /// assert_eq!(decoded, b"Hello");
 ///
-/// // Both cases work regardless of alphabet
-/// let decoded = decode_with("48656C6C6F", ALPHABET_LOWER).unwrap();
-/// assert_eq!(decoded, b"Hello");
+/// let decoded_upper = decode_with("48656C6C6F", ALPHABET_UPPER).unwrap();
+/// assert_eq!(decoded_upper, b"Hello");
 /// ```
 #[inline]
-pub fn decode_with(hex_input: &str, _alphabet: &[u8; 16]) -> Result<Vec<u8>, Error> {
+pub fn decode_with(hex_input: &str, alphabet: &[u8; 16]) -> Result<Vec<u8>, Error> {
     if hex_input.is_empty() {
         return Ok(Vec::new());
     }
@@ -174,9 +173,19 @@ pub fn decode_with(hex_input: &str, _alphabet: &[u8; 16]) -> Result<Vec<u8>, Err
         return Err(Error::InvalidLength);
     }
 
+    // Use pre-computed table for known alphabets, otherwise build dynamically
+    let owned_table;
+    let decode_table: &[u8; 256] = if alphabet == ALPHABET_LOWER {
+        &DECODE_TABLE_LOWER
+    } else if alphabet == ALPHABET_UPPER {
+        &DECODE_TABLE_UPPER
+    } else {
+        owned_table = build_decode_table(alphabet);
+        &owned_table
+    };
+
     let output_len = input_bytes.len() / 2;
     let mut result = Vec::with_capacity(output_len);
-    let decode_table = &*DECODE_TABLE;
 
     let mut i = 0;
     while i < input_bytes.len() {
@@ -244,13 +253,8 @@ mod tests {
 
     #[test]
     fn test_decode_uppercase() {
-        assert_eq!(decode_with("48656C6C6F", ALPHABET_LOWER).unwrap(), b"Hello");
-        assert_eq!(decode_with("00FF", ALPHABET_LOWER).unwrap(), b"\x00\xff");
-    }
-
-    #[test]
-    fn test_decode_mixed_case() {
-        assert_eq!(decode_with("48656C6c6F", ALPHABET_LOWER).unwrap(), b"Hello");
+        assert_eq!(decode_with("48656C6C6F", ALPHABET_UPPER).unwrap(), b"Hello");
+        assert_eq!(decode_with("00FF", ALPHABET_UPPER).unwrap(), b"\x00\xff");
     }
 
     #[test]
