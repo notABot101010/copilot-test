@@ -5,6 +5,14 @@
 
 use std::fmt;
 
+/// Standard base64 alphabet (RFC 4648).
+pub const ALPHABET_STANDARD: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// URL-safe base64 alphabet (RFC 4648).
+pub const ALPHABET_URL: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
 /// Error type for base64 decoding operations.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
@@ -81,9 +89,9 @@ pub fn encoded_len(len: usize, padding: bool) -> usize {
 /// ```
 /// use base64::encode_with;
 ///
-/// const STANDARD_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+/// const ALPHABET_STANDARD: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 ///
-/// let encoded = encode_with(b"Hello", STANDARD_ALPHABET, true);
+/// let encoded = encode_with(b"Hello", ALPHABET_STANDARD, true);
 /// assert_eq!(encoded, "SGVsbG8=");
 /// ```
 pub fn encode_with(data: &[u8], alphabet: &[u8; 64], padding: bool) -> String {
@@ -148,9 +156,9 @@ pub fn encode_with(data: &[u8], alphabet: &[u8; 64], padding: bool) -> String {
 /// ```
 /// use base64::decode_with;
 ///
-/// const STANDARD_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+/// const ALPHABET_STANDARD: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 ///
-/// let decoded = decode_with("SGVsbG8=", STANDARD_ALPHABET).unwrap();
+/// let decoded = decode_with("SGVsbG8=", ALPHABET_STANDARD).unwrap();
 /// assert_eq!(decoded, b"Hello");
 /// ```
 pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, Error> {
@@ -247,12 +255,6 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
 mod tests {
     use super::*;
 
-    const STANDARD_ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-    const URL_SAFE_ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
     #[test]
     fn test_encoded_len() {
         assert_eq!(encoded_len(0, true), 0);
@@ -273,35 +275,35 @@ mod tests {
 
     #[test]
     fn test_encode_empty() {
-        assert_eq!(encode_with(b"", STANDARD_ALPHABET, true), "");
-        assert_eq!(encode_with(b"", STANDARD_ALPHABET, false), "");
+        assert_eq!(encode_with(b"", ALPHABET_STANDARD, true), "");
+        assert_eq!(encode_with(b"", ALPHABET_STANDARD, false), "");
     }
 
     #[test]
     fn test_encode_with_padding() {
-        assert_eq!(encode_with(b"f", STANDARD_ALPHABET, true), "Zg==");
-        assert_eq!(encode_with(b"fo", STANDARD_ALPHABET, true), "Zm8=");
-        assert_eq!(encode_with(b"foo", STANDARD_ALPHABET, true), "Zm9v");
-        assert_eq!(encode_with(b"foob", STANDARD_ALPHABET, true), "Zm9vYg==");
-        assert_eq!(encode_with(b"fooba", STANDARD_ALPHABET, true), "Zm9vYmE=");
-        assert_eq!(encode_with(b"foobar", STANDARD_ALPHABET, true), "Zm9vYmFy");
+        assert_eq!(encode_with(b"f", ALPHABET_STANDARD, true), "Zg==");
+        assert_eq!(encode_with(b"fo", ALPHABET_STANDARD, true), "Zm8=");
+        assert_eq!(encode_with(b"foo", ALPHABET_STANDARD, true), "Zm9v");
+        assert_eq!(encode_with(b"foob", ALPHABET_STANDARD, true), "Zm9vYg==");
+        assert_eq!(encode_with(b"fooba", ALPHABET_STANDARD, true), "Zm9vYmE=");
+        assert_eq!(encode_with(b"foobar", ALPHABET_STANDARD, true), "Zm9vYmFy");
     }
 
     #[test]
     fn test_encode_without_padding() {
-        assert_eq!(encode_with(b"f", STANDARD_ALPHABET, false), "Zg");
-        assert_eq!(encode_with(b"fo", STANDARD_ALPHABET, false), "Zm8");
-        assert_eq!(encode_with(b"foo", STANDARD_ALPHABET, false), "Zm9v");
-        assert_eq!(encode_with(b"foob", STANDARD_ALPHABET, false), "Zm9vYg");
-        assert_eq!(encode_with(b"fooba", STANDARD_ALPHABET, false), "Zm9vYmE");
-        assert_eq!(encode_with(b"foobar", STANDARD_ALPHABET, false), "Zm9vYmFy");
+        assert_eq!(encode_with(b"f", ALPHABET_STANDARD, false), "Zg");
+        assert_eq!(encode_with(b"fo", ALPHABET_STANDARD, false), "Zm8");
+        assert_eq!(encode_with(b"foo", ALPHABET_STANDARD, false), "Zm9v");
+        assert_eq!(encode_with(b"foob", ALPHABET_STANDARD, false), "Zm9vYg");
+        assert_eq!(encode_with(b"fooba", ALPHABET_STANDARD, false), "Zm9vYmE");
+        assert_eq!(encode_with(b"foobar", ALPHABET_STANDARD, false), "Zm9vYmFy");
     }
 
     #[test]
     fn test_encode_hello() {
-        assert_eq!(encode_with(b"Hello", STANDARD_ALPHABET, true), "SGVsbG8=");
+        assert_eq!(encode_with(b"Hello", ALPHABET_STANDARD, true), "SGVsbG8=");
         assert_eq!(
-            encode_with(b"Hello, World!", STANDARD_ALPHABET, true),
+            encode_with(b"Hello, World!", ALPHABET_STANDARD, true),
             "SGVsbG8sIFdvcmxkIQ=="
         );
     }
@@ -310,8 +312,8 @@ mod tests {
     fn test_encode_url_safe() {
         // Test data that would produce + or / in standard base64
         let data = [0xfb, 0xff, 0xfe];
-        let standard = encode_with(&data, STANDARD_ALPHABET, true);
-        let url_safe = encode_with(&data, URL_SAFE_ALPHABET, true);
+        let standard = encode_with(&data, ALPHABET_STANDARD, true);
+        let url_safe = encode_with(&data, ALPHABET_URL, true);
         assert!(standard.contains('+') || standard.contains('/'));
         assert!(!url_safe.contains('+') && !url_safe.contains('/'));
     }
@@ -319,36 +321,36 @@ mod tests {
     #[test]
     fn test_decode_empty() {
         assert_eq!(
-            decode_with("", STANDARD_ALPHABET).unwrap(),
+            decode_with("", ALPHABET_STANDARD).unwrap(),
             Vec::<u8>::new()
         );
     }
 
     #[test]
     fn test_decode_with_padding() {
-        assert_eq!(decode_with("Zg==", STANDARD_ALPHABET).unwrap(), b"f");
-        assert_eq!(decode_with("Zm8=", STANDARD_ALPHABET).unwrap(), b"fo");
-        assert_eq!(decode_with("Zm9v", STANDARD_ALPHABET).unwrap(), b"foo");
-        assert_eq!(decode_with("Zm9vYg==", STANDARD_ALPHABET).unwrap(), b"foob");
+        assert_eq!(decode_with("Zg==", ALPHABET_STANDARD).unwrap(), b"f");
+        assert_eq!(decode_with("Zm8=", ALPHABET_STANDARD).unwrap(), b"fo");
+        assert_eq!(decode_with("Zm9v", ALPHABET_STANDARD).unwrap(), b"foo");
+        assert_eq!(decode_with("Zm9vYg==", ALPHABET_STANDARD).unwrap(), b"foob");
         assert_eq!(
-            decode_with("Zm9vYmE=", STANDARD_ALPHABET).unwrap(),
+            decode_with("Zm9vYmE=", ALPHABET_STANDARD).unwrap(),
             b"fooba"
         );
         assert_eq!(
-            decode_with("Zm9vYmFy", STANDARD_ALPHABET).unwrap(),
+            decode_with("Zm9vYmFy", ALPHABET_STANDARD).unwrap(),
             b"foobar"
         );
     }
 
     #[test]
     fn test_decode_without_padding() {
-        assert_eq!(decode_with("Zg", STANDARD_ALPHABET).unwrap(), b"f");
-        assert_eq!(decode_with("Zm8", STANDARD_ALPHABET).unwrap(), b"fo");
-        assert_eq!(decode_with("Zm9v", STANDARD_ALPHABET).unwrap(), b"foo");
-        assert_eq!(decode_with("Zm9vYg", STANDARD_ALPHABET).unwrap(), b"foob");
-        assert_eq!(decode_with("Zm9vYmE", STANDARD_ALPHABET).unwrap(), b"fooba");
+        assert_eq!(decode_with("Zg", ALPHABET_STANDARD).unwrap(), b"f");
+        assert_eq!(decode_with("Zm8", ALPHABET_STANDARD).unwrap(), b"fo");
+        assert_eq!(decode_with("Zm9v", ALPHABET_STANDARD).unwrap(), b"foo");
+        assert_eq!(decode_with("Zm9vYg", ALPHABET_STANDARD).unwrap(), b"foob");
+        assert_eq!(decode_with("Zm9vYmE", ALPHABET_STANDARD).unwrap(), b"fooba");
         assert_eq!(
-            decode_with("Zm9vYmFy", STANDARD_ALPHABET).unwrap(),
+            decode_with("Zm9vYmFy", ALPHABET_STANDARD).unwrap(),
             b"foobar"
         );
     }
@@ -356,24 +358,24 @@ mod tests {
     #[test]
     fn test_decode_hello() {
         assert_eq!(
-            decode_with("SGVsbG8=", STANDARD_ALPHABET).unwrap(),
+            decode_with("SGVsbG8=", ALPHABET_STANDARD).unwrap(),
             b"Hello"
         );
         assert_eq!(
-            decode_with("SGVsbG8sIFdvcmxkIQ==", STANDARD_ALPHABET).unwrap(),
+            decode_with("SGVsbG8sIFdvcmxkIQ==", ALPHABET_STANDARD).unwrap(),
             b"Hello, World!"
         );
     }
 
     #[test]
     fn test_decode_invalid_character() {
-        let result = decode_with("!!!!", STANDARD_ALPHABET);
+        let result = decode_with("!!!!", ALPHABET_STANDARD);
         assert!(matches!(result, Err(Error::InvalidCharacter('!'))));
     }
 
     #[test]
     fn test_decode_invalid_length() {
-        let result = decode_with("Z", STANDARD_ALPHABET);
+        let result = decode_with("Z", ALPHABET_STANDARD);
         assert!(matches!(result, Err(Error::InvalidLength)));
     }
 
@@ -390,8 +392,8 @@ mod tests {
         ];
 
         for data in test_cases {
-            let encoded = encode_with(&data, STANDARD_ALPHABET, true);
-            let decoded = decode_with(&encoded, STANDARD_ALPHABET).unwrap();
+            let encoded = encode_with(&data, ALPHABET_STANDARD, true);
+            let decoded = decode_with(&encoded, ALPHABET_STANDARD).unwrap();
             assert_eq!(decoded, data, "Roundtrip failed for {:?}", data);
         }
     }
@@ -408,8 +410,8 @@ mod tests {
         ];
 
         for data in test_cases {
-            let encoded = encode_with(&data, STANDARD_ALPHABET, false);
-            let decoded = decode_with(&encoded, STANDARD_ALPHABET).unwrap();
+            let encoded = encode_with(&data, ALPHABET_STANDARD, false);
+            let decoded = decode_with(&encoded, ALPHABET_STANDARD).unwrap();
             assert_eq!(
                 decoded, data,
                 "Roundtrip without padding failed for {:?}",
@@ -421,8 +423,8 @@ mod tests {
     #[test]
     fn test_url_safe_roundtrip() {
         let data: Vec<u8> = (0..=255).collect();
-        let encoded = encode_with(&data, URL_SAFE_ALPHABET, true);
-        let decoded = decode_with(&encoded, URL_SAFE_ALPHABET).unwrap();
+        let encoded = encode_with(&data, ALPHABET_URL, true);
+        let decoded = decode_with(&encoded, ALPHABET_URL).unwrap();
         assert_eq!(decoded, data);
     }
 
@@ -434,5 +436,83 @@ mod tests {
         );
         assert_eq!(format!("{}", Error::InvalidPadding), "invalid padding");
         assert_eq!(format!("{}", Error::InvalidLength), "invalid input length");
+    }
+
+    #[test]
+    fn test_encode_non_ascii_utf8() {
+        // Test encoding UTF-8 strings with non-ASCII characters
+        let data = "こんにちは".as_bytes(); // Japanese "Hello"
+        let encoded = encode_with(data, ALPHABET_STANDARD, true);
+        assert_eq!(encoded, "44GT44KT44Gr44Gh44Gv");
+
+        let decoded = decode_with(&encoded, ALPHABET_STANDARD).unwrap();
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_encode_emoji() {
+        // Test encoding emojis
+        let data = "🎉🚀✨".as_bytes();
+        let encoded = encode_with(data, ALPHABET_STANDARD, true);
+        let decoded = decode_with(&encoded, ALPHABET_STANDARD).unwrap();
+        assert_eq!(decoded, data);
+        assert_eq!(String::from_utf8(decoded).unwrap(), "🎉🚀✨");
+    }
+
+    #[test]
+    fn test_encode_mixed_ascii_non_ascii() {
+        // Test encoding mixed ASCII and non-ASCII characters
+        let data = "Hello, 世界! Привет!".as_bytes();
+        let encoded = encode_with(data, ALPHABET_STANDARD, true);
+        let decoded = decode_with(&encoded, ALPHABET_STANDARD).unwrap();
+        assert_eq!(decoded, data);
+        assert_eq!(String::from_utf8(decoded).unwrap(), "Hello, 世界! Привет!");
+    }
+
+    #[test]
+    fn test_encode_various_unicode() {
+        // Test various Unicode characters from different scripts
+        let test_cases = [
+            "Ελληνικά",    // Greek
+            "עברית",       // Hebrew
+            "العربية",     // Arabic
+            "हिन्दी",       // Hindi
+            "한국어",      // Korean
+            "ไทย",         // Thai
+            "café naïve",  // Latin with accents
+            "Ñoño",        // Spanish
+            "Ümlauts äöü", // German
+        ];
+
+        for text in test_cases {
+            let data = text.as_bytes();
+            let encoded = encode_with(data, ALPHABET_STANDARD, true);
+            let decoded = decode_with(&encoded, ALPHABET_STANDARD).unwrap();
+            assert_eq!(decoded, data, "Roundtrip failed for: {}", text);
+            assert_eq!(
+                String::from_utf8(decoded).unwrap(),
+                text,
+                "UTF-8 conversion failed for: {}",
+                text
+            );
+        }
+    }
+
+    #[test]
+    fn test_encode_binary_with_high_bytes() {
+        // Test binary data with bytes > 127 (non-ASCII range)
+        let data: Vec<u8> = (128..=255).collect();
+        let encoded = encode_with(&data, ALPHABET_STANDARD, true);
+        let decoded = decode_with(&encoded, ALPHABET_STANDARD).unwrap();
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_encode_null_and_control_chars() {
+        // Test encoding data with null bytes and control characters
+        let data = b"\x00\x01\x02\x1f\x7f\xff";
+        let encoded = encode_with(data, ALPHABET_STANDARD, true);
+        let decoded = decode_with(&encoded, ALPHABET_STANDARD).unwrap();
+        assert_eq!(decoded, data);
     }
 }
