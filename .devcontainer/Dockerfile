@@ -1,7 +1,8 @@
 FROM debian:13
 
-# Install required packages
+# Install required packages including rustup from apt
 RUN apt-get update && apt-get install -y \
+    rustup \
     bash \
     curl \
     wget \
@@ -23,9 +24,8 @@ RUN useradd -m -s /bin/bash dev
 USER dev
 WORKDIR /home/dev
 
-# Install rustup as the dev user
-# Using official rustup installer from https://rustup.rs
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+# Initialize rustup with the stable toolchain
+RUN rustup default stable
 
 # Add cargo to PATH
 ENV PATH="/home/dev/.cargo/bin:${PATH}"
