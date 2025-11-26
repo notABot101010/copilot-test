@@ -4,6 +4,7 @@
 //! and decode base64 strings back to binary data using custom alphabets.
 
 use std::fmt;
+use std::sync::LazyLock;
 
 /// Standard base64 alphabet (RFC 4648).
 pub const ALPHABET_STANDARD: &[u8; 64] =
@@ -12,6 +13,22 @@ pub const ALPHABET_STANDARD: &[u8; 64] =
 /// URL-safe base64 alphabet (RFC 4648).
 pub const ALPHABET_URL: &[u8; 64] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+/// Pre-computed decode table for the standard alphabet.
+static DECODE_TABLE_STANDARD: LazyLock<[u8; 256]> =
+    LazyLock::new(|| build_decode_table(ALPHABET_STANDARD));
+
+/// Pre-computed decode table for the URL-safe alphabet.
+static DECODE_TABLE_URL: LazyLock<[u8; 256]> = LazyLock::new(|| build_decode_table(ALPHABET_URL));
+
+/// Builds a decode lookup table for the given alphabet.
+fn build_decode_table(alphabet: &[u8; 64]) -> [u8; 256] {
+    let mut table = [255u8; 256];
+    for (i, &c) in alphabet.iter().enumerate() {
+        table[c as usize] = i as u8;
+    }
+    table
+}
 
 /// Error type for base64 decoding operations.
 #[derive(Debug, PartialEq, Eq)]
@@ -166,11 +183,16 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
         return Ok(Vec::new());
     }
 
-    // Build reverse lookup table
-    let mut decode_table = [255u8; 256];
-    for (i, &c) in alphabet.iter().enumerate() {
-        decode_table[c as usize] = i as u8;
-    }
+    // Use pre-computed table for known alphabets, otherwise build dynamically
+    let owned_table;
+    let decode_table: &[u8; 256] = if alphabet == ALPHABET_STANDARD {
+        &DECODE_TABLE_STANDARD
+    } else if alphabet == ALPHABET_URL {
+        &DECODE_TABLE_URL
+    } else {
+        owned_table = build_decode_table(alphabet);
+        &owned_table
+    };
 
     // Remove padding and calculate expected output size
     let input = base64_input.trim_end_matches('=');
