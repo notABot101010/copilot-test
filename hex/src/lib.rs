@@ -12,6 +12,22 @@ pub const ALPHABET_LOWER: &[u8; 16] = b"0123456789abcdef";
 /// Standard uppercase hexadecimal alphabet.
 pub const ALPHABET_UPPER: &[u8; 16] = b"0123456789ABCDEF";
 
+/// Pre-computed encode table for lowercase (each byte maps to 2 hex chars).
+static ENCODE_TABLE_LOWER: LazyLock<[[u8; 2]; 256]> = LazyLock::new(|| build_encode_table(ALPHABET_LOWER));
+
+/// Pre-computed encode table for uppercase (each byte maps to 2 hex chars).
+static ENCODE_TABLE_UPPER: LazyLock<[[u8; 2]; 256]> = LazyLock::new(|| build_encode_table(ALPHABET_UPPER));
+
+/// Builds an encode lookup table for the given alphabet.
+fn build_encode_table(alphabet: &[u8; 16]) -> [[u8; 2]; 256] {
+    let mut table = [[0u8; 2]; 256];
+    for i in 0..256 {
+        table[i][0] = alphabet[i >> 4];
+        table[i][1] = alphabet[i & 0x0F];
+    }
+    table
+}
+
 /// Pre-computed decode table for hexadecimal (handles both cases).
 static DECODE_TABLE: LazyLock<[u8; 256]> = LazyLock::new(|| {
     let mut table = [255u8; 256];
@@ -92,6 +108,7 @@ pub fn encoded_len(len: usize) -> usize {
 /// let encoded_upper = encode_with(b"Hello", ALPHABET_UPPER);
 /// assert_eq!(encoded_upper, "48656C6C6F");
 /// ```
+#[inline]
 pub fn encode_with(data: &[u8], alphabet: &[u8; 16]) -> String {
     if data.is_empty() {
         return String::new();
@@ -100,12 +117,25 @@ pub fn encode_with(data: &[u8], alphabet: &[u8; 16]) -> String {
     let output_len = encoded_len(data.len());
     let mut output = Vec::with_capacity(output_len);
 
+    // Use pre-computed table for known alphabets
+    let owned_table;
+    let encode_table: &[[u8; 2]; 256] = if alphabet == ALPHABET_LOWER {
+        &ENCODE_TABLE_LOWER
+    } else if alphabet == ALPHABET_UPPER {
+        &ENCODE_TABLE_UPPER
+    } else {
+        owned_table = build_encode_table(alphabet);
+        &owned_table
+    };
+
     for &byte in data {
-        output.push(alphabet[(byte >> 4) as usize]);
-        output.push(alphabet[(byte & 0x0F) as usize]);
+        let pair = encode_table[byte as usize];
+        output.push(pair[0]);
+        output.push(pair[1]);
     }
 
     // All bytes in output are valid ASCII (from alphabet), so this won't fail
+    // SAFETY: The encode table only contains bytes from the alphabet which are valid ASCII
     String::from_utf8(output).expect("hex output is always valid UTF-8")
 }
 
@@ -132,6 +162,7 @@ pub fn encode_with(data: &[u8], alphabet: &[u8; 16]) -> String {
 /// let decoded = decode_with("48656C6C6F", ALPHABET_LOWER).unwrap();
 /// assert_eq!(decoded, b"Hello");
 /// ```
+#[inline]
 pub fn decode_with(hex_input: &str, _alphabet: &[u8; 16]) -> Result<Vec<u8>, Error> {
     if hex_input.is_empty() {
         return Ok(Vec::new());

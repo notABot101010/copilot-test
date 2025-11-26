@@ -73,6 +73,7 @@ impl std::error::Error for Error {}
 /// assert_eq!(encoded_len(1, true), 4);
 /// assert_eq!(encoded_len(1, false), 2);
 /// ```
+#[inline]
 pub fn encoded_len(len: usize, padding: bool) -> usize {
     if len == 0 {
         return 0;
@@ -111,6 +112,7 @@ pub fn encoded_len(len: usize, padding: bool) -> usize {
 /// let encoded = encode_with(b"Hello", ALPHABET_STANDARD, true);
 /// assert_eq!(encoded, "SGVsbG8=");
 /// ```
+#[inline]
 pub fn encode_with(data: &[u8], alphabet: &[u8; 64], padding: bool) -> String {
     if data.is_empty() {
         return String::new();
@@ -182,6 +184,7 @@ pub fn encode_with(data: &[u8], alphabet: &[u8; 64], padding: bool) -> String {
 /// let decoded = decode_with("SGVsbG8=", ALPHABET_STANDARD).unwrap();
 /// assert_eq!(decoded, b"Hello");
 /// ```
+#[inline]
 pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, Error> {
     if base64_input.is_empty() {
         return Ok(Vec::new());
