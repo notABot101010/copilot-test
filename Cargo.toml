@@ -1,3 +1,3 @@
 [workspace]
 resolver = "2"
-members = ["base64"]
+members = ["base64", "hex", "base32"]

@@ -1,0 +1,8 @@
+[package]
+name = "base32"
+version = "0.1.0"
+edition = "2021"
+description = "A library for base32 encoding and decoding"
+license = "MIT"
+
+[dependencies]
