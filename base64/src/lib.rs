@@ -310,34 +310,30 @@ mod avx2 {
     /// Caller must ensure AVX2 is available (check with `is_available()`).
     #[target_feature(enable = "avx2")]
     pub unsafe fn encode_avx2(output: &mut [u8], data: &[u8], padding: bool) {
-        let len = data.len();
-        let mut in_offset: usize = 0;
-        let mut out_offset: usize = 0;
+        // Process 24-byte chunks using iterator, producing 32 bytes of output each
+        let full_chunks = data.len() / 24;
+        let simd_input_len = full_chunks * 24;
 
-        // We need at least 24 bytes for the AVX2 path
-        // Process 24 bytes at a time, producing 32 bytes of output
-        while in_offset + 24 <= len {
-            // Create a properly aligned buffer with 4 padding bytes at the start
-            let mut aligned_buf = [0u8; 32];
-            aligned_buf[4..28].copy_from_slice(&data[in_offset..in_offset + 24]);
+        // Use chunks_exact for the SIMD path
+        data.chunks_exact(24)
+            .zip(output.chunks_exact_mut(32))
+            .for_each(|(input_chunk, output_chunk)| {
+                // Create a properly aligned buffer with 4 padding bytes at the start
+                let mut aligned_buf = [0u8; 32];
+                aligned_buf[4..28].copy_from_slice(input_chunk);
 
-            // Load from offset 0 of our aligned buffer (which has the data at offset 4)
-            let inputvector = _mm256_loadu_si256(aligned_buf.as_ptr() as *const __m256i);
-            let reshuffled = enc_reshuffle(inputvector);
-            let translated = enc_translate(reshuffled);
+                // Load from offset 0 of our aligned buffer (which has the data at offset 4)
+                let inputvector = _mm256_loadu_si256(aligned_buf.as_ptr() as *const __m256i);
+                let reshuffled = enc_reshuffle(inputvector);
+                let translated = enc_translate(reshuffled);
 
-            _mm256_storeu_si256(
-                output.as_mut_ptr().add(out_offset) as *mut __m256i,
-                translated,
-            );
-
-            in_offset += 24;
-            out_offset += 32;
-        }
+                _mm256_storeu_si256(output_chunk.as_mut_ptr() as *mut __m256i, translated);
+            });
 
         // Handle remaining bytes with scalar code
-        if in_offset < len {
-            let remaining_data = &data[in_offset..];
+        let remaining_data = &data[simd_input_len..];
+        if !remaining_data.is_empty() {
+            let out_offset = full_chunks * 32;
             let remaining_output = &mut output[out_offset..];
             super::encode_to_slice(remaining_output, remaining_data, ALPHABET_STANDARD, padding);
         }
@@ -351,75 +347,84 @@ mod avx2 {
     /// Caller must ensure AVX2 is available (check with `is_available()`).
     #[target_feature(enable = "avx2")]
     pub unsafe fn decode_avx2(output: &mut [u8], input: &[u8]) -> Result<usize, Error> {
-        let mut in_offset: isize = 0;
-        let mut out_offset: isize = 0;
         let input_len = input.len();
 
-        while input_len - in_offset as usize >= 45 {
-            let str_vec = _mm256_loadu_si256(input.as_ptr().offset(in_offset) as *const __m256i);
+        // We need at least 45 bytes for the AVX2 path (32 for SIMD + 13 for safety margin)
+        // Calculate how many full 32-byte chunks we can safely process
+        let safe_len = if input_len >= 45 { input_len - 13 } else { 0 };
+        let full_chunks = safe_len / 32;
 
-            // Lookup tables for decoding
-            let lut_lo: __m256i = _mm256_setr_epi8(
-                0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B,
-                0x1B, 0x1A, 0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A,
-                0x1B, 0x1B, 0x1B, 0x1A,
-            );
-            let lut_hi: __m256i = _mm256_setr_epi8(
-                0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
-                0x10, 0x10, 0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10,
-                0x10, 0x10, 0x10, 0x10,
-            );
-            let lut_roll: __m256i = _mm256_setr_epi8(
-                0, 16, 19, 4, -65, -65, -71, -71, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 19, 4, -65, -65,
-                -71, -71, 0, 0, 0, 0, 0, 0, 0, 0,
-            );
+        // Lookup tables for decoding (moved outside loop for clarity)
+        let lut_lo: __m256i = _mm256_setr_epi8(
+            0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B,
+            0x1B, 0x1A, 0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A,
+            0x1B, 0x1B, 0x1B, 0x1A,
+        );
+        let lut_hi: __m256i = _mm256_setr_epi8(
+            0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+            0x10, 0x10, 0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10,
+            0x10, 0x10, 0x10, 0x10,
+        );
+        let lut_roll: __m256i = _mm256_setr_epi8(
+            0, 16, 19, 4, -65, -65, -71, -71, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 19, 4, -65, -65, -71,
+            -71, 0, 0, 0, 0, 0, 0, 0, 0,
+        );
+        let mask_2f: __m256i = _mm256_set1_epi8(0x2f);
 
-            let mask_2f: __m256i = _mm256_set1_epi8(0x2f);
+        // Process chunks using iterator with try_fold to handle early exit on invalid chars
+        let simd_input = &input[..full_chunks * 32];
+        let simd_output = &mut output[..full_chunks * 24];
 
-            // Lookup
-            let hi_nibbles: __m256i = _mm256_srli_epi32(str_vec, 4);
-            let lo_nibbles: __m256i = _mm256_and_si256(str_vec, mask_2f);
+        let processed = simd_input
+            .chunks_exact(32)
+            .zip(simd_output.chunks_exact_mut(24))
+            .try_fold(0usize, |chunks_done, (input_chunk, output_chunk)| {
+                let str_vec = _mm256_loadu_si256(input_chunk.as_ptr() as *const __m256i);
 
-            let lo: __m256i = _mm256_shuffle_epi8(lut_lo, lo_nibbles);
-            let eq_2f: __m256i = _mm256_cmpeq_epi8(str_vec, mask_2f);
+                // Lookup
+                let hi_nibbles: __m256i = _mm256_srli_epi32(str_vec, 4);
+                let lo_nibbles: __m256i = _mm256_and_si256(str_vec, mask_2f);
 
-            let hi_nibbles = _mm256_and_si256(hi_nibbles, mask_2f);
-            let hi: __m256i = _mm256_shuffle_epi8(lut_hi, hi_nibbles);
-            let roll: __m256i = _mm256_shuffle_epi8(lut_roll, _mm256_add_epi8(eq_2f, hi_nibbles));
+                let lo: __m256i = _mm256_shuffle_epi8(lut_lo, lo_nibbles);
+                let eq_2f: __m256i = _mm256_cmpeq_epi8(str_vec, mask_2f);
 
-            // Check for invalid characters
-            if _mm256_testz_si256(lo, hi) == 0 {
-                // Invalid character found, fall back to scalar for error detection
-                break;
-            }
+                let hi_nibbles = _mm256_and_si256(hi_nibbles, mask_2f);
+                let hi: __m256i = _mm256_shuffle_epi8(lut_hi, hi_nibbles);
+                let roll: __m256i =
+                    _mm256_shuffle_epi8(lut_roll, _mm256_add_epi8(eq_2f, hi_nibbles));
 
-            let str_vec = _mm256_add_epi8(str_vec, roll);
+                // Check for invalid characters - return None to break iteration
+                if _mm256_testz_si256(lo, hi) == 0 {
+                    return None;
+                }
 
-            in_offset += 32;
+                let str_vec = _mm256_add_epi8(str_vec, roll);
 
-            // Reshuffle to packed output
-            let result = dec_reshuffle(str_vec);
-            _mm256_storeu_si256(
-                output.as_mut_ptr().offset(out_offset) as *mut __m256i,
-                result,
-            );
-            out_offset += 24;
-        }
+                // Reshuffle to packed output
+                let result = dec_reshuffle(str_vec);
+                _mm256_storeu_si256(output_chunk.as_mut_ptr() as *mut __m256i, result);
+
+                Some(chunks_done + 1)
+            })
+            .unwrap_or(0);
+
+        let in_offset = processed * 32;
+        let out_offset = processed * 24;
 
         // Handle remaining bytes with scalar decoder
-        if in_offset < input_len as isize {
-            let remaining_input = &input[in_offset as usize..];
-            let remaining_output = &mut output[out_offset as usize..];
+        if in_offset < input_len {
+            let remaining_input = &input[in_offset..];
+            let remaining_output = &mut output[out_offset..];
 
             // Decode remaining bytes using scalar implementation
             let remaining_str =
                 std::str::from_utf8(remaining_input).map_err(|_| Error::InvalidCharacter('\0'))?;
             let decoded = super::decode_with(remaining_str, ALPHABET_STANDARD)?;
             remaining_output[..decoded.len()].copy_from_slice(&decoded);
-            out_offset += decoded.len() as isize;
+            return Ok(out_offset + decoded.len());
         }
 
-        Ok(out_offset as usize)
+        Ok(out_offset)
     }
 }
 
