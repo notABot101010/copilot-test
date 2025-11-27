@@ -55,6 +55,8 @@ pub enum Error {
     InvalidLength,
     /// Output buffer too small.
     OutputBufferTooSmall,
+    /// Invalid UTF-8 in input.
+    InvalidUtf8,
 }
 
 impl fmt::Display for Error {
@@ -63,6 +65,7 @@ impl fmt::Display for Error {
             Error::InvalidCharacter(c) => write!(f, "invalid character: '{}'", c),
             Error::InvalidLength => write!(f, "invalid input length (must be even)"),
             Error::OutputBufferTooSmall => write!(f, "output buffer too small"),
+            Error::InvalidUtf8 => write!(f, "invalid UTF-8 in input"),
         }
     }
 }
@@ -196,9 +199,9 @@ pub fn encode(data: &[u8], alphabet: &[u8; 16]) -> String {
 
     encode_into_unchecked(&mut output, data, alphabet);
 
-    // SAFETY: All bytes in output are valid ASCII (from alphabet)
-    // which is valid UTF-8
-    String::from_utf8(output).expect("hex output is always valid UTF-8")
+    // SAFETY: All bytes in output are valid ASCII characters from the hex alphabet,
+    // which is a subset of valid UTF-8
+    unsafe { String::from_utf8_unchecked(output) }
 }
 
 /// Decodes a hex string to binary data using the specified alphabet.
@@ -326,6 +329,9 @@ pub fn decode_checked(input: &str, alphabet: &[u8; 16]) -> Result<Vec<u8>, Error
 mod avx2 {
     use super::*;
     use std::arch::x86_64::*;
+
+    /// Extra bytes allocated for SIMD writes that may overshoot.
+    pub const AVX2_EXTRA_BYTES: usize = 32;
 
     /// Check if AVX2 is available at runtime.
     #[inline]
@@ -492,7 +498,7 @@ mod avx2 {
         // Handle remaining bytes with scalar code
         if in_idx < input_len {
             let remaining_input =
-                std::str::from_utf8(&input[in_idx..]).map_err(|_| Error::InvalidCharacter('\0'))?;
+                std::str::from_utf8(&input[in_idx..]).map_err(|_| Error::InvalidUtf8)?;
             let decoded = super::decode_checked(remaining_input, ALPHABET_LOWER)?;
             output[out_idx..out_idx + decoded.len()].copy_from_slice(&decoded);
             out_idx += decoded.len();
@@ -609,7 +615,7 @@ pub fn decode_avx2_checked(input: &str, alphabet: &[u8; 16]) -> Result<Vec<u8>, 
         if avx2::is_available() && input.len() >= 64 {
             let input_bytes = input.as_bytes();
             let output_len = decoded_len(input_bytes.len());
-            let mut output = vec![0u8; output_len + 32]; // Extra space for SIMD writes
+            let mut output = vec![0u8; output_len + avx2::AVX2_EXTRA_BYTES];
 
             // SAFETY: We just checked that AVX2 is available
             let decoded_len = unsafe { avx2::decode_avx2(&mut output, input_bytes)? };
@@ -763,6 +769,10 @@ mod tests {
         assert_eq!(
             format!("{}", Error::OutputBufferTooSmall),
             "output buffer too small"
+        );
+        assert_eq!(
+            format!("{}", Error::InvalidUtf8),
+            "invalid UTF-8 in input"
         );
     }
 
