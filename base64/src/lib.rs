@@ -239,8 +239,8 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
     let mut result = Vec::with_capacity(output_len);
 
     // Process complete 4-character groups using direct byte access
-    // PERF: Consider using chunks_exact(4) with extend_from_slice for bulk operations
-    // instead of individual push() calls to reduce bounds checking overhead.
+    // PERF: Consider restructuring to decode into a temporary [u8; 3] array and use
+    // extend_from_slice for bulk writes, reducing per-element bounds checking overhead.
     let mut i = 0;
     while i + 4 <= input_len {
         let c0 = input_bytes[i];
@@ -253,9 +253,9 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
         let v2 = decode_table[c2 as usize];
         let v3 = decode_table[c3 as usize];
 
-        // PERF: These individual if-checks could be consolidated using bitwise OR
-        // to check all values at once: `if (v0 | v1 | v2 | v3) & 0x80 != 0`.
-        // Then scan to find which specific character is invalid only in error case.
+        // PERF: These individual if-checks could be consolidated. Since valid values
+        // are 0-63 and invalid is 255 (0xFF), check `if (v0 | v1 | v2 | v3) > 63`.
+        // Only scan to find which specific character is invalid in the error case.
         if v0 == 255 {
             return Err(Error::InvalidCharacter(c0 as char));
         }
