@@ -2,6 +2,16 @@
 //!
 //! This library provides functions to encode binary data to base64 strings
 //! and decode base64 strings back to binary data using custom alphabets.
+//!
+//! # Performance Notes
+//!
+//! This implementation prioritizes clarity over raw performance. For
+//! performance-critical applications, consider the following improvements:
+//!
+//! - For very large inputs, SIMD-based encoding/decoding could provide
+//!   significant speedups.
+//!
+//! - Consider processing multiple chunks in parallel for large datasets.
 
 use std::fmt;
 use std::sync::LazyLock;
@@ -229,6 +239,8 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
     let mut result = Vec::with_capacity(output_len);
 
     // Process complete 4-character groups using direct byte access
+    // PERF: Consider using chunks_exact(4) with extend_from_slice for bulk operations
+    // instead of individual push() calls to reduce bounds checking overhead.
     let mut i = 0;
     while i + 4 <= input_len {
         let c0 = input_bytes[i];
@@ -241,6 +253,9 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
         let v2 = decode_table[c2 as usize];
         let v3 = decode_table[c3 as usize];
 
+        // PERF: These individual if-checks could be consolidated using bitwise OR
+        // to check all values at once: `if (v0 | v1 | v2 | v3) & 0x80 != 0`.
+        // Then scan to find which specific character is invalid only in error case.
         if v0 == 255 {
             return Err(Error::InvalidCharacter(c0 as char));
         }
