@@ -6,3 +6,11 @@ description = "A library for base64 encoding and decoding"
 license = "MIT"
 
 [dependencies]
+
+[dev-dependencies]
+criterion = { workspace = true }
+base64-external = { package = "base64", version = "0.22.1" }
+
+[[bench]]
+name = "benchmarks"
+harness = false
