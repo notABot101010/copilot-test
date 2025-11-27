@@ -4,6 +4,7 @@
 //! in a centralized and secure service.
 
 use crate::client::{check_api_error, Client, Error};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 const KEY_MANAGER_API_URL: &str = "https://api.scaleway.com/key-manager/v1alpha1";
@@ -277,19 +278,21 @@ impl Client {
         region: &str,
         usages: Option<&[&str]>,
     ) -> Result<ListAlgorithmsResponse, Error> {
-        let mut url = format!("{}/regions/{}/algorithms", KEY_MANAGER_API_URL, region);
+        let mut url = Url::parse(&format!(
+            "{}/regions/{}/algorithms",
+            KEY_MANAGER_API_URL, region
+        ))
+        .expect("valid URL");
 
         if let Some(usages) = usages {
-            let usage_params: Vec<String> =
-                usages.iter().map(|u| format!("usages={}", u)).collect();
-            if !usage_params.is_empty() {
-                url = format!("{}?{}", url, usage_params.join("&"));
+            for usage in usages {
+                url.query_pairs_mut().append_pair("usages", usage);
             }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -312,29 +315,29 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListKeysResponse, Error> {
-        let mut url = format!("{}/regions/{}/keys", KEY_MANAGER_API_URL, region);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/regions/{}/keys", KEY_MANAGER_API_URL, region))
+                .expect("valid URL");
 
-        if let Some(pid) = project_id {
-            params.push(format!("project_id={}", pid));
-        }
-        if let Some(oid) = organization_id {
-            params.push(format!("organization_id={}", oid));
-        }
-        if let Some(p) = page {
-            params.push(format!("page={}", p));
-        }
-        if let Some(ps) = page_size {
-            params.push(format!("page_size={}", ps));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = project_id {
+                pairs.append_pair("project_id", v);
+            }
+            if let Some(v) = organization_id {
+                pairs.append_pair("organization_id", v);
+            }
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
+            if let Some(v) = page_size {
+                pairs.append_pair("page_size", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
