@@ -123,24 +123,8 @@ pub(crate) async fn check_api_error(res: reqwest::Response) -> Result<reqwest::R
     Ok(res)
 }
 
-/// URL-encode a string for use in query parameters.
-pub(crate) fn url_encode(s: &str) -> String {
-    // Percent-encode special characters according to RFC 3986
-    let mut encoded = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => {
-                encoded.push(c);
-            }
-            _ => {
-                for byte in c.to_string().as_bytes() {
-                    encoded.push_str(&format!("%{:02X}", byte));
-                }
-            }
-        }
-    }
-    encoded
-}
+// Re-export the Url type from reqwest for building URLs with proper encoding
+pub(crate) use reqwest::Url;
 
 /// Pagination information returned by the API.
 #[derive(Debug, Clone, Deserialize)]

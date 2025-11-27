@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{check_api_error, url_encode, Client, Error, Links, Meta, API_BASE_URL};
+use crate::{check_api_error, Client, Error, Links, Meta, Url, API_BASE_URL};
 
 /// A DigitalOcean Droplet (virtual machine).
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -277,22 +277,21 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListDropletsResponse, Error> {
-        let mut url = format!("{}/droplets", API_BASE_URL);
-        let mut query_params = Vec::new();
+        let mut url = Url::parse(&format!("{}/droplets", API_BASE_URL)).expect("Invalid URL");
 
-        if let Some(p) = page {
-            query_params.push(format!("page={}", p));
-        }
-        if let Some(pp) = per_page {
-            query_params.push(format!("per_page={}", pp));
-        }
-        if !query_params.is_empty() {
-            url = format!("{}?{}", url, query_params.join("&"));
+        {
+            let mut query = url.query_pairs_mut();
+            if let Some(p) = page {
+                query.append_pair("page", &p.to_string());
+            }
+            if let Some(pp) = per_page {
+                query.append_pair("per_page", &pp.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -317,11 +316,11 @@ impl Client {
     /// # }
     /// ```
     pub async fn get_droplet(&self, droplet_id: u64) -> Result<GetDropletResponse, Error> {
-        let url = format!("{}/droplets/{}", API_BASE_URL, droplet_id);
+        let url = Url::parse(&format!("{}/droplets/{}", API_BASE_URL, droplet_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -362,11 +361,11 @@ impl Client {
         &self,
         request: CreateDropletRequest,
     ) -> Result<CreateDropletResponse, Error> {
-        let url = format!("{}/droplets", API_BASE_URL);
+        let url = build_url(API_BASE_URL, "/droplets");
 
         let res = self
             .http_client
-            .post(&url)
+            .post(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .json(&request)
             .send()
@@ -392,11 +391,11 @@ impl Client {
     /// # }
     /// ```
     pub async fn delete_droplet(&self, droplet_id: u64) -> Result<(), Error> {
-        let url = format!("{}/droplets/{}", API_BASE_URL, droplet_id);
+        let url = build_url(API_BASE_URL, &format!("/droplets/{}", droplet_id));
 
         let res = self
             .http_client
-            .delete(&url)
+            .delete(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -418,18 +417,22 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListDropletsResponse, Error> {
-        let mut url = format!("{}/droplets?tag_name={}", API_BASE_URL, url_encode(tag_name));
+        let mut url = build_url(API_BASE_URL, "/droplets");
 
-        if let Some(p) = page {
-            url = format!("{}&page={}", url, p);
-        }
-        if let Some(pp) = per_page {
-            url = format!("{}&per_page={}", url, pp);
+        {
+            let mut query = url.query_pairs_mut();
+            query.append_pair("tag_name", tag_name);
+            if let Some(p) = page {
+                query.append_pair("page", &p.to_string());
+            }
+            if let Some(pp) = per_page {
+                query.append_pair("per_page", &pp.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;

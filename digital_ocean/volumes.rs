@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{check_api_error, url_encode, Client, Error, Links, Meta, API_BASE_URL};
+use crate::{build_url, check_api_error, Client, Error, Links, Meta, API_BASE_URL};
 
 /// A block storage volume.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -159,25 +159,24 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListVolumesResponse, Error> {
-        let mut url = format!("{}/volumes", API_BASE_URL);
-        let mut query_params = Vec::new();
+        let mut url = build_url(API_BASE_URL, "/volumes");
 
-        if let Some(n) = name {
-            query_params.push(format!("name={}", url_encode(n)));
-        }
-        if let Some(p) = page {
-            query_params.push(format!("page={}", p));
-        }
-        if let Some(pp) = per_page {
-            query_params.push(format!("per_page={}", pp));
-        }
-        if !query_params.is_empty() {
-            url = format!("{}?{}", url, query_params.join("&"));
+        {
+            let mut query = url.query_pairs_mut();
+            if let Some(n) = name {
+                query.append_pair("name", n);
+            }
+            if let Some(p) = page {
+                query.append_pair("page", &p.to_string());
+            }
+            if let Some(pp) = per_page {
+                query.append_pair("per_page", &pp.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -191,11 +190,11 @@ impl Client {
     ///
     /// * `volume_id` - The ID of the volume.
     pub async fn get_volume(&self, volume_id: &str) -> Result<VolumeResponse, Error> {
-        let url = format!("{}/volumes/{}", API_BASE_URL, volume_id);
+        let url = build_url(API_BASE_URL, &format!("/volumes/{}", volume_id));
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -230,11 +229,11 @@ impl Client {
     /// # }
     /// ```
     pub async fn create_volume(&self, request: CreateVolumeRequest) -> Result<VolumeResponse, Error> {
-        let url = format!("{}/volumes", API_BASE_URL);
+        let url = build_url(API_BASE_URL, "/volumes");
 
         let res = self
             .http_client
-            .post(&url)
+            .post(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .json(&request)
             .send()
@@ -249,11 +248,11 @@ impl Client {
     ///
     /// * `volume_id` - The ID of the volume to delete.
     pub async fn delete_volume(&self, volume_id: &str) -> Result<(), Error> {
-        let url = format!("{}/volumes/{}", API_BASE_URL, volume_id);
+        let url = build_url(API_BASE_URL, &format!("/volumes/{}", volume_id));
 
         let res = self
             .http_client
-            .delete(&url)
+            .delete(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -275,7 +274,7 @@ impl Client {
         droplet_id: u64,
         region: Option<&str>,
     ) -> Result<VolumeActionResponse, Error> {
-        let url = format!("{}/volumes/{}/actions", API_BASE_URL, volume_id);
+        let url = build_url(API_BASE_URL, &format!("/volumes/{}/actions", volume_id));
 
         let request = AttachVolumeRequest {
             action_type: "attach".to_string(),
@@ -285,7 +284,7 @@ impl Client {
 
         let res = self
             .http_client
-            .post(&url)
+            .post(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .json(&request)
             .send()
@@ -307,7 +306,7 @@ impl Client {
         droplet_id: u64,
         region: Option<&str>,
     ) -> Result<VolumeActionResponse, Error> {
-        let url = format!("{}/volumes/{}/actions", API_BASE_URL, volume_id);
+        let url = build_url(API_BASE_URL, &format!("/volumes/{}/actions", volume_id));
 
         let request = AttachVolumeRequest {
             action_type: "detach".to_string(),
@@ -317,7 +316,7 @@ impl Client {
 
         let res = self
             .http_client
-            .post(&url)
+            .post(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .json(&request)
             .send()
