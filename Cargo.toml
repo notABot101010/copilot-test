@@ -3,4 +3,4 @@ resolver = "2"
 members = ["base64"]
 
 [workspace.dependencies]
-criterion = { version = "0.7.0", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }

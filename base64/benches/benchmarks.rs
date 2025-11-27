@@ -1,6 +1,6 @@
 //! Benchmarks comparing our base64 implementation with the external base64 crate.
 
-use base64::{decode_with, encode_with, ALPHABET_STANDARD};
+use base64::{decode_with, decode_with_avx2, encode_with, encode_with_avx2, ALPHABET_STANDARD};
 use base64_external::{engine::general_purpose::STANDARD, Engine};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::hint::black_box;
@@ -21,6 +21,10 @@ fn bench_encode(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::new("our_impl", size), &data, |b, data| {
             b.iter(|| encode_with(black_box(data), ALPHABET_STANDARD, true))
+        });
+
+        group.bench_with_input(BenchmarkId::new("our_impl_avx2", size), &data, |b, data| {
+            b.iter(|| encode_with_avx2(black_box(data), ALPHABET_STANDARD, true))
         });
 
         group.bench_with_input(BenchmarkId::new("base64_crate", size), &data, |b, data| {
@@ -44,6 +48,12 @@ fn bench_decode(c: &mut Criterion) {
             BenchmarkId::new("our_impl", size),
             &encoded_ours,
             |b, encoded| b.iter(|| decode_with(black_box(encoded), ALPHABET_STANDARD)),
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("our_impl_avx2", size),
+            &encoded_ours,
+            |b, encoded| b.iter(|| decode_with_avx2(black_box(encoded), ALPHABET_STANDARD)),
         );
 
         group.bench_with_input(
