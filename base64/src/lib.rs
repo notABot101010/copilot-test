@@ -256,9 +256,9 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
 
     // Use pre-computed table for known alphabets, otherwise build dynamically
     let owned_table;
-    let decode_table: &[u8; 256] = if std::ptr::eq(alphabet, ALPHABET_STANDARD) {
+    let decode_table: &[u8; 256] = if alphabet == ALPHABET_STANDARD {
         &DECODE_TABLE_STANDARD
-    } else if std::ptr::eq(alphabet, ALPHABET_URL) {
+    } else if alphabet == ALPHABET_URL {
         &DECODE_TABLE_URL
     } else {
         owned_table = build_decode_table(alphabet);
@@ -296,11 +296,13 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
     let mut result = Vec::with_capacity(output_len);
 
     // Process complete 4-character groups using a while loop for better optimization
+    debug_assert!(full_groups * 4 <= input_bytes.len(), "bounds check failed");
     let mut in_ptr = input_bytes.as_ptr();
     let in_end = input_bytes.as_ptr().wrapping_add(full_groups * 4);
 
     while in_ptr < in_end {
-        // SAFETY: We've verified the bounds above
+        // SAFETY: We've verified that full_groups * 4 <= input_bytes.len() above,
+        // and in_ptr stays within bounds [input_bytes.as_ptr(), in_end)
         let (c0, c1, c2, c3) = unsafe { (*in_ptr, *in_ptr.add(1), *in_ptr.add(2), *in_ptr.add(3)) };
 
         let v0 = decode_table[c0 as usize];
