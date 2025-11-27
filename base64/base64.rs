@@ -6,9 +6,11 @@
 use std::fmt;
 
 #[cfg(target_arch = "x86_64")]
+#[path = "base64_avx2.rs"]
 mod avx2;
 
 #[cfg(test)]
+#[path = "base64_tests.rs"]
 mod tests;
 
 /// Standard base64 alphabet (RFC 4648).

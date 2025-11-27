@@ -5,6 +5,9 @@ edition = "2021"
 description = "A library for base32 encoding and decoding with AVX2 acceleration"
 license = "MIT"
 
+[lib]
+path = "base32.rs"
+
 [dependencies]
 
 [dev-dependencies]

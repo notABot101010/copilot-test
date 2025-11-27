@@ -5,6 +5,9 @@ edition = "2021"
 description = "A library for base64 encoding and decoding"
 license = "MIT"
 
+[lib]
+path = "base64.rs"
+
 [dependencies]
 
 [dev-dependencies]
