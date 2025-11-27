@@ -1,6 +1,6 @@
 //! Benchmarks comparing our base32 implementation with the external base32 crate.
 
-use base32::{decode, decode_avx2, encode, encode_avx2, ALPHABET_STANDARD};
+use base32::{decode, decode_avx2, encode, encode_avx2, Alphabet};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::hint::black_box;
 
@@ -19,11 +19,11 @@ fn bench_encode(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size as u64));
 
         group.bench_with_input(BenchmarkId::new("our_impl", size), &data, |b, data| {
-            b.iter(|| encode(black_box(data), ALPHABET_STANDARD, true))
+            b.iter(|| encode(black_box(data), Alphabet::Standard, true))
         });
 
         group.bench_with_input(BenchmarkId::new("our_impl_avx2", size), &data, |b, data| {
-            b.iter(|| encode_avx2(black_box(data), ALPHABET_STANDARD, true))
+            b.iter(|| encode_avx2(black_box(data), Alphabet::Standard, true))
         });
 
         group.bench_with_input(BenchmarkId::new("base32_crate", size), &data, |b, data| {
@@ -44,7 +44,7 @@ fn bench_decode(c: &mut Criterion) {
 
     for &size in SIZES {
         let data = generate_data(size);
-        let encoded_ours = encode(&data, ALPHABET_STANDARD, true);
+        let encoded_ours = encode(&data, Alphabet::Standard, true);
         let encoded_external =
             base32_external::encode(base32_external::Alphabet::Rfc4648 { padding: true }, &data);
         group.throughput(Throughput::Bytes(size as u64));
@@ -52,13 +52,13 @@ fn bench_decode(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("our_impl", size),
             &encoded_ours,
-            |b, encoded| b.iter(|| decode(black_box(encoded), ALPHABET_STANDARD)),
+            |b, encoded| b.iter(|| decode(black_box(encoded), Alphabet::Standard)),
         );
 
         group.bench_with_input(
             BenchmarkId::new("our_impl_avx2", size),
             &encoded_ours,
-            |b, encoded| b.iter(|| decode_avx2(black_box(encoded), ALPHABET_STANDARD)),
+            |b, encoded| b.iter(|| decode_avx2(black_box(encoded), Alphabet::Standard)),
         );
 
         group.bench_with_input(

@@ -14,13 +14,48 @@ mod avx2;
 mod tests;
 
 /// Standard lowercase hex alphabet (0-9, a-f).
-pub const ALPHABET_LOWER: &[u8; 16] = b"0123456789abcdef";
+const ALPHABET_LOWER_BYTES: &[u8; 16] = b"0123456789abcdef";
 
 /// Standard uppercase hex alphabet (0-9, A-F).
-pub const ALPHABET_UPPER: &[u8; 16] = b"0123456789ABCDEF";
+const ALPHABET_UPPER_BYTES: &[u8; 16] = b"0123456789ABCDEF";
 
 /// Pre-computed decode table that accepts both lower and upper case.
 static DECODE_TABLE_MIXED: [u8; 256] = build_mixed_decode_table();
+
+/// Alphabet for hex encoding and decoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Alphabet<'a> {
+    /// Standard lowercase hex alphabet: 0-9, a-f
+    Lower,
+    /// Standard uppercase hex alphabet: 0-9, A-F
+    Upper,
+    /// Custom 16-character alphabet.
+    Custom(&'a [u8; 16]),
+}
+
+impl<'a> Alphabet<'a> {
+    /// Returns the alphabet bytes.
+    #[inline]
+    pub fn bytes(&self) -> &[u8; 16] {
+        match self {
+            Alphabet::Lower => ALPHABET_LOWER_BYTES,
+            Alphabet::Upper => ALPHABET_UPPER_BYTES,
+            Alphabet::Custom(bytes) => bytes,
+        }
+    }
+
+    /// Returns true if this is the lowercase alphabet.
+    #[inline]
+    fn is_lower(&self) -> bool {
+        matches!(self, Alphabet::Lower)
+    }
+
+    /// Returns true if this is the uppercase alphabet.
+    #[inline]
+    fn is_upper(&self) -> bool {
+        matches!(self, Alphabet::Upper)
+    }
+}
 
 /// Builds a decode lookup table that accepts both lower and upper case hex.
 const fn build_mixed_decode_table() -> [u8; 256] {
@@ -102,7 +137,7 @@ pub const fn decoded_len(len: usize) -> usize {
 ///
 /// * `output` - The output buffer to write the encoded data to.
 /// * `data` - The binary data to encode.
-/// * `alphabet` - A 16-character alphabet used for encoding.
+/// * `alphabet` - The alphabet to use for encoding.
 ///
 /// # Returns
 ///
@@ -111,21 +146,21 @@ pub const fn decoded_len(len: usize) -> usize {
 /// # Example
 ///
 /// ```
-/// use hex::{encode_into, ALPHABET_LOWER};
+/// use hex::{encode_into, Alphabet};
 ///
 /// let data = b"Hello";
 /// let mut output = [0u8; 10];
-/// encode_into(&mut output, data, ALPHABET_LOWER).unwrap();
+/// encode_into(&mut output, data, Alphabet::Lower).unwrap();
 /// assert_eq!(&output, b"48656c6c6f");
 /// ```
 #[inline]
-pub fn encode_into(output: &mut [u8], data: &[u8], alphabet: &[u8; 16]) -> Result<(), Error> {
+pub fn encode_into(output: &mut [u8], data: &[u8], alphabet: Alphabet) -> Result<(), Error> {
     let required_len = encoded_len(data.len());
     if output.len() < required_len {
         return Err(Error::OutputBufferTooSmall);
     }
 
-    encode_into_unchecked(output, data, alphabet);
+    encode_into_unchecked(output, data, alphabet.bytes());
     Ok(())
 }
 
@@ -182,7 +217,7 @@ fn encode_into_unchecked(output: &mut [u8], data: &[u8], alphabet: &[u8; 16]) {
 /// # Arguments
 ///
 /// * `data` - The binary data to encode.
-/// * `alphabet` - A 16-character alphabet used for encoding.
+/// * `alphabet` - The alphabet to use for encoding.
 ///
 /// # Returns
 ///
@@ -191,13 +226,13 @@ fn encode_into_unchecked(output: &mut [u8], data: &[u8], alphabet: &[u8; 16]) {
 /// # Example
 ///
 /// ```
-/// use hex::{encode, ALPHABET_LOWER};
+/// use hex::{encode, Alphabet};
 ///
-/// let encoded = encode(b"Hello", ALPHABET_LOWER);
+/// let encoded = encode(b"Hello", Alphabet::Lower);
 /// assert_eq!(encoded, "48656c6c6f");
 /// ```
 #[inline]
-pub fn encode(data: &[u8], alphabet: &[u8; 16]) -> String {
+pub fn encode(data: &[u8], alphabet: Alphabet) -> String {
     if data.is_empty() {
         return String::new();
     }
@@ -205,7 +240,7 @@ pub fn encode(data: &[u8], alphabet: &[u8; 16]) -> String {
     let output_len = encoded_len(data.len());
     let mut output = vec![0u8; output_len];
 
-    encode_into_unchecked(&mut output, data, alphabet);
+    encode_into_unchecked(&mut output, data, alphabet.bytes());
 
     // SAFETY: All bytes in output are valid ASCII characters from the hex alphabet,
     // which is a subset of valid UTF-8
@@ -217,7 +252,7 @@ pub fn encode(data: &[u8], alphabet: &[u8; 16]) -> String {
 /// # Arguments
 ///
 /// * `input` - The hex-encoded string to decode.
-/// * `alphabet` - A 16-character alphabet used for decoding (case-insensitive).
+/// * `alphabet` - The alphabet to use for decoding (case-insensitive).
 ///
 /// # Returns
 ///
@@ -231,13 +266,13 @@ pub fn encode(data: &[u8], alphabet: &[u8; 16]) -> String {
 /// # Example
 ///
 /// ```
-/// use hex::{decode, ALPHABET_LOWER};
+/// use hex::{decode, Alphabet};
 ///
-/// let decoded = decode("48656c6c6f", ALPHABET_LOWER);
+/// let decoded = decode("48656c6c6f", Alphabet::Lower);
 /// assert_eq!(decoded, b"Hello");
 /// ```
 #[inline]
-pub fn decode(input: &str, alphabet: &[u8; 16]) -> Vec<u8> {
+pub fn decode(input: &str, alphabet: Alphabet) -> Vec<u8> {
     decode_checked(input, alphabet).expect("invalid hex input")
 }
 
@@ -246,13 +281,13 @@ pub fn decode(input: &str, alphabet: &[u8; 16]) -> Vec<u8> {
 /// # Arguments
 ///
 /// * `input` - The hex-encoded string to decode.
-/// * `alphabet` - A 16-character alphabet used for decoding (case-insensitive).
+/// * `alphabet` - The alphabet to use for decoding (case-insensitive).
 ///
 /// # Returns
 ///
 /// A `Result` containing either the decoded binary data or an error.
 #[inline]
-pub fn decode_checked(input: &str, alphabet: &[u8; 16]) -> Result<Vec<u8>, Error> {
+pub fn decode_checked(input: &str, alphabet: Alphabet) -> Result<Vec<u8>, Error> {
     if input.is_empty() {
         return Ok(Vec::new());
     }
@@ -265,10 +300,10 @@ pub fn decode_checked(input: &str, alphabet: &[u8; 16]) -> Result<Vec<u8>, Error
 
     // Use pre-computed table for known alphabets, otherwise build dynamically
     let owned_table;
-    let decode_table: &[u8; 256] = if alphabet == ALPHABET_LOWER || alphabet == ALPHABET_UPPER {
+    let decode_table: &[u8; 256] = if alphabet.is_lower() || alphabet.is_upper() {
         &DECODE_TABLE_MIXED
     } else {
-        owned_table = build_decode_table(alphabet);
+        owned_table = build_decode_table(alphabet.bytes());
         &owned_table
     };
 
@@ -332,7 +367,7 @@ pub fn decode_checked(input: &str, alphabet: &[u8; 16]) -> Result<Vec<u8>, Error
 /// Encode binary data to a hex string using AVX2 SIMD if available.
 /// Falls back to scalar implementation if AVX2 is not available or for non-x86_64 architectures.
 #[inline]
-pub fn encode_avx2(data: &[u8], alphabet: &[u8; 16]) -> String {
+pub fn encode_avx2(data: &[u8], alphabet: Alphabet) -> String {
     if data.is_empty() {
         return String::new();
     }
@@ -346,7 +381,7 @@ pub fn encode_avx2(data: &[u8], alphabet: &[u8; 16]) -> String {
 
             // SAFETY: We just checked that AVX2 is available
             unsafe {
-                avx2::encode_avx2(&mut output, data, alphabet);
+                avx2::encode_avx2(&mut output, data, alphabet.bytes());
             }
 
             return String::from_utf8(output).expect("hex output is always valid UTF-8");
@@ -360,13 +395,13 @@ pub fn encode_avx2(data: &[u8], alphabet: &[u8; 16]) -> String {
 /// Decode a hex string using AVX2 SIMD if available.
 /// Falls back to scalar implementation if AVX2 is not available or for non-x86_64 architectures.
 #[inline]
-pub fn decode_avx2(input: &str, alphabet: &[u8; 16]) -> Vec<u8> {
+pub fn decode_avx2(input: &str, alphabet: Alphabet) -> Vec<u8> {
     decode_avx2_checked(input, alphabet).expect("invalid hex input")
 }
 
 /// Decode a hex string using AVX2 SIMD if available, returning an error on invalid input.
 #[inline]
-pub fn decode_avx2_checked(input: &str, alphabet: &[u8; 16]) -> Result<Vec<u8>, Error> {
+pub fn decode_avx2_checked(input: &str, alphabet: Alphabet) -> Result<Vec<u8>, Error> {
     if input.is_empty() {
         return Ok(Vec::new());
     }

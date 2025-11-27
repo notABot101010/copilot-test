@@ -95,7 +95,7 @@ pub unsafe fn encode_avx2(output: &mut [u8], data: &[u8], padding: bool) {
     if !remaining_data.is_empty() {
         let out_offset = full_chunks * 32;
         let remaining_output = &mut output[out_offset..];
-        super::encode_to_slice(remaining_output, remaining_data, ALPHABET_STANDARD, padding);
+        super::encode_to_slice(remaining_output, remaining_data, super::Alphabet::Standard, padding);
     }
 }
 
@@ -178,7 +178,7 @@ pub unsafe fn decode_avx2(output: &mut [u8], input: &[u8]) -> Result<usize, Erro
         // Decode remaining bytes using scalar implementation
         let remaining_str =
             std::str::from_utf8(remaining_input).map_err(|_| Error::InvalidCharacter('\0'))?;
-        let decoded = super::decode_with(remaining_str, ALPHABET_STANDARD)?;
+        let decoded = super::decode_with(remaining_str, super::Alphabet::Standard)?;
         remaining_output[..decoded.len()].copy_from_slice(&decoded);
         return Ok(out_offset + decoded.len());
     }

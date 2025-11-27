@@ -19,14 +19,14 @@ pub fn is_available() -> bool {
 #[target_feature(enable = "avx2")]
 pub unsafe fn encode_avx2(output: &mut [u8], data: &[u8], alphabet: &[u8; 32], padding: bool) {
     // Only use SIMD for standard alphabet
-    let use_simd = alphabet == ALPHABET_STANDARD || alphabet == ALPHABET_HEX;
+    let use_simd = alphabet == ALPHABET_STANDARD_BYTES || alphabet == ALPHABET_HEX_BYTES;
 
     if !use_simd || data.len() < 10 {
         super::encode_into_unchecked(output, data, alphabet, padding);
         return;
     }
 
-    let is_hex = alphabet == ALPHABET_HEX;
+    let is_hex = alphabet == ALPHABET_HEX_BYTES;
 
     // Process 10 bytes at a time (2 groups of 5 bytes = 16 output chars)
     // This allows us to use 128-bit operations for better efficiency
@@ -212,16 +212,16 @@ pub unsafe fn decode_avx2(
     let input_len = input.len();
 
     // Only use SIMD for standard alphabet and sufficient length
-    let use_simd = (alphabet == ALPHABET_STANDARD || alphabet == ALPHABET_HEX) && input_len >= 16;
+    let use_simd = (alphabet == ALPHABET_STANDARD_BYTES || alphabet == ALPHABET_HEX_BYTES) && input_len >= 16;
 
     if !use_simd {
         let input_str = std::str::from_utf8(input).map_err(|_| Error::InvalidCharacter('\0'))?;
-        let decoded = super::decode(input_str, alphabet)?;
+        let decoded = super::decode(input_str, alphabet_to_enum(alphabet))?;
         output[..decoded.len()].copy_from_slice(&decoded);
         return Ok(decoded.len());
     }
 
-    let is_hex = alphabet == ALPHABET_HEX;
+    let is_hex = alphabet == ALPHABET_HEX_BYTES;
 
     // Count padding
     let padding_len = input.iter().rev().take_while(|&&b| b == b'=').count();
@@ -287,12 +287,24 @@ pub unsafe fn decode_avx2(
     if in_idx < effective_len {
         let remaining_input =
             std::str::from_utf8(&input[in_idx..]).map_err(|_| Error::InvalidCharacter('\0'))?;
-        let decoded = super::decode(remaining_input, alphabet)?;
+        let decoded = super::decode(remaining_input, alphabet_to_enum(alphabet))?;
         output[out_idx..out_idx + decoded.len()].copy_from_slice(&decoded);
         out_idx += decoded.len();
     }
 
     Ok(out_idx)
+}
+
+/// Convert alphabet bytes to Alphabet enum.
+#[inline]
+fn alphabet_to_enum(alphabet: &[u8; 32]) -> super::Alphabet<'_> {
+    if alphabet == ALPHABET_STANDARD_BYTES {
+        super::Alphabet::Standard
+    } else if alphabet == ALPHABET_HEX_BYTES {
+        super::Alphabet::Hex
+    } else {
+        super::Alphabet::Custom(alphabet)
+    }
 }
 
 /// Check if a character is valid for base32.
