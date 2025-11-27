@@ -27,7 +27,12 @@ fn bench_encode(c: &mut Criterion) {
         });
 
         group.bench_with_input(BenchmarkId::new("base32_crate", size), &data, |b, data| {
-            b.iter(|| base32_external::encode(base32_external::Alphabet::Rfc4648 { padding: true }, black_box(data)))
+            b.iter(|| {
+                base32_external::encode(
+                    base32_external::Alphabet::Rfc4648 { padding: true },
+                    black_box(data),
+                )
+            })
         });
     }
 
@@ -40,7 +45,8 @@ fn bench_decode(c: &mut Criterion) {
     for &size in SIZES {
         let data = generate_data(size);
         let encoded_ours = encode(&data, ALPHABET_STANDARD, true);
-        let encoded_external = base32_external::encode(base32_external::Alphabet::Rfc4648 { padding: true }, &data);
+        let encoded_external =
+            base32_external::encode(base32_external::Alphabet::Rfc4648 { padding: true }, &data);
         group.throughput(Throughput::Bytes(size as u64));
 
         group.bench_with_input(
@@ -58,7 +64,14 @@ fn bench_decode(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("base32_crate", size),
             &encoded_external,
-            |b, encoded| b.iter(|| base32_external::decode(base32_external::Alphabet::Rfc4648 { padding: true }, black_box(encoded))),
+            |b, encoded| {
+                b.iter(|| {
+                    base32_external::decode(
+                        base32_external::Alphabet::Rfc4648 { padding: true },
+                        black_box(encoded),
+                    )
+                })
+            },
         );
     }
 

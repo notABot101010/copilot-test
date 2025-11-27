@@ -1090,4 +1090,84 @@ mod tests {
             assert_eq!(decoded_no_pad, data);
         }
     }
+
+    // Conformance tests against external base64 crate
+    #[test]
+    fn test_conformance_with_external_crate_encode() {
+        use base64_external::{engine::general_purpose::STANDARD, Engine};
+
+        let test_cases = [
+            b"".to_vec(),
+            b"f".to_vec(),
+            b"fo".to_vec(),
+            b"foo".to_vec(),
+            b"foob".to_vec(),
+            b"fooba".to_vec(),
+            b"foobar".to_vec(),
+            b"Hello, World!".to_vec(),
+            (0..=255).collect::<Vec<u8>>(),
+            (0..1000).map(|i| (i % 256) as u8).collect::<Vec<u8>>(),
+        ];
+
+        for data in &test_cases {
+            let our_result = encode_with(data, ALPHABET_STANDARD, true);
+            let external_result = STANDARD.encode(data);
+            assert_eq!(
+                our_result,
+                external_result,
+                "Encode mismatch for data len {}",
+                data.len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_conformance_with_external_crate_decode() {
+        use base64_external::{engine::general_purpose::STANDARD, Engine};
+
+        let test_cases = ["SGVsbG8=", "Zm9vYmFy", "SGVsbG8sIFdvcmxkIQ=="];
+
+        for encoded in &test_cases {
+            let our_result = decode_with(encoded, ALPHABET_STANDARD).unwrap();
+            let external_result = STANDARD.decode(encoded).unwrap();
+            assert_eq!(
+                our_result, external_result,
+                "Decode mismatch for '{}'",
+                encoded
+            );
+        }
+    }
+
+    #[test]
+    fn test_conformance_roundtrip_with_external_crate() {
+        use base64_external::{engine::general_purpose::STANDARD, Engine};
+
+        let test_cases = [
+            b"Hello, World!".to_vec(),
+            (0..=255).collect::<Vec<u8>>(),
+            (0..1000).map(|i| (i % 256) as u8).collect::<Vec<u8>>(),
+        ];
+
+        for data in &test_cases {
+            // Our encode -> external decode
+            let our_encoded = encode_with(data, ALPHABET_STANDARD, true);
+            let external_decoded = STANDARD.decode(&our_encoded).unwrap();
+            assert_eq!(
+                data,
+                &external_decoded,
+                "Our encode -> external decode failed for len {}",
+                data.len()
+            );
+
+            // External encode -> our decode
+            let external_encoded = STANDARD.encode(data);
+            let our_decoded = decode_with(&external_encoded, ALPHABET_STANDARD).unwrap();
+            assert_eq!(
+                data,
+                &our_decoded,
+                "External encode -> our decode failed for len {}",
+                data.len()
+            );
+        }
+    }
 }

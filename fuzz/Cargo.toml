@@ -1,0 +1,43 @@
+[package]
+name = "copilot-test-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+
+# Our crates
+base32 = { path = "../base32" }
+base64 = { path = "../base64" }
+hex = { path = "../hex" }
+
+# External crates for conformance
+base32-external = { package = "base32", version = "0.5" }
+base64-external = { package = "base64", version = "0.22.1" }
+hex-external = { package = "hex", version = "0.4" }
+
+[[bin]]
+name = "fuzz_base32"
+path = "fuzz_targets/fuzz_base32.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_base64"
+path = "fuzz_targets/fuzz_base64.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_hex"
+path = "fuzz_targets/fuzz_hex.rs"
+test = false
+doc = false
+bench = false

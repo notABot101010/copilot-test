@@ -54,3 +54,36 @@ jobs:
           name: benchmark-results
           path: target/criterion
           retention-days: 30
+
+  fuzz:
+    name: Fuzz Testing
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        target: [fuzz_base32, fuzz_base64, fuzz_hex]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install Rust nightly
+        run: |
+          rustup install nightly
+          rustup default nightly
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Run fuzzer for 15 minutes
+        run: |
+          cd fuzz
+          timeout 900 cargo fuzz run ${{ matrix.target }} -- -max_total_time=900 || true
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-crashes-${{ matrix.target }}
+          path: fuzz/artifacts
+          retention-days: 30
+

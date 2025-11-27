@@ -251,7 +251,7 @@ pub fn decode_checked(input: &str, alphabet: &[u8; 16]) -> Result<Vec<u8>, Error
 
     let input_bytes = input.as_bytes();
 
-    if input_bytes.len() % 2 != 0 {
+    if !input_bytes.len().is_multiple_of(2) {
         return Err(Error::InvalidLength);
     }
 
@@ -432,7 +432,7 @@ mod avx2 {
     pub unsafe fn decode_avx2(output: &mut [u8], input: &[u8]) -> Result<usize, Error> {
         let input_len = input.len();
 
-        if input_len % 2 != 0 {
+        if !input_len.is_multiple_of(2) {
             return Err(Error::InvalidLength);
         }
 
@@ -471,18 +471,18 @@ mod avx2 {
             // maddubs: (a[0]*b[0] + a[1]*b[1], a[2]*b[2] + a[3]*b[3], ...)
             // We want: n0*16 + n1, n2*16 + n3, ...
             let mult = _mm256_set1_epi16(0x0110); // [16, 1, 16, 1, ...]
-            
+
             let packed_lo = _mm256_maddubs_epi16(nibbles_lo, mult);
             let packed_hi = _mm256_maddubs_epi16(nibbles_hi, mult);
-            
+
             // packed_lo now has 16 values in 16-bit slots: [b0, b1, ..., b15]
             // packed_hi now has 16 values in 16-bit slots: [b16, b17, ..., b31]
-            
+
             // Pack 16-bit to 8-bit using packus
             // packus takes two vectors and packs them, but operates on 128-bit lanes separately
             // Result: [lo_lane0, hi_lane0, lo_lane1, hi_lane1]
             let packed = _mm256_packus_epi16(packed_lo, packed_hi);
-            
+
             // Permute to get correct order across lanes
             // After packus: [b0-b7, b16-b23, b8-b15, b24-b31]
             // We want: [b0-b7, b8-b15, b16-b23, b24-b31]
@@ -707,7 +707,10 @@ mod tests {
     fn test_decode_mixed_case() {
         // Should accept both cases
         assert_eq!(decode("48656C6c6F", ALPHABET_LOWER), b"Hello");
-        assert_eq!(decode("aAbBcCdDeEfF", ALPHABET_LOWER), b"\xaa\xbb\xcc\xdd\xee\xff");
+        assert_eq!(
+            decode("aAbBcCdDeEfF", ALPHABET_LOWER),
+            b"\xaa\xbb\xcc\xdd\xee\xff"
+        );
     }
 
     #[test]
@@ -770,10 +773,7 @@ mod tests {
             format!("{}", Error::OutputBufferTooSmall),
             "output buffer too small"
         );
-        assert_eq!(
-            format!("{}", Error::InvalidUtf8),
-            "invalid UTF-8 in input"
-        );
+        assert_eq!(format!("{}", Error::InvalidUtf8), "invalid UTF-8 in input");
     }
 
     // AVX2 tests
@@ -793,7 +793,8 @@ mod tests {
             let scalar_result = encode(&data, ALPHABET_LOWER);
             let avx2_result = encode_avx2(&data, ALPHABET_LOWER);
             assert_eq!(
-                scalar_result, avx2_result,
+                scalar_result,
+                avx2_result,
                 "AVX2 encode mismatch for data len {}",
                 data.len()
             );
@@ -850,7 +851,8 @@ mod tests {
             let encoded = encode_avx2(&data, ALPHABET_LOWER);
             let decoded = decode_avx2(&encoded, ALPHABET_LOWER);
             assert_eq!(
-                decoded, data,
+                decoded,
+                data,
                 "AVX2 roundtrip failed for data len {}",
                 data.len()
             );
@@ -902,12 +904,12 @@ mod tests {
     fn test_all_byte_values() {
         // Test all 256 byte values
         let data: Vec<u8> = (0..=255).collect();
-        
+
         // Test with lower alphabet
         let encoded = encode(&data, ALPHABET_LOWER);
         let decoded = decode(&encoded, ALPHABET_LOWER);
         assert_eq!(decoded, data);
-        
+
         // Test with upper alphabet
         let encoded = encode(&data, ALPHABET_UPPER);
         let decoded = decode(&encoded, ALPHABET_UPPER);
@@ -950,6 +952,77 @@ mod tests {
             let encoded = encode(&data, ALPHABET_UPPER);
             let decoded = decode(&encoded, ALPHABET_UPPER);
             assert_eq!(decoded, data);
+        }
+    }
+
+    // Conformance tests against external hex crate
+    #[test]
+    fn test_conformance_with_external_crate_encode() {
+        let test_cases = [
+            b"".to_vec(),
+            b"f".to_vec(),
+            b"fo".to_vec(),
+            b"foo".to_vec(),
+            b"Hello, World!".to_vec(),
+            (0..=255).collect::<Vec<u8>>(),
+            (0..1000).map(|i| (i % 256) as u8).collect::<Vec<u8>>(),
+        ];
+
+        for data in &test_cases {
+            let our_result = encode(data, ALPHABET_LOWER);
+            let external_result = hex_external::encode(data);
+            assert_eq!(
+                our_result,
+                external_result,
+                "Encode mismatch for data len {}",
+                data.len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_conformance_with_external_crate_decode() {
+        let test_cases = ["48656c6c6f", "666f6f626172", "48656c6c6f2c20576f726c6421"];
+
+        for encoded in &test_cases {
+            let our_result = decode(encoded, ALPHABET_LOWER);
+            let external_result = hex_external::decode(encoded).unwrap();
+            assert_eq!(
+                our_result, external_result,
+                "Decode mismatch for '{}'",
+                encoded
+            );
+        }
+    }
+
+    #[test]
+    fn test_conformance_roundtrip_with_external_crate() {
+        let test_cases = [
+            b"Hello, World!".to_vec(),
+            (0..=255).collect::<Vec<u8>>(),
+            (0..1000).map(|i| (i % 256) as u8).collect::<Vec<u8>>(),
+        ];
+
+        for data in &test_cases {
+            // Our encode -> external decode
+            let our_encoded = encode(data, ALPHABET_LOWER);
+            let external_decoded = hex_external::decode(&our_encoded).unwrap();
+            assert_eq!(
+                data,
+                &external_decoded,
+                "Our encode -> external decode failed for len {}",
+                data.len()
+            );
+
+            // External encode -> our decode
+            let external_encoded = hex_external::encode(data);
+            let our_decoded = decode(&external_encoded, ALPHABET_LOWER);
+            assert_eq!(
+                data,
+                &our_decoded,
+                "External encode -> our decode failed for len {}",
+                data.len()
+            );
         }
     }
 }
