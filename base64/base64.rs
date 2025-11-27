@@ -14,18 +14,53 @@ mod avx2;
 mod tests;
 
 /// Standard base64 alphabet (RFC 4648).
-pub const ALPHABET_STANDARD: &[u8; 64] =
+const ALPHABET_STANDARD_BYTES: &[u8; 64] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// URL-safe base64 alphabet (RFC 4648).
-pub const ALPHABET_URL: &[u8; 64] =
+const ALPHABET_URL_BYTES: &[u8; 64] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 /// Pre-computed decode table for the standard alphabet.
-static DECODE_TABLE_STANDARD: [u8; 256] = build_decode_table_const(ALPHABET_STANDARD);
+static DECODE_TABLE_STANDARD: [u8; 256] = build_decode_table_const(ALPHABET_STANDARD_BYTES);
 
 /// Pre-computed decode table for the URL-safe alphabet.
-static DECODE_TABLE_URL: [u8; 256] = build_decode_table_const(ALPHABET_URL);
+static DECODE_TABLE_URL: [u8; 256] = build_decode_table_const(ALPHABET_URL_BYTES);
+
+/// Alphabet for base64 encoding and decoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Alphabet<'a> {
+    /// Standard base64 alphabet (RFC 4648): A-Z, a-z, 0-9, +, /
+    Standard,
+    /// URL-safe base64 alphabet (RFC 4648): A-Z, a-z, 0-9, -, _
+    Url,
+    /// Custom 64-character alphabet.
+    Custom(&'a [u8; 64]),
+}
+
+impl<'a> Alphabet<'a> {
+    /// Returns the alphabet bytes.
+    #[inline]
+    pub fn bytes(&self) -> &[u8; 64] {
+        match self {
+            Alphabet::Standard => ALPHABET_STANDARD_BYTES,
+            Alphabet::Url => ALPHABET_URL_BYTES,
+            Alphabet::Custom(bytes) => bytes,
+        }
+    }
+
+    /// Returns true if this is the standard alphabet.
+    #[inline]
+    fn is_standard(&self) -> bool {
+        matches!(self, Alphabet::Standard)
+    }
+
+    /// Returns true if this is the URL alphabet.
+    #[inline]
+    fn is_url(&self) -> bool {
+        matches!(self, Alphabet::Url)
+    }
+}
 
 /// Builds a decode lookup table for the given alphabet at compile time.
 const fn build_decode_table_const(alphabet: &[u8; 64]) -> [u8; 256] {
@@ -111,7 +146,7 @@ pub fn encoded_len(len: usize, padding: bool) -> usize {
 /// # Arguments
 ///
 /// * `data` - The binary data to encode.
-/// * `alphabet` - A 64-character alphabet used for encoding.
+/// * `alphabet` - The alphabet to use for encoding.
 /// * `padding` - Whether to add padding characters ('=') to the output.
 ///
 /// # Returns
@@ -121,15 +156,13 @@ pub fn encoded_len(len: usize, padding: bool) -> usize {
 /// # Example
 ///
 /// ```
-/// use base64::encode_with;
+/// use base64::{encode_with, Alphabet};
 ///
-/// const ALPHABET_STANDARD: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-///
-/// let encoded = encode_with(b"Hello", ALPHABET_STANDARD, true);
+/// let encoded = encode_with(b"Hello", Alphabet::Standard, true);
 /// assert_eq!(encoded, "SGVsbG8=");
 /// ```
 #[inline]
-pub fn encode_with(data: &[u8], alphabet: &[u8; 64], padding: bool) -> String {
+pub fn encode_with(data: &[u8], alphabet: Alphabet, padding: bool) -> String {
     if data.is_empty() {
         return String::new();
     }
@@ -150,10 +183,16 @@ pub fn encode_with(data: &[u8], alphabet: &[u8; 64], padding: bool) -> String {
 ///
 /// * `output` - The output buffer to write the encoded data to.
 /// * `data` - The binary data to encode.
-/// * `alphabet` - A 64-character alphabet used for encoding.
+/// * `alphabet` - The alphabet to use for encoding.
 /// * `padding` - Whether to add padding characters ('=') to the output.
 #[inline]
-pub fn encode_to_slice(output: &mut [u8], data: &[u8], alphabet: &[u8; 64], padding: bool) {
+pub fn encode_to_slice(output: &mut [u8], data: &[u8], alphabet: Alphabet, padding: bool) {
+    encode_to_slice_bytes(output, data, alphabet.bytes(), padding);
+}
+
+/// Internal encode function that takes raw alphabet bytes.
+#[inline]
+fn encode_to_slice_bytes(output: &mut [u8], data: &[u8], alphabet: &[u8; 64], padding: bool) {
     let full_chunks = data.len() / 3;
     let remainder_len = data.len() % 3;
 
@@ -248,14 +287,14 @@ pub fn encode_to_slice(output: &mut [u8], data: &[u8], alphabet: &[u8; 64], padd
 /// # Arguments
 ///
 /// * `data` - The binary data to encode.
-/// * `alphabet` - A 64-character alphabet used for encoding.
+/// * `alphabet` - The alphabet to use for encoding.
 /// * `padding` - Whether to add padding characters ('=') to the output.
 ///
 /// # Returns
 ///
 /// A base64-encoded string.
 #[inline]
-pub fn encode_with_avx2(data: &[u8], alphabet: &[u8; 64], padding: bool) -> String {
+pub fn encode_with_avx2(data: &[u8], alphabet: Alphabet, padding: bool) -> String {
     if data.is_empty() {
         return String::new();
     }
@@ -263,7 +302,7 @@ pub fn encode_with_avx2(data: &[u8], alphabet: &[u8; 64], padding: bool) -> Stri
     #[cfg(target_arch = "x86_64")]
     {
         // Only use AVX2 for standard alphabet and sufficiently large inputs
-        if avx2::is_available() && alphabet == ALPHABET_STANDARD && data.len() >= 28 {
+        if avx2::is_available() && alphabet.is_standard() && data.len() >= 28 {
             let output_len = encoded_len(data.len(), padding);
             let mut output = vec![0u8; output_len];
 
@@ -286,13 +325,13 @@ pub fn encode_with_avx2(data: &[u8], alphabet: &[u8; 64], padding: bool) -> Stri
 /// # Arguments
 ///
 /// * `base64_input` - The base64-encoded string to decode.
-/// * `alphabet` - A 64-character alphabet used for decoding.
+/// * `alphabet` - The alphabet to use for decoding.
 ///
 /// # Returns
 ///
 /// A `Result` containing either the decoded binary data or an error.
 #[inline]
-pub fn decode_with_avx2(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, Error> {
+pub fn decode_with_avx2(base64_input: &str, alphabet: Alphabet) -> Result<Vec<u8>, Error> {
     if base64_input.is_empty() {
         return Ok(Vec::new());
     }
@@ -300,7 +339,7 @@ pub fn decode_with_avx2(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u
     #[cfg(target_arch = "x86_64")]
     {
         // Only use AVX2 for standard alphabet and sufficiently large inputs
-        if avx2::is_available() && alphabet == ALPHABET_STANDARD && base64_input.len() >= 45 {
+        if avx2::is_available() && alphabet.is_standard() && base64_input.len() >= 45 {
             let input_bytes = base64_input.as_bytes();
 
             // Count padding
@@ -342,7 +381,7 @@ pub fn decode_with_avx2(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u
 /// # Arguments
 ///
 /// * `base64_input` - The base64-encoded string to decode.
-/// * `alphabet` - A 64-character alphabet used for decoding.
+/// * `alphabet` - The alphabet to use for decoding.
 ///
 /// # Returns
 ///
@@ -351,27 +390,25 @@ pub fn decode_with_avx2(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u
 /// # Example
 ///
 /// ```
-/// use base64::decode_with;
+/// use base64::{decode_with, Alphabet};
 ///
-/// const ALPHABET_STANDARD: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-///
-/// let decoded = decode_with("SGVsbG8=", ALPHABET_STANDARD).unwrap();
+/// let decoded = decode_with("SGVsbG8=", Alphabet::Standard).unwrap();
 /// assert_eq!(decoded, b"Hello");
 /// ```
 #[inline]
-pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, Error> {
+pub fn decode_with(base64_input: &str, alphabet: Alphabet) -> Result<Vec<u8>, Error> {
     if base64_input.is_empty() {
         return Ok(Vec::new());
     }
 
     // Use pre-computed table for known alphabets, otherwise build dynamically
     let owned_table;
-    let decode_table: &[u8; 256] = if alphabet == ALPHABET_STANDARD {
+    let decode_table: &[u8; 256] = if alphabet.is_standard() {
         &DECODE_TABLE_STANDARD
-    } else if alphabet == ALPHABET_URL {
+    } else if alphabet.is_url() {
         &DECODE_TABLE_URL
     } else {
-        owned_table = build_decode_table(alphabet);
+        owned_table = build_decode_table(alphabet.bytes());
         &owned_table
     };
 

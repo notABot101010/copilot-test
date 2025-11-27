@@ -14,16 +14,51 @@ mod avx2;
 mod tests;
 
 /// RFC 4648 standard base32 alphabet (A-Z, 2-7).
-pub const ALPHABET_STANDARD: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+const ALPHABET_STANDARD_BYTES: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
 /// Extended hex base32 alphabet (0-9, A-V).
-pub const ALPHABET_HEX: &[u8; 32] = b"0123456789ABCDEFGHIJKLMNOPQRSTUV";
+const ALPHABET_HEX_BYTES: &[u8; 32] = b"0123456789ABCDEFGHIJKLMNOPQRSTUV";
 
 /// Pre-computed decode table for the standard alphabet (case-insensitive).
-static DECODE_TABLE_STANDARD: [u8; 256] = build_decode_table_const(ALPHABET_STANDARD);
+static DECODE_TABLE_STANDARD: [u8; 256] = build_decode_table_const(ALPHABET_STANDARD_BYTES);
 
 /// Pre-computed decode table for the hex alphabet (case-insensitive).
-static DECODE_TABLE_HEX: [u8; 256] = build_decode_table_const(ALPHABET_HEX);
+static DECODE_TABLE_HEX: [u8; 256] = build_decode_table_const(ALPHABET_HEX_BYTES);
+
+/// Alphabet for base32 encoding and decoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Alphabet<'a> {
+    /// RFC 4648 standard base32 alphabet: A-Z, 2-7
+    Standard,
+    /// Extended hex base32 alphabet: 0-9, A-V
+    Hex,
+    /// Custom 32-character alphabet.
+    Custom(&'a [u8; 32]),
+}
+
+impl<'a> Alphabet<'a> {
+    /// Returns the alphabet bytes.
+    #[inline]
+    pub fn bytes(&self) -> &[u8; 32] {
+        match self {
+            Alphabet::Standard => ALPHABET_STANDARD_BYTES,
+            Alphabet::Hex => ALPHABET_HEX_BYTES,
+            Alphabet::Custom(bytes) => bytes,
+        }
+    }
+
+    /// Returns true if this is the standard alphabet.
+    #[inline]
+    fn is_standard(&self) -> bool {
+        matches!(self, Alphabet::Standard)
+    }
+
+    /// Returns true if this is the hex alphabet.
+    #[inline]
+    fn is_hex(&self) -> bool {
+        matches!(self, Alphabet::Hex)
+    }
+}
 
 /// Builds a decode lookup table for the given alphabet at compile time.
 /// Accepts both upper and lower case for letters.
@@ -150,7 +185,7 @@ pub fn decoded_len(len: usize) -> usize {
 ///
 /// * `output` - The output buffer to write the encoded data to.
 /// * `data` - The binary data to encode.
-/// * `alphabet` - A 32-character alphabet used for encoding.
+/// * `alphabet` - The alphabet to use for encoding.
 /// * `padding` - Whether to add padding characters ('=') to the output.
 ///
 /// # Returns
@@ -160,18 +195,18 @@ pub fn decoded_len(len: usize) -> usize {
 /// # Example
 ///
 /// ```
-/// use base32::{encode_into, ALPHABET_STANDARD};
+/// use base32::{encode_into, Alphabet};
 ///
 /// let data = b"Hello";
 /// let mut output = [0u8; 8];
-/// encode_into(&mut output, data, ALPHABET_STANDARD, true).unwrap();
+/// encode_into(&mut output, data, Alphabet::Standard, true).unwrap();
 /// assert_eq!(&output, b"JBSWY3DP");
 /// ```
 #[inline]
 pub fn encode_into(
     output: &mut [u8],
     data: &[u8],
-    alphabet: &[u8; 32],
+    alphabet: Alphabet,
     padding: bool,
 ) -> Result<(), Error> {
     let required_len = encoded_len(data.len(), padding);
@@ -179,7 +214,7 @@ pub fn encode_into(
         return Err(Error::OutputBufferTooSmall);
     }
 
-    encode_into_unchecked(output, data, alphabet, padding);
+    encode_into_unchecked(output, data, alphabet.bytes(), padding);
     Ok(())
 }
 
@@ -282,7 +317,7 @@ fn encode_into_unchecked(output: &mut [u8], data: &[u8], alphabet: &[u8; 32], pa
 /// # Arguments
 ///
 /// * `data` - The binary data to encode.
-/// * `alphabet` - A 32-character alphabet used for encoding.
+/// * `alphabet` - The alphabet to use for encoding.
 /// * `padding` - Whether to add padding characters ('=') to the output.
 ///
 /// # Returns
@@ -292,13 +327,13 @@ fn encode_into_unchecked(output: &mut [u8], data: &[u8], alphabet: &[u8; 32], pa
 /// # Example
 ///
 /// ```
-/// use base32::{encode, ALPHABET_STANDARD};
+/// use base32::{encode, Alphabet};
 ///
-/// let encoded = encode(b"Hello", ALPHABET_STANDARD, true);
+/// let encoded = encode(b"Hello", Alphabet::Standard, true);
 /// assert_eq!(encoded, "JBSWY3DP");
 /// ```
 #[inline]
-pub fn encode(data: &[u8], alphabet: &[u8; 32], padding: bool) -> String {
+pub fn encode(data: &[u8], alphabet: Alphabet, padding: bool) -> String {
     if data.is_empty() {
         return String::new();
     }
@@ -306,7 +341,7 @@ pub fn encode(data: &[u8], alphabet: &[u8; 32], padding: bool) -> String {
     let output_len = encoded_len(data.len(), padding);
     let mut output = vec![0u8; output_len];
 
-    encode_into_unchecked(&mut output, data, alphabet, padding);
+    encode_into_unchecked(&mut output, data, alphabet.bytes(), padding);
 
     // SAFETY: All bytes in output are valid ASCII (from alphabet or '=')
     // which is valid UTF-8
@@ -318,7 +353,7 @@ pub fn encode(data: &[u8], alphabet: &[u8; 32], padding: bool) -> String {
 /// # Arguments
 ///
 /// * `input` - The base32-encoded string to decode.
-/// * `alphabet` - A 32-character alphabet used for decoding (case-insensitive).
+/// * `alphabet` - The alphabet to use for decoding (case-insensitive).
 ///
 /// # Returns
 ///
@@ -327,25 +362,25 @@ pub fn encode(data: &[u8], alphabet: &[u8; 32], padding: bool) -> String {
 /// # Example
 ///
 /// ```
-/// use base32::{decode, ALPHABET_STANDARD};
+/// use base32::{decode, Alphabet};
 ///
-/// let decoded = decode("JBSWY3DP", ALPHABET_STANDARD).unwrap();
+/// let decoded = decode("JBSWY3DP", Alphabet::Standard).unwrap();
 /// assert_eq!(decoded, b"Hello");
 /// ```
 #[inline]
-pub fn decode(input: &str, alphabet: &[u8; 32]) -> Result<Vec<u8>, Error> {
+pub fn decode(input: &str, alphabet: Alphabet) -> Result<Vec<u8>, Error> {
     if input.is_empty() {
         return Ok(Vec::new());
     }
 
     // Use pre-computed table for known alphabets, otherwise build dynamically
-    let decode_table: &[u8; 256] = if alphabet == ALPHABET_STANDARD {
+    let decode_table: &[u8; 256] = if alphabet.is_standard() {
         &DECODE_TABLE_STANDARD
-    } else if alphabet == ALPHABET_HEX {
+    } else if alphabet.is_hex() {
         &DECODE_TABLE_HEX
     } else {
         // Scope owned_table to this branch only
-        return decode_with_custom_alphabet(input, alphabet);
+        return decode_with_custom_alphabet(input, alphabet.bytes());
     };
 
     decode_with_table(input, decode_table)
@@ -481,7 +516,7 @@ fn decode_with_table(input: &str, decode_table: &[u8; 256]) -> Result<Vec<u8>, E
 /// Encode binary data to a base32 string using AVX2 SIMD if available.
 /// Falls back to scalar implementation if AVX2 is not available or for non-x86_64 architectures.
 #[inline]
-pub fn encode_avx2(data: &[u8], alphabet: &[u8; 32], padding: bool) -> String {
+pub fn encode_avx2(data: &[u8], alphabet: Alphabet, padding: bool) -> String {
     if data.is_empty() {
         return String::new();
     }
@@ -495,7 +530,7 @@ pub fn encode_avx2(data: &[u8], alphabet: &[u8; 32], padding: bool) -> String {
 
             // SAFETY: We just checked that AVX2 is available
             unsafe {
-                avx2::encode_avx2(&mut output, data, alphabet, padding);
+                avx2::encode_avx2(&mut output, data, alphabet.bytes(), padding);
             }
 
             return String::from_utf8(output).expect("base32 output is always valid UTF-8");
@@ -509,7 +544,7 @@ pub fn encode_avx2(data: &[u8], alphabet: &[u8; 32], padding: bool) -> String {
 /// Decode a base32 string using AVX2 SIMD if available.
 /// Falls back to scalar implementation if AVX2 is not available or for non-x86_64 architectures.
 #[inline]
-pub fn decode_avx2(input: &str, alphabet: &[u8; 32]) -> Result<Vec<u8>, Error> {
+pub fn decode_avx2(input: &str, alphabet: Alphabet) -> Result<Vec<u8>, Error> {
     if input.is_empty() {
         return Ok(Vec::new());
     }
@@ -523,7 +558,7 @@ pub fn decode_avx2(input: &str, alphabet: &[u8; 32]) -> Result<Vec<u8>, Error> {
             let mut output = vec![0u8; output_len + 32]; // Extra space for SIMD writes
 
             // SAFETY: We just checked that AVX2 is available
-            let decoded_len = unsafe { avx2::decode_avx2(&mut output, input_bytes, alphabet)? };
+            let decoded_len = unsafe { avx2::decode_avx2(&mut output, input_bytes, alphabet.bytes())? };
 
             output.truncate(decoded_len);
             return Ok(output);

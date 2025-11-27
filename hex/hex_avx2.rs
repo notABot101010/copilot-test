@@ -21,14 +21,14 @@ pub fn is_available() -> bool {
 #[target_feature(enable = "avx2")]
 pub unsafe fn encode_avx2(output: &mut [u8], data: &[u8], alphabet: &[u8; 16]) {
     // Only use SIMD for lowercase alphabet (we can optimize for specific cases)
-    let use_simd = alphabet == ALPHABET_LOWER || alphabet == ALPHABET_UPPER;
+    let use_simd = alphabet == ALPHABET_LOWER_BYTES || alphabet == ALPHABET_UPPER_BYTES;
 
     if !use_simd {
         super::encode_into_unchecked(output, data, alphabet);
         return;
     }
 
-    let is_upper = alphabet == ALPHABET_UPPER;
+    let is_upper = alphabet == ALPHABET_UPPER_BYTES;
 
     // Process 32 bytes at a time
     let full_chunks = data.len() / 32;
@@ -172,7 +172,7 @@ pub unsafe fn decode_avx2(output: &mut [u8], input: &[u8]) -> Result<usize, Erro
     if in_idx < input_len {
         let remaining_input =
             std::str::from_utf8(&input[in_idx..]).map_err(|_| Error::InvalidUtf8)?;
-        let decoded = super::decode_checked(remaining_input, ALPHABET_LOWER)?;
+        let decoded = super::decode_checked(remaining_input, super::Alphabet::Lower)?;
         output[out_idx..out_idx + decoded.len()].copy_from_slice(&decoded);
         out_idx += decoded.len();
     }
