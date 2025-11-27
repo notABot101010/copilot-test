@@ -7,7 +7,7 @@ A Vue Router-inspired router for Preact with signals support. This router provid
 - 🚀 **Vue Router-like API** - Familiar API for Vue developers
 - 📡 **Preact Signals** - Reactive route state using `@preact/signals`
 - 🔒 **Navigation Guards** - `beforeEach`, `beforeResolve`, `afterEach` hooks
-- 🎯 **Route Params & Query** - Easy access via signals (`route.params.value.website_id`)
+- 🎯 **Route Params & Query** - Easy access via signals (`route.value.params.website_id`)
 - 🔄 **Programmatic Navigation** - `router.push()`, `router.replace()`, `router.back()`
 - 📦 **Lazy Loading** - Support for lazy-loaded route components
 - 🔗 **Native Links** - Works with regular `<a>` tags, no special component needed
@@ -131,7 +131,7 @@ const routes = [
 
 ## Reactive Route Signals
 
-Access all route data using the `useRoute()` hook which returns signals:
+Access all route data using the `useRoute()` hook which returns a signal:
 
 ```tsx
 import { useRoute } from '@copilot-test/preact-router';
@@ -139,26 +139,26 @@ import { useRoute } from '@copilot-test/preact-router';
 function UserProfile() {
   const route = useRoute();
   
-  // Access route params as signals
-  // route.params.value.website_id
-  // route.params.value.id
+  // Access route params
+  // route.value.params.website_id
+  // route.value.params.id
   
-  // Access query params as signals
-  // route.query.value.org_id
-  // route.query.value.page
+  // Access query params
+  // route.value.query.org_id
+  // route.value.query.page
   
   // Access other route properties
-  // route.path.value      - current path
-  // route.hash.value      - URL hash
-  // route.meta.value      - route meta data
-  // route.fullPath.value  - full path with query and hash
-  // route.name.value      - route name
+  // route.value.path      - current path
+  // route.value.hash      - URL hash
+  // route.value.meta      - route meta data
+  // route.value.fullPath  - full path with query and hash
+  // route.value.name      - route name
   
   return (
     <div>
-      <h1>User: {route.params.value.id}</h1>
-      <p>Organization: {route.query.value.org_id}</p>
-      <p>Current path: {route.path.value}</p>
+      <h1>User: {route.value.params.id}</h1>
+      <p>Organization: {route.value.query.org_id}</p>
+      <p>Current path: {route.value.path}</p>
     </div>
   );
 }
@@ -232,7 +232,7 @@ router.beforeEach((to) => {
 // Access in components
 function Component() {
   const route = useRoute();
-  console.log(route.meta.value); // { requiresAuth: true, roles: ['admin'] }
+  console.log(route.value.meta); // { requiresAuth: true, roles: ['admin'] }
 }
 ```
 
@@ -267,14 +267,14 @@ Creates a new router instance.
 ### Hooks
 
 - `useRouter()` - Access router instance
-- `useRoute()` - Access reactive route object with all route signals:
-  - `route.params` - Route params signal
-  - `route.query` - Query params signal
-  - `route.path` - Path signal
-  - `route.hash` - Hash signal
-  - `route.meta` - Meta signal
-  - `route.fullPath` - Full path signal
-  - `route.name` - Route name signal
+- `useRoute()` - Access reactive route signal. Access properties via `route.value`:
+  - `route.value.params` - Route params
+  - `route.value.query` - Query params
+  - `route.value.path` - Path
+  - `route.value.hash` - Hash
+  - `route.value.meta` - Meta
+  - `route.value.fullPath` - Full path
+  - `route.value.name` - Route name
 - `useNavigation()` - Access navigation methods (push, replace, back, forward, go)
 
 ### Components

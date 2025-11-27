@@ -1,4 +1,4 @@
-import { signal, computed, Signal } from '@preact/signals';
+import { signal, Signal } from '@preact/signals';
 import type {
   Router,
   RouterOptions,
@@ -500,18 +500,9 @@ export function createRouter(options: RouterOptions): Router {
 }
 
 /**
- * Create reactive route signals (similar to Vue Router's useRoute)
+ * Create reactive route signal (similar to Vue Router's useRoute)
+ * Returns the router's currentRoute signal directly so users can access route.value.params, route.value.query, etc.
  */
 export function createReactiveRoute(router: Router): ReactiveRoute {
-  const current = router.currentRoute;
-  
-  return {
-    fullPath: computed(() => current.value.fullPath) as Signal<string>,
-    path: computed(() => current.value.path) as Signal<string>,
-    params: computed(() => current.value.params),
-    query: computed(() => current.value.query),
-    hash: computed(() => current.value.hash) as Signal<string>,
-    name: computed(() => current.value.name),
-    meta: computed(() => current.value.meta)
-  };
+  return router.currentRoute;
 }
