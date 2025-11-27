@@ -31,3 +31,26 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt --all -- --check
+
+  benchmark:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Update Rust to latest stable
+        run: |
+          rustup default stable
+          rustup update
+
+      - name: Run benchmarks
+        run: cargo bench --workspace
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: benchmark-results
+          path: target/criterion
+          retention-days: 30
