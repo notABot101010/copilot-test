@@ -6,9 +6,11 @@
 use std::fmt;
 
 #[cfg(target_arch = "x86_64")]
+#[path = "hex_avx2.rs"]
 mod avx2;
 
 #[cfg(test)]
+#[path = "hex_tests.rs"]
 mod tests;
 
 /// Standard lowercase hex alphabet (0-9, a-f).

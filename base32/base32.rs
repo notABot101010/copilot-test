@@ -6,9 +6,11 @@
 use std::fmt;
 
 #[cfg(target_arch = "x86_64")]
+#[path = "base32_avx2.rs"]
 mod avx2;
 
 #[cfg(test)]
+#[path = "base32_tests.rs"]
 mod tests;
 
 /// RFC 4648 standard base32 alphabet (A-Z, 2-7).
