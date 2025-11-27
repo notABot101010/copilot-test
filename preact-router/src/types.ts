@@ -178,23 +178,9 @@ export interface Router {
 
 /**
  * Reactive route object with signal properties (similar to Vue Router's useRoute)
+ * The entire route is a single signal, so you access properties via route.value.params, route.value.query, etc.
  */
-export interface ReactiveRoute {
-  /** Reactive full path */
-  fullPath: Signal<string>;
-  /** Reactive path */
-  path: Signal<string>;
-  /** Reactive params */
-  params: Signal<RouteParams>;
-  /** Reactive query */
-  query: Signal<RouteQuery>;
-  /** Reactive hash */
-  hash: Signal<string>;
-  /** Reactive route name */
-  name: Signal<string | undefined>;
-  /** Reactive meta */
-  meta: Signal<RouteMeta>;
-}
+export type ReactiveRoute = Signal<RouteLocation>;
 
 /**
  * Context value for the router provider

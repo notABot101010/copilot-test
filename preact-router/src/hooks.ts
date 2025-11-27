@@ -19,16 +19,16 @@ export function useRouter(): Router {
 }
 
 /**
- * Hook to access the reactive route object
- * Returns signals that can be used to subscribe to route changes
+ * Hook to access the reactive route signal
+ * Returns a signal that can be used to subscribe to route changes
  * 
  * Usage:
  *   const route = useRoute();
- *   route.params.value.website_id  // Access route params
- *   route.query.value.org_id       // Access query params
- *   route.path.value               // Access current path
- *   route.hash.value               // Access hash
- *   route.meta.value               // Access route meta
+ *   route.value.params.website_id  // Access route params
+ *   route.value.query.org_id       // Access query params
+ *   route.value.path               // Access current path
+ *   route.value.hash               // Access hash
+ *   route.value.meta               // Access route meta
  */
 export function useRoute(): ReactiveRoute {
   const context = useContext(RouterContextProvider);

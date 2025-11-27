@@ -208,8 +208,8 @@ export function RouterView({ name, props: additionalProps }: RouterViewProps = {
   const matchedRoute = currentRoute.matched[currentRoute.matched.length - 1];
   
   let componentProps: RouteComponentProps = {
-    params: route.params.value,
-    query: route.query.value
+    params: route.value.params,
+    query: route.value.query
   };
   
   if (matchedRoute?.props) {
@@ -260,7 +260,7 @@ export function RouterLink({
       return;
     }
     
-    const currentPath = route.path.value;
+    const currentPath = route.value.path;
     const targetPath = resolved.path;
     
     setIsExactActive(currentPath === targetPath);
