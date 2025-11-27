@@ -125,14 +125,15 @@ pub fn encoded_len(len: usize, padding: bool) -> usize {
 #[inline]
 pub fn decoded_len(len: usize) -> usize {
     // Each 8 characters decode to 5 bytes
-    len / 8 * 5 + match len % 8 {
-        0 => 0,
-        2 => 1,
-        4 => 2,
-        5 => 3,
-        7 => 4,
-        _ => 0, // Invalid length, will be caught during decoding
-    }
+    len / 8 * 5
+        + match len % 8 {
+            0 => 0,
+            2 => 1,
+            4 => 2,
+            5 => 3,
+            7 => 4,
+            _ => 0, // Invalid length, will be caught during decoding
+        }
 }
 
 /// Encodes binary data into a pre-allocated output buffer.
@@ -330,16 +331,26 @@ pub fn decode(input: &str, alphabet: &[u8; 32]) -> Result<Vec<u8>, Error> {
     }
 
     // Use pre-computed table for known alphabets, otherwise build dynamically
-    let owned_table;
     let decode_table: &[u8; 256] = if alphabet == ALPHABET_STANDARD {
         &DECODE_TABLE_STANDARD
     } else if alphabet == ALPHABET_HEX {
         &DECODE_TABLE_HEX
     } else {
-        owned_table = build_decode_table(alphabet);
-        &owned_table
+        // Scope owned_table to this branch only
+        return decode_with_custom_alphabet(input, alphabet);
     };
 
+    decode_with_table(input, decode_table)
+}
+
+/// Decode with a custom alphabet (builds table on the fly).
+fn decode_with_custom_alphabet(input: &str, alphabet: &[u8; 32]) -> Result<Vec<u8>, Error> {
+    let table = build_decode_table(alphabet);
+    decode_with_table(input, &table)
+}
+
+/// Core decode implementation using a pre-built decode table.
+fn decode_with_table(input: &str, decode_table: &[u8; 256]) -> Result<Vec<u8>, Error> {
     let input_bytes = input.as_bytes();
 
     // Count and validate padding
@@ -403,12 +414,14 @@ pub fn decode(input: &str, alphabet: &[u8; 32]) -> Result<Vec<u8>, Error> {
             }
         }
 
-        // Decode 8 base32 chars (40 bits) to 5 bytes
-        result.push((v0 << 3) | (v1 >> 2));
-        result.push((v1 << 6) | (v2 << 1) | (v3 >> 4));
-        result.push((v3 << 4) | (v4 >> 1));
-        result.push((v4 << 7) | (v5 << 2) | (v6 >> 3));
-        result.push((v6 << 5) | v7);
+        // Decode 8 base32 chars (40 bits) to 5 bytes using extend_from_slice
+        result.extend_from_slice(&[
+            (v0 << 3) | (v1 >> 2),
+            (v1 << 6) | (v2 << 1) | (v3 >> 4),
+            (v3 << 4) | (v4 >> 1),
+            (v4 << 7) | (v5 << 2) | (v6 >> 3),
+            (v6 << 5) | v7,
+        ]);
 
         in_idx += 8;
     }
@@ -430,19 +443,25 @@ pub fn decode(input: &str, alphabet: &[u8; 32]) -> Result<Vec<u8>, Error> {
                 result.push((values[0] << 3) | (values[1] >> 2));
             }
             4 => {
-                result.push((values[0] << 3) | (values[1] >> 2));
-                result.push((values[1] << 6) | (values[2] << 1) | (values[3] >> 4));
+                result.extend_from_slice(&[
+                    (values[0] << 3) | (values[1] >> 2),
+                    (values[1] << 6) | (values[2] << 1) | (values[3] >> 4),
+                ]);
             }
             5 => {
-                result.push((values[0] << 3) | (values[1] >> 2));
-                result.push((values[1] << 6) | (values[2] << 1) | (values[3] >> 4));
-                result.push((values[3] << 4) | (values[4] >> 1));
+                result.extend_from_slice(&[
+                    (values[0] << 3) | (values[1] >> 2),
+                    (values[1] << 6) | (values[2] << 1) | (values[3] >> 4),
+                    (values[3] << 4) | (values[4] >> 1),
+                ]);
             }
             7 => {
-                result.push((values[0] << 3) | (values[1] >> 2));
-                result.push((values[1] << 6) | (values[2] << 1) | (values[3] >> 4));
-                result.push((values[3] << 4) | (values[4] >> 1));
-                result.push((values[4] << 7) | (values[5] << 2) | (values[6] >> 3));
+                result.extend_from_slice(&[
+                    (values[0] << 3) | (values[1] >> 2),
+                    (values[1] << 6) | (values[2] << 1) | (values[3] >> 4),
+                    (values[3] << 4) | (values[4] >> 1),
+                    (values[4] << 7) | (values[5] << 2) | (values[6] >> 3),
+                ]);
             }
             _ => {}
         }
@@ -498,10 +517,10 @@ mod avx2 {
             // Load 20 bytes (will be processed as two 10-byte groups)
             let mut input_buf = [0u8; 32];
             input_buf[..20].copy_from_slice(&data[in_idx..in_idx + 20]);
-            
+
             // Process 20 bytes -> 32 characters using optimized bit extraction
             let result = encode_20_bytes_avx2(&input_buf, is_hex);
-            
+
             // Store 32 bytes of output
             _mm256_storeu_si256(output.as_mut_ptr().add(out_idx) as *mut __m256i, result);
 
@@ -513,10 +532,10 @@ mod avx2 {
         if full_chunks % 2 == 1 && in_idx + 10 <= data.len() {
             let mut input_buf = [0u8; 16];
             input_buf[..10].copy_from_slice(&data[in_idx..in_idx + 10]);
-            
+
             let result = encode_10_bytes_sse(&input_buf, is_hex);
             _mm_storeu_si128(output.as_mut_ptr().add(out_idx) as *mut __m128i, result);
-            
+
             in_idx += 10;
             out_idx += 16;
         }
@@ -536,17 +555,17 @@ mod avx2 {
     unsafe fn encode_20_bytes_avx2(input: &[u8; 32], is_hex: bool) -> __m256i {
         // For base32, each 5 bytes becomes 8 characters
         // We process 4 groups of 5 bytes -> 32 characters
-        
+
         // The bit layout for 5 bytes (40 bits) -> 8 x 5-bit values:
         // Byte 0: bits 7-3 -> char 0, bits 2-0 -> part of char 1
         // Byte 1: bits 7-6 -> part of char 1, bits 5-1 -> char 2, bit 0 -> part of char 3
         // Byte 2: bits 7-4 -> part of char 3, bits 3-0 -> part of char 4
         // Byte 3: bit 7 -> part of char 4, bits 6-2 -> char 5, bits 1-0 -> part of char 6
         // Byte 4: bits 7-5 -> part of char 6, bits 4-0 -> char 7
-        
+
         // Use scalar extraction (optimized with loop unrolling) then SIMD for ASCII conversion
         let mut values = [0u8; 32];
-        
+
         // Process 4 groups of 5 bytes
         for g in 0..4 {
             let i = g * 5;
@@ -555,7 +574,7 @@ mod avx2 {
             let b2 = input[i + 2];
             let b3 = input[i + 3];
             let b4 = input[i + 4];
-            
+
             let o = g * 8;
             values[o] = b0 >> 3;
             values[o + 1] = ((b0 & 0x07) << 2) | (b1 >> 6);
@@ -566,7 +585,7 @@ mod avx2 {
             values[o + 6] = ((b3 & 0x03) << 3) | (b4 >> 5);
             values[o + 7] = b4 & 0x1F;
         }
-        
+
         // Now use SIMD to convert 5-bit values to ASCII
         let vals = _mm256_loadu_si256(values.as_ptr() as *const __m256i);
         values_to_ascii_avx2(vals, is_hex)
@@ -578,7 +597,7 @@ mod avx2 {
     unsafe fn encode_10_bytes_sse(input: &[u8; 16], is_hex: bool) -> __m128i {
         // Process 2 groups of 5 bytes -> 16 characters
         let mut values = [0u8; 16];
-        
+
         for g in 0..2 {
             let i = g * 5;
             let b0 = input[i];
@@ -586,7 +605,7 @@ mod avx2 {
             let b2 = input[i + 2];
             let b3 = input[i + 3];
             let b4 = input[i + 4];
-            
+
             let o = g * 8;
             values[o] = b0 >> 3;
             values[o + 1] = ((b0 & 0x07) << 2) | (b1 >> 6);
@@ -597,7 +616,7 @@ mod avx2 {
             values[o + 6] = ((b3 & 0x03) << 3) | (b4 >> 5);
             values[o + 7] = b4 & 0x1F;
         }
-        
+
         let vals = _mm_loadu_si128(values.as_ptr() as *const __m128i);
         values_to_ascii_sse(vals, is_hex)
     }
@@ -610,20 +629,20 @@ mod avx2 {
             // Hex alphabet: 0-9 -> '0'-'9', 10-31 -> 'A'-'V'
             let ten = _mm256_set1_epi8(10);
             let is_digit = _mm256_cmpgt_epi8(ten, values);
-            
+
             let digit_offset = _mm256_set1_epi8(b'0' as i8);
             let letter_offset = _mm256_set1_epi8((b'A' as i8) - 10);
-            
+
             let offsets = _mm256_blendv_epi8(letter_offset, digit_offset, is_digit);
             _mm256_add_epi8(values, offsets)
         } else {
             // Standard alphabet: 0-25 -> 'A'-'Z', 26-31 -> '2'-'7'
             let twenty_six = _mm256_set1_epi8(26);
             let is_letter = _mm256_cmpgt_epi8(twenty_six, values);
-            
+
             let letter_offset = _mm256_set1_epi8(b'A' as i8);
             let digit_offset = _mm256_set1_epi8((b'2' as i8) - 26);
-            
+
             let offsets = _mm256_blendv_epi8(digit_offset, letter_offset, is_letter);
             _mm256_add_epi8(values, offsets)
         }
@@ -636,19 +655,19 @@ mod avx2 {
         if is_hex {
             let ten = _mm_set1_epi8(10);
             let is_digit = _mm_cmplt_epi8(values, ten);
-            
+
             let digit_offset = _mm_set1_epi8(b'0' as i8);
             let letter_offset = _mm_set1_epi8((b'A' as i8) - 10);
-            
+
             let offsets = _mm_blendv_epi8(letter_offset, digit_offset, is_digit);
             _mm_add_epi8(values, offsets)
         } else {
             let twenty_six = _mm_set1_epi8(26);
             let is_letter = _mm_cmplt_epi8(values, twenty_six);
-            
+
             let letter_offset = _mm_set1_epi8(b'A' as i8);
             let digit_offset = _mm_set1_epi8((b'2' as i8) - 26);
-            
+
             let offsets = _mm_blendv_epi8(digit_offset, letter_offset, is_letter);
             _mm_add_epi8(values, offsets)
         }
@@ -661,39 +680,45 @@ mod avx2 {
     /// # Safety
     /// Caller must ensure AVX2 is available (check with `is_available()`).
     #[target_feature(enable = "avx2")]
-    pub unsafe fn decode_avx2(output: &mut [u8], input: &[u8], alphabet: &[u8; 32]) -> Result<usize, Error> {
+    pub unsafe fn decode_avx2(
+        output: &mut [u8],
+        input: &[u8],
+        alphabet: &[u8; 32],
+    ) -> Result<usize, Error> {
         let input_len = input.len();
-        
+
         // Only use SIMD for standard alphabet and sufficient length
-        let use_simd = (alphabet == ALPHABET_STANDARD || alphabet == ALPHABET_HEX) && input_len >= 16;
-        
+        let use_simd =
+            (alphabet == ALPHABET_STANDARD || alphabet == ALPHABET_HEX) && input_len >= 16;
+
         if !use_simd {
-            let input_str = std::str::from_utf8(input).map_err(|_| Error::InvalidCharacter('\0'))?;
+            let input_str =
+                std::str::from_utf8(input).map_err(|_| Error::InvalidCharacter('\0'))?;
             let decoded = super::decode(input_str, alphabet)?;
             output[..decoded.len()].copy_from_slice(&decoded);
             return Ok(decoded.len());
         }
-        
+
         let is_hex = alphabet == ALPHABET_HEX;
-        
+
         // Count padding
         let padding_len = input.iter().rev().take_while(|&&b| b == b'=').count();
         let effective_len = input_len - padding_len;
-        
+
         // Process 16-character chunks (-> 10 bytes)
         let full_chunks = effective_len / 16;
-        
+
         let mut in_idx = 0;
         let mut out_idx = 0;
-        
+
         // Process pairs of 16-char chunks for AVX2 efficiency (32 chars -> 20 bytes)
         let chunk_pairs = full_chunks / 2;
         for _ in 0..chunk_pairs {
             let input_vec = _mm256_loadu_si256(input.as_ptr().add(in_idx) as *const __m256i);
-            
+
             // Decode ASCII to 5-bit values
             let (values, valid) = ascii_to_values_avx2(input_vec, is_hex);
-            
+
             if !valid {
                 // Find the invalid character
                 for i in 0..32 {
@@ -703,23 +728,23 @@ mod avx2 {
                     }
                 }
             }
-            
+
             // Convert 32 5-bit values to 20 bytes
             let decoded = decode_32_values_to_20_bytes(values);
-            
+
             // Store first 20 bytes (copy from array to avoid overwriting)
             std::ptr::copy_nonoverlapping(decoded.as_ptr(), output.as_mut_ptr().add(out_idx), 20);
-            
+
             in_idx += 32;
             out_idx += 20;
         }
-        
+
         // Handle remaining 16-char chunk if odd number
         if full_chunks % 2 == 1 && in_idx + 16 <= effective_len {
             let input_vec = _mm_loadu_si128(input.as_ptr().add(in_idx) as *const __m128i);
-            
+
             let (values, valid) = ascii_to_values_sse(input_vec, is_hex);
-            
+
             if !valid {
                 for i in 0..16 {
                     let c = input[in_idx + i];
@@ -728,35 +753,36 @@ mod avx2 {
                     }
                 }
             }
-            
+
             let decoded = decode_16_values_to_10_bytes(values);
             std::ptr::copy_nonoverlapping(decoded.as_ptr(), output.as_mut_ptr().add(out_idx), 10);
-            
+
             in_idx += 16;
             out_idx += 10;
         }
-        
+
         // Handle remaining characters with scalar code
         if in_idx < effective_len {
-            let remaining_input = std::str::from_utf8(&input[in_idx..]).map_err(|_| Error::InvalidCharacter('\0'))?;
+            let remaining_input =
+                std::str::from_utf8(&input[in_idx..]).map_err(|_| Error::InvalidCharacter('\0'))?;
             let decoded = super::decode(remaining_input, alphabet)?;
             output[out_idx..out_idx + decoded.len()].copy_from_slice(&decoded);
             out_idx += decoded.len();
         }
-        
+
         Ok(out_idx)
     }
-    
+
     /// Check if a character is valid for base32.
     #[inline]
     fn is_valid_base32_char(c: u8, is_hex: bool) -> bool {
         if is_hex {
-            c.is_ascii_digit() || (c >= b'A' && c <= b'V') || (c >= b'a' && c <= b'v')
+            c.is_ascii_digit() || (b'A'..=b'V').contains(&c) || (b'a'..=b'v').contains(&c)
         } else {
-            (c >= b'A' && c <= b'Z') || (c >= b'a' && c <= b'z') || (c >= b'2' && c <= b'7')
+            c.is_ascii_uppercase() || c.is_ascii_lowercase() || (b'2'..=b'7').contains(&c)
         }
     }
-    
+
     /// Convert ASCII to 5-bit values using AVX2.
     #[target_feature(enable = "avx2")]
     #[inline]
@@ -768,43 +794,43 @@ mod avx2 {
             let ascii_a_lower = _mm256_set1_epi8(b'a' as i8);
             let ten = _mm256_set1_epi8(10);
             let twenty_two = _mm256_set1_epi8(22);
-            
+
             // Check if digit (0-9)
             let offset_digit = _mm256_sub_epi8(input, ascii_zero);
             let is_digit = _mm256_and_si256(
                 _mm256_cmpgt_epi8(offset_digit, _mm256_set1_epi8(-1)),
                 _mm256_cmpgt_epi8(ten, offset_digit),
             );
-            
+
             // Check if uppercase letter (A-V)
             let offset_upper = _mm256_sub_epi8(input, ascii_a);
             let is_upper = _mm256_and_si256(
                 _mm256_cmpgt_epi8(offset_upper, _mm256_set1_epi8(-1)),
                 _mm256_cmpgt_epi8(twenty_two, offset_upper),
             );
-            
+
             // Check if lowercase letter (a-v)
             let offset_lower = _mm256_sub_epi8(input, ascii_a_lower);
             let is_lower = _mm256_and_si256(
                 _mm256_cmpgt_epi8(offset_lower, _mm256_set1_epi8(-1)),
                 _mm256_cmpgt_epi8(twenty_two, offset_lower),
             );
-            
+
             // Check validity
             let is_valid = _mm256_or_si256(_mm256_or_si256(is_digit, is_upper), is_lower);
             let all_valid = _mm256_movemask_epi8(is_valid) == -1i32;
-            
+
             // Calculate values
             let digit_val = offset_digit;
             let upper_val = _mm256_add_epi8(offset_upper, ten);
             let lower_val = _mm256_add_epi8(offset_lower, ten);
-            
+
             let result = _mm256_blendv_epi8(
                 _mm256_blendv_epi8(lower_val, upper_val, is_upper),
                 digit_val,
                 is_digit,
             );
-            
+
             (result, all_valid)
         } else {
             // Standard alphabet: 'A'-'Z' -> 0-25, '2'-'7' -> 26-31, also lowercase
@@ -813,43 +839,43 @@ mod avx2 {
             let ascii_two = _mm256_set1_epi8(b'2' as i8);
             let twenty_six = _mm256_set1_epi8(26);
             let six = _mm256_set1_epi8(6);
-            
+
             // Check if uppercase letter (A-Z)
             let offset_upper = _mm256_sub_epi8(input, ascii_a);
             let is_upper = _mm256_and_si256(
                 _mm256_cmpgt_epi8(offset_upper, _mm256_set1_epi8(-1)),
                 _mm256_cmpgt_epi8(twenty_six, offset_upper),
             );
-            
+
             // Check if lowercase letter (a-z)
             let offset_lower = _mm256_sub_epi8(input, ascii_a_lower);
             let is_lower = _mm256_and_si256(
                 _mm256_cmpgt_epi8(offset_lower, _mm256_set1_epi8(-1)),
                 _mm256_cmpgt_epi8(twenty_six, offset_lower),
             );
-            
+
             // Check if digit (2-7)
             let offset_digit = _mm256_sub_epi8(input, ascii_two);
             let is_digit = _mm256_and_si256(
                 _mm256_cmpgt_epi8(offset_digit, _mm256_set1_epi8(-1)),
                 _mm256_cmpgt_epi8(six, offset_digit),
             );
-            
+
             // Check validity
             let is_valid = _mm256_or_si256(_mm256_or_si256(is_upper, is_lower), is_digit);
             let all_valid = _mm256_movemask_epi8(is_valid) == -1i32;
-            
+
             // Calculate values
             let upper_val = offset_upper;
             let lower_val = offset_lower;
             let digit_val = _mm256_add_epi8(offset_digit, twenty_six);
-            
+
             let result = _mm256_blendv_epi8(
                 _mm256_blendv_epi8(lower_val, digit_val, is_digit),
                 upper_val,
                 is_upper,
             );
-            
+
             (result, all_valid)
         }
     }
@@ -864,38 +890,38 @@ mod avx2 {
             let ascii_a_lower = _mm_set1_epi8(b'a' as i8);
             let ten = _mm_set1_epi8(10);
             let twenty_two = _mm_set1_epi8(22);
-            
+
             let offset_digit = _mm_sub_epi8(input, ascii_zero);
             let is_digit = _mm_and_si128(
                 _mm_cmpgt_epi8(offset_digit, _mm_set1_epi8(-1)),
                 _mm_cmpgt_epi8(ten, offset_digit),
             );
-            
+
             let offset_upper = _mm_sub_epi8(input, ascii_a);
             let is_upper = _mm_and_si128(
                 _mm_cmpgt_epi8(offset_upper, _mm_set1_epi8(-1)),
                 _mm_cmpgt_epi8(twenty_two, offset_upper),
             );
-            
+
             let offset_lower = _mm_sub_epi8(input, ascii_a_lower);
             let is_lower = _mm_and_si128(
                 _mm_cmpgt_epi8(offset_lower, _mm_set1_epi8(-1)),
                 _mm_cmpgt_epi8(twenty_two, offset_lower),
             );
-            
+
             let is_valid = _mm_or_si128(_mm_or_si128(is_digit, is_upper), is_lower);
             let all_valid = _mm_movemask_epi8(is_valid) == 0xFFFF;
-            
+
             let digit_val = offset_digit;
             let upper_val = _mm_add_epi8(offset_upper, ten);
             let lower_val = _mm_add_epi8(offset_lower, ten);
-            
+
             let result = _mm_blendv_epi8(
                 _mm_blendv_epi8(lower_val, upper_val, is_upper),
                 digit_val,
                 is_digit,
             );
-            
+
             (result, all_valid)
         } else {
             let ascii_a = _mm_set1_epi8(b'A' as i8);
@@ -903,49 +929,49 @@ mod avx2 {
             let ascii_two = _mm_set1_epi8(b'2' as i8);
             let twenty_six = _mm_set1_epi8(26);
             let six = _mm_set1_epi8(6);
-            
+
             let offset_upper = _mm_sub_epi8(input, ascii_a);
             let is_upper = _mm_and_si128(
                 _mm_cmpgt_epi8(offset_upper, _mm_set1_epi8(-1)),
                 _mm_cmpgt_epi8(twenty_six, offset_upper),
             );
-            
+
             let offset_lower = _mm_sub_epi8(input, ascii_a_lower);
             let is_lower = _mm_and_si128(
                 _mm_cmpgt_epi8(offset_lower, _mm_set1_epi8(-1)),
                 _mm_cmpgt_epi8(twenty_six, offset_lower),
             );
-            
+
             let offset_digit = _mm_sub_epi8(input, ascii_two);
             let is_digit = _mm_and_si128(
                 _mm_cmpgt_epi8(offset_digit, _mm_set1_epi8(-1)),
                 _mm_cmpgt_epi8(six, offset_digit),
             );
-            
+
             let is_valid = _mm_or_si128(_mm_or_si128(is_upper, is_lower), is_digit);
             let all_valid = _mm_movemask_epi8(is_valid) == 0xFFFF;
-            
+
             let upper_val = offset_upper;
             let lower_val = offset_lower;
             let digit_val = _mm_add_epi8(offset_digit, twenty_six);
-            
+
             let result = _mm_blendv_epi8(
                 _mm_blendv_epi8(lower_val, digit_val, is_digit),
                 upper_val,
                 is_upper,
             );
-            
+
             (result, all_valid)
         }
     }
-    
+
     /// Convert 32 5-bit values to 20 bytes.
     #[target_feature(enable = "avx2")]
     #[inline]
     unsafe fn decode_32_values_to_20_bytes(values: __m256i) -> [u8; 20] {
         let val_bytes: [u8; 32] = std::mem::transmute(values);
         let mut out_bytes = [0u8; 20];
-        
+
         // Process 4 groups of 8 values -> 5 bytes each
         for g in 0..4 {
             let i = g * 8;
@@ -957,7 +983,7 @@ mod avx2 {
             let v5 = val_bytes[i + 5];
             let v6 = val_bytes[i + 6];
             let v7 = val_bytes[i + 7];
-            
+
             let o = g * 5;
             out_bytes[o] = (v0 << 3) | (v1 >> 2);
             out_bytes[o + 1] = (v1 << 6) | (v2 << 1) | (v3 >> 4);
@@ -965,7 +991,7 @@ mod avx2 {
             out_bytes[o + 3] = (v4 << 7) | (v5 << 2) | (v6 >> 3);
             out_bytes[o + 4] = (v6 << 5) | v7;
         }
-        
+
         out_bytes
     }
 
@@ -975,7 +1001,7 @@ mod avx2 {
     unsafe fn decode_16_values_to_10_bytes(values: __m128i) -> [u8; 10] {
         let val_bytes: [u8; 16] = std::mem::transmute(values);
         let mut out_bytes = [0u8; 10];
-        
+
         // Process 2 groups of 8 values -> 5 bytes each
         for g in 0..2 {
             let i = g * 8;
@@ -987,7 +1013,7 @@ mod avx2 {
             let v5 = val_bytes[i + 5];
             let v6 = val_bytes[i + 6];
             let v7 = val_bytes[i + 7];
-            
+
             let o = g * 5;
             out_bytes[o] = (v0 << 3) | (v1 >> 2);
             out_bytes[o + 1] = (v1 << 6) | (v2 << 1) | (v3 >> 4);
@@ -995,7 +1021,7 @@ mod avx2 {
             out_bytes[o + 3] = (v4 << 7) | (v5 << 2) | (v6 >> 3);
             out_bytes[o + 4] = (v6 << 5) | v7;
         }
-        
+
         out_bytes
     }
 }
@@ -1103,7 +1129,10 @@ mod tests {
         assert_eq!(encode(b"foo", ALPHABET_STANDARD, true), "MZXW6===");
         assert_eq!(encode(b"foob", ALPHABET_STANDARD, true), "MZXW6YQ=");
         assert_eq!(encode(b"fooba", ALPHABET_STANDARD, true), "MZXW6YTB");
-        assert_eq!(encode(b"foobar", ALPHABET_STANDARD, true), "MZXW6YTBOI======");
+        assert_eq!(
+            encode(b"foobar", ALPHABET_STANDARD, true),
+            "MZXW6YTBOI======"
+        );
     }
 
     #[test]
@@ -1153,7 +1182,10 @@ mod tests {
         assert_eq!(decode("MZXW6===", ALPHABET_STANDARD).unwrap(), b"foo");
         assert_eq!(decode("MZXW6YQ=", ALPHABET_STANDARD).unwrap(), b"foob");
         assert_eq!(decode("MZXW6YTB", ALPHABET_STANDARD).unwrap(), b"fooba");
-        assert_eq!(decode("MZXW6YTBOI======", ALPHABET_STANDARD).unwrap(), b"foobar");
+        assert_eq!(
+            decode("MZXW6YTBOI======", ALPHABET_STANDARD).unwrap(),
+            b"foobar"
+        );
     }
 
     #[test]
@@ -1191,7 +1223,7 @@ mod tests {
     fn test_decode_invalid_character() {
         let result = decode("!INVALID", ALPHABET_STANDARD);
         assert!(matches!(result, Err(Error::InvalidCharacter('!'))));
-        
+
         // 0, 1, 8, 9 are not valid in standard base32
         let result = decode("01ABCDEF", ALPHABET_STANDARD);
         assert!(matches!(result, Err(Error::InvalidCharacter('0'))));
@@ -1202,10 +1234,10 @@ mod tests {
         // Length 1, 3, 6 are invalid
         let result = decode("A", ALPHABET_STANDARD);
         assert!(matches!(result, Err(Error::InvalidLength)));
-        
+
         let result = decode("ABC", ALPHABET_STANDARD);
         assert!(matches!(result, Err(Error::InvalidLength)));
-        
+
         let result = decode("ABCDEF", ALPHABET_STANDARD);
         assert!(matches!(result, Err(Error::InvalidLength)));
     }
@@ -1283,8 +1315,8 @@ mod tests {
             b"".to_vec(),
             b"a".to_vec(),
             b"Hello, World!".to_vec(),
-            (0..20).collect::<Vec<u8>>(),  // Exactly 20 bytes (AVX2 block size)
-            (0..40).collect::<Vec<u8>>(),  // Two AVX2 blocks
+            (0..20).collect::<Vec<u8>>(), // Exactly 20 bytes (AVX2 block size)
+            (0..40).collect::<Vec<u8>>(), // Two AVX2 blocks
             (0..100).collect::<Vec<u8>>(), // Multiple blocks + remainder
             (0..=255).collect::<Vec<u8>>(), // All byte values
         ];
@@ -1293,7 +1325,8 @@ mod tests {
             let scalar_result = encode(&data, ALPHABET_STANDARD, true);
             let avx2_result = encode_avx2(&data, ALPHABET_STANDARD, true);
             assert_eq!(
-                scalar_result, avx2_result,
+                scalar_result,
+                avx2_result,
                 "AVX2 encode mismatch for data len {}",
                 data.len()
             );
@@ -1351,7 +1384,8 @@ mod tests {
             let encoded = encode_avx2(&data, ALPHABET_STANDARD, true);
             let decoded = decode_avx2(&encoded, ALPHABET_STANDARD).unwrap();
             assert_eq!(
-                decoded, data,
+                decoded,
+                data,
                 "AVX2 roundtrip failed for data len {}",
                 data.len()
             );
@@ -1403,12 +1437,12 @@ mod tests {
     fn test_all_byte_values() {
         // Test all 256 byte values
         let data: Vec<u8> = (0..=255).collect();
-        
+
         // Test with standard alphabet
         let encoded = encode(&data, ALPHABET_STANDARD, true);
         let decoded = decode(&encoded, ALPHABET_STANDARD).unwrap();
         assert_eq!(decoded, data);
-        
+
         // Test with hex alphabet
         let encoded = encode(&data, ALPHABET_HEX, true);
         let decoded = decode(&encoded, ALPHABET_HEX).unwrap();
@@ -1456,6 +1490,95 @@ mod tests {
             let encoded_no_pad = encode(&data, ALPHABET_HEX, false);
             let decoded_no_pad = decode(&encoded_no_pad, ALPHABET_HEX).unwrap();
             assert_eq!(decoded_no_pad, data);
+        }
+    }
+
+    // Conformance tests against external base32 crate
+    #[test]
+    fn test_conformance_with_external_crate_encode() {
+        let test_cases = [
+            b"".to_vec(),
+            b"f".to_vec(),
+            b"fo".to_vec(),
+            b"foo".to_vec(),
+            b"foob".to_vec(),
+            b"fooba".to_vec(),
+            b"foobar".to_vec(),
+            b"Hello, World!".to_vec(),
+            (0..=255).collect::<Vec<u8>>(),
+            (0..1000).map(|i| (i % 256) as u8).collect::<Vec<u8>>(),
+        ];
+
+        for data in &test_cases {
+            let our_result = encode(data, ALPHABET_STANDARD, true);
+            let external_result =
+                base32_external::encode(base32_external::Alphabet::Rfc4648 { padding: true }, data);
+            assert_eq!(
+                our_result,
+                external_result,
+                "Encode mismatch for data len {}",
+                data.len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_conformance_with_external_crate_decode() {
+        let test_cases = [
+            "JBSWY3DP",         // "Hello"
+            "MZXW6YTBOI======", // "foobar"
+            "GEZDGNBVGY3TQOJQ", // "12345678"
+        ];
+
+        for encoded in &test_cases {
+            let our_result = decode(encoded, ALPHABET_STANDARD).unwrap();
+            let external_result = base32_external::decode(
+                base32_external::Alphabet::Rfc4648 { padding: true },
+                encoded,
+            )
+            .unwrap();
+            assert_eq!(
+                our_result, external_result,
+                "Decode mismatch for '{}'",
+                encoded
+            );
+        }
+    }
+
+    #[test]
+    fn test_conformance_roundtrip_with_external_crate() {
+        // Encode with ours, decode with external
+        let test_cases = [
+            b"Hello, World!".to_vec(),
+            (0..=255).collect::<Vec<u8>>(),
+            (0..1000).map(|i| (i % 256) as u8).collect::<Vec<u8>>(),
+        ];
+
+        for data in &test_cases {
+            // Our encode -> external decode
+            let our_encoded = encode(data, ALPHABET_STANDARD, true);
+            let external_decoded = base32_external::decode(
+                base32_external::Alphabet::Rfc4648 { padding: true },
+                &our_encoded,
+            )
+            .unwrap();
+            assert_eq!(
+                data,
+                &external_decoded,
+                "Our encode -> external decode failed for len {}",
+                data.len()
+            );
+
+            // External encode -> our decode
+            let external_encoded =
+                base32_external::encode(base32_external::Alphabet::Rfc4648 { padding: true }, data);
+            let our_decoded = decode(&external_encoded, ALPHABET_STANDARD).unwrap();
+            assert_eq!(
+                data,
+                &our_decoded,
+                "External encode -> our decode failed for len {}",
+                data.len()
+            );
         }
     }
 }
