@@ -2,19 +2,8 @@
 //!
 //! This library provides functions to encode binary data to base64 strings
 //! and decode base64 strings back to binary data using custom alphabets.
-//!
-//! # Performance Notes
-//!
-//! This implementation prioritizes clarity over raw performance. For
-//! performance-critical applications, consider the following improvements:
-//!
-//! - For very large inputs, SIMD-based encoding/decoding could provide
-//!   significant speedups.
-//!
-//! - Consider processing multiple chunks in parallel for large datasets.
 
 use std::fmt;
-use std::sync::LazyLock;
 
 /// Standard base64 alphabet (RFC 4648).
 pub const ALPHABET_STANDARD: &[u8; 64] =
@@ -25,11 +14,21 @@ pub const ALPHABET_URL: &[u8; 64] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 /// Pre-computed decode table for the standard alphabet.
-static DECODE_TABLE_STANDARD: LazyLock<[u8; 256]> =
-    LazyLock::new(|| build_decode_table(ALPHABET_STANDARD));
+static DECODE_TABLE_STANDARD: [u8; 256] = build_decode_table_const(ALPHABET_STANDARD);
 
 /// Pre-computed decode table for the URL-safe alphabet.
-static DECODE_TABLE_URL: LazyLock<[u8; 256]> = LazyLock::new(|| build_decode_table(ALPHABET_URL));
+static DECODE_TABLE_URL: [u8; 256] = build_decode_table_const(ALPHABET_URL);
+
+/// Builds a decode lookup table for the given alphabet at compile time.
+const fn build_decode_table_const(alphabet: &[u8; 64]) -> [u8; 256] {
+    let mut table = [255u8; 256];
+    let mut i = 0;
+    while i < 64 {
+        table[alphabet[i] as usize] = i as u8;
+        i += 1;
+    }
+    table
+}
 
 /// Builds a decode lookup table for the given alphabet.
 fn build_decode_table(alphabet: &[u8; 64]) -> [u8; 256] {
@@ -121,54 +120,111 @@ pub fn encoded_len(len: usize, padding: bool) -> usize {
 /// let encoded = encode_with(b"Hello", ALPHABET_STANDARD, true);
 /// assert_eq!(encoded, "SGVsbG8=");
 /// ```
+#[inline]
 pub fn encode_with(data: &[u8], alphabet: &[u8; 64], padding: bool) -> String {
     if data.is_empty() {
         return String::new();
     }
 
     let output_len = encoded_len(data.len(), padding);
-    let mut output = Vec::with_capacity(output_len);
+    let mut output = vec![0u8; output_len];
 
-    // Process complete 3-byte groups
-    let chunks = data.chunks_exact(3);
-    let remainder = chunks.remainder();
+    encode_to_slice(data, &mut output, alphabet, padding);
 
-    for chunk in chunks {
-        // Combine 3 bytes into a 24-bit number
-        let n = ((chunk[0] as u32) << 16) | ((chunk[1] as u32) << 8) | (chunk[2] as u32);
+    // SAFETY: All bytes in output are valid ASCII (from alphabet or '=')
+    // which is valid UTF-8
+    String::from_utf8(output).expect("base64 output is always valid UTF-8")
+}
 
-        // Extract 4 6-bit groups and encode
-        output.push(alphabet[((n >> 18) & 0x3F) as usize]);
-        output.push(alphabet[((n >> 12) & 0x3F) as usize]);
-        output.push(alphabet[((n >> 6) & 0x3F) as usize]);
-        output.push(alphabet[(n & 0x3F) as usize]);
+/// Encodes data directly into a pre-allocated slice for maximum performance.
+#[inline]
+fn encode_to_slice(data: &[u8], output: &mut [u8], alphabet: &[u8; 64], padding: bool) {
+    let full_chunks = data.len() / 3;
+    let remainder_len = data.len() % 3;
+
+    // Process complete 3-byte groups - write directly to output buffer
+    let mut out_idx = 0;
+    let mut in_idx = 0;
+
+    // Process 4 groups at a time for better instruction-level parallelism
+    let chunks_4 = full_chunks / 4;
+    for _ in 0..chunks_4 {
+        // Group 1
+        let b0 = data[in_idx];
+        let b1 = data[in_idx + 1];
+        let b2 = data[in_idx + 2];
+        output[out_idx] = alphabet[(b0 >> 2) as usize];
+        output[out_idx + 1] = alphabet[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize];
+        output[out_idx + 2] = alphabet[(((b1 & 0x0F) << 2) | (b2 >> 6)) as usize];
+        output[out_idx + 3] = alphabet[(b2 & 0x3F) as usize];
+
+        // Group 2
+        let b0 = data[in_idx + 3];
+        let b1 = data[in_idx + 4];
+        let b2 = data[in_idx + 5];
+        output[out_idx + 4] = alphabet[(b0 >> 2) as usize];
+        output[out_idx + 5] = alphabet[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize];
+        output[out_idx + 6] = alphabet[(((b1 & 0x0F) << 2) | (b2 >> 6)) as usize];
+        output[out_idx + 7] = alphabet[(b2 & 0x3F) as usize];
+
+        // Group 3
+        let b0 = data[in_idx + 6];
+        let b1 = data[in_idx + 7];
+        let b2 = data[in_idx + 8];
+        output[out_idx + 8] = alphabet[(b0 >> 2) as usize];
+        output[out_idx + 9] = alphabet[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize];
+        output[out_idx + 10] = alphabet[(((b1 & 0x0F) << 2) | (b2 >> 6)) as usize];
+        output[out_idx + 11] = alphabet[(b2 & 0x3F) as usize];
+
+        // Group 4
+        let b0 = data[in_idx + 9];
+        let b1 = data[in_idx + 10];
+        let b2 = data[in_idx + 11];
+        output[out_idx + 12] = alphabet[(b0 >> 2) as usize];
+        output[out_idx + 13] = alphabet[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize];
+        output[out_idx + 14] = alphabet[(((b1 & 0x0F) << 2) | (b2 >> 6)) as usize];
+        output[out_idx + 15] = alphabet[(b2 & 0x3F) as usize];
+
+        in_idx += 12;
+        out_idx += 16;
+    }
+
+    // Process remaining complete 3-byte groups
+    for _ in 0..(full_chunks % 4) {
+        let b0 = data[in_idx];
+        let b1 = data[in_idx + 1];
+        let b2 = data[in_idx + 2];
+        output[out_idx] = alphabet[(b0 >> 2) as usize];
+        output[out_idx + 1] = alphabet[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize];
+        output[out_idx + 2] = alphabet[(((b1 & 0x0F) << 2) | (b2 >> 6)) as usize];
+        output[out_idx + 3] = alphabet[(b2 & 0x3F) as usize];
+        in_idx += 3;
+        out_idx += 4;
     }
 
     // Handle remaining bytes
-    match remainder.len() {
+    match remainder_len {
         1 => {
-            let n = (remainder[0] as u32) << 16;
-            output.push(alphabet[((n >> 18) & 0x3F) as usize]);
-            output.push(alphabet[((n >> 12) & 0x3F) as usize]);
+            let b0 = data[in_idx];
+            output[out_idx] = alphabet[(b0 >> 2) as usize];
+            output[out_idx + 1] = alphabet[((b0 & 0x03) << 4) as usize];
             if padding {
-                output.push(b'=');
-                output.push(b'=');
+                output[out_idx + 2] = b'=';
+                output[out_idx + 3] = b'=';
             }
         }
         2 => {
-            let n = ((remainder[0] as u32) << 16) | ((remainder[1] as u32) << 8);
-            output.push(alphabet[((n >> 18) & 0x3F) as usize]);
-            output.push(alphabet[((n >> 12) & 0x3F) as usize]);
-            output.push(alphabet[((n >> 6) & 0x3F) as usize]);
+            let b0 = data[in_idx];
+            let b1 = data[in_idx + 1];
+            output[out_idx] = alphabet[(b0 >> 2) as usize];
+            output[out_idx + 1] = alphabet[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize];
+            output[out_idx + 2] = alphabet[((b1 & 0x0F) << 2) as usize];
             if padding {
-                output.push(b'=');
+                output[out_idx + 3] = b'=';
             }
         }
         _ => {}
     }
-
-    // All bytes in output are valid ASCII (from alphabet or '='), so this won't fail
-    String::from_utf8(output).expect("base64 output is always valid UTF-8")
 }
 
 /// Decodes a base64 string to binary data using the specified alphabet.
@@ -192,6 +248,7 @@ pub fn encode_with(data: &[u8], alphabet: &[u8; 64], padding: bool) -> String {
 /// let decoded = decode_with("SGVsbG8=", ALPHABET_STANDARD).unwrap();
 /// assert_eq!(decoded, b"Hello");
 /// ```
+#[inline]
 pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, Error> {
     if base64_input.is_empty() {
         return Ok(Vec::new());
@@ -199,9 +256,9 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
 
     // Use pre-computed table for known alphabets, otherwise build dynamically
     let owned_table;
-    let decode_table: &[u8; 256] = if alphabet == ALPHABET_STANDARD {
+    let decode_table: &[u8; 256] = if std::ptr::eq(alphabet, ALPHABET_STANDARD) {
         &DECODE_TABLE_STANDARD
-    } else if alphabet == ALPHABET_URL {
+    } else if std::ptr::eq(alphabet, ALPHABET_URL) {
         &DECODE_TABLE_URL
     } else {
         owned_table = build_decode_table(alphabet);
@@ -238,49 +295,46 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
 
     let mut result = Vec::with_capacity(output_len);
 
-    // Process complete 4-character groups using direct byte access
-    // PERF: Consider restructuring to decode into a temporary [u8; 3] array and use
-    // extend_from_slice for bulk writes, reducing per-element bounds checking overhead.
-    let mut i = 0;
-    while i + 4 <= input_len {
-        let c0 = input_bytes[i];
-        let c1 = input_bytes[i + 1];
-        let c2 = input_bytes[i + 2];
-        let c3 = input_bytes[i + 3];
+    // Process complete 4-character groups using a while loop for better optimization
+    let mut in_ptr = input_bytes.as_ptr();
+    let in_end = input_bytes.as_ptr().wrapping_add(full_groups * 4);
+
+    while in_ptr < in_end {
+        // SAFETY: We've verified the bounds above
+        let (c0, c1, c2, c3) = unsafe { (*in_ptr, *in_ptr.add(1), *in_ptr.add(2), *in_ptr.add(3)) };
 
         let v0 = decode_table[c0 as usize];
         let v1 = decode_table[c1 as usize];
         let v2 = decode_table[c2 as usize];
         let v3 = decode_table[c3 as usize];
 
-        // PERF: These individual if-checks could be consolidated. Since valid values
-        // are 0-63 and invalid is 255 (0xFF), check `if (v0 | v1 | v2 | v3) > 63`.
-        // Only scan to find which specific character is invalid in the error case.
-        if v0 == 255 {
-            return Err(Error::InvalidCharacter(c0 as char));
-        }
-        if v1 == 255 {
-            return Err(Error::InvalidCharacter(c1 as char));
-        }
-        if v2 == 255 {
-            return Err(Error::InvalidCharacter(c2 as char));
-        }
-        if v3 == 255 {
+        // Fast path: check all values at once
+        if (v0 | v1 | v2 | v3) > 63 {
+            // Slow path: find which character is invalid
+            if v0 == 255 {
+                return Err(Error::InvalidCharacter(c0 as char));
+            }
+            if v1 == 255 {
+                return Err(Error::InvalidCharacter(c1 as char));
+            }
+            if v2 == 255 {
+                return Err(Error::InvalidCharacter(c2 as char));
+            }
             return Err(Error::InvalidCharacter(c3 as char));
         }
 
-        result.push((v0 << 2) | (v1 >> 4));
-        result.push((v1 << 4) | (v2 >> 2));
-        result.push((v2 << 6) | v3);
+        // Decode and write as a batch
+        result.extend_from_slice(&[(v0 << 2) | (v1 >> 4), (v1 << 4) | (v2 >> 2), (v2 << 6) | v3]);
 
-        i += 4;
+        in_ptr = in_ptr.wrapping_add(4);
     }
 
     // Handle remaining characters
+    let in_idx = full_groups * 4;
     match remainder_len {
         2 => {
-            let c0 = input_bytes[i];
-            let c1 = input_bytes[i + 1];
+            let c0 = input_bytes[in_idx];
+            let c1 = input_bytes[in_idx + 1];
             let v0 = decode_table[c0 as usize];
             let v1 = decode_table[c1 as usize];
             if v0 == 255 {
@@ -292,9 +346,9 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
             result.push((v0 << 2) | (v1 >> 4));
         }
         3 => {
-            let c0 = input_bytes[i];
-            let c1 = input_bytes[i + 1];
-            let c2 = input_bytes[i + 2];
+            let c0 = input_bytes[in_idx];
+            let c1 = input_bytes[in_idx + 1];
+            let c2 = input_bytes[in_idx + 2];
             let v0 = decode_table[c0 as usize];
             let v1 = decode_table[c1 as usize];
             let v2 = decode_table[c2 as usize];
@@ -307,8 +361,7 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
             if v2 == 255 {
                 return Err(Error::InvalidCharacter(c2 as char));
             }
-            result.push((v0 << 2) | (v1 >> 4));
-            result.push((v1 << 4) | (v2 >> 2));
+            result.extend_from_slice(&[(v0 << 2) | (v1 >> 4), (v1 << 4) | (v2 >> 2)]);
         }
         _ => {}
     }
