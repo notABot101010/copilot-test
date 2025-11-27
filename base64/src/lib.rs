@@ -240,16 +240,206 @@ pub fn encode_to_slice(output: &mut [u8], data: &[u8], alphabet: &[u8; 64], padd
 
 #[cfg(target_arch = "x86_64")]
 mod avx2 {
+    use super::*;
+    use std::arch::x86_64::*;
+
     /// Check if AVX2 is available at runtime.
     #[inline]
-    #[allow(dead_code)]
     pub fn is_available() -> bool {
         is_x86_feature_detected!("avx2")
+    }
+
+    /// Reshuffle bytes for encoding: takes 24 bytes and produces 32 6-bit values.
+    #[target_feature(enable = "avx2")]
+    #[inline]
+    unsafe fn enc_reshuffle(input: __m256i) -> __m256i {
+        // translation from SSE into AVX2 of procedure
+        // https://github.com/WojciechMula/base64simd/blob/master/encode/unpack_bigendian.cpp
+        let input: __m256i = _mm256_shuffle_epi8(
+            input,
+            _mm256_set_epi8(
+                10, 11, 9, 10, 7, 8, 6, 7, 4, 5, 3, 4, 1, 2, 0, 1, 14, 15, 13, 14, 11, 12, 10, 11,
+                8, 9, 7, 8, 5, 6, 4, 5,
+            ),
+        );
+
+        let t0: __m256i = _mm256_and_si256(input, _mm256_set1_epi32(0x0fc0fc00u32 as i32));
+        let t1: __m256i = _mm256_mulhi_epu16(t0, _mm256_set1_epi32(0x04000040));
+
+        let t2 = _mm256_and_si256(input, _mm256_set1_epi32(0x003f03f0));
+        let t3 = _mm256_mullo_epi16(t2, _mm256_set1_epi32(0x01000010));
+
+        _mm256_or_si256(t1, t3)
+    }
+
+    /// Translate 6-bit indices to ASCII characters for the standard alphabet.
+    #[target_feature(enable = "avx2")]
+    #[inline]
+    unsafe fn enc_translate(input: __m256i) -> __m256i {
+        let lut: __m256i = _mm256_setr_epi8(
+            65, 71, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -19, -16, 0, 0, 65, 71, -4, -4, -4, -4,
+            -4, -4, -4, -4, -4, -4, -19, -16, 0, 0,
+        );
+        let mut indices = _mm256_subs_epu8(input, _mm256_set1_epi8(51));
+        let mask = _mm256_cmpgt_epi8(input, _mm256_set1_epi8(25));
+        indices = _mm256_sub_epi8(indices, mask);
+
+        _mm256_add_epi8(input, _mm256_shuffle_epi8(lut, indices))
+    }
+
+    /// Reshuffle decoded 6-bit values into bytes.
+    #[target_feature(enable = "avx2")]
+    #[inline]
+    unsafe fn dec_reshuffle(input: __m256i) -> __m256i {
+        let merge_ab_and_bc: __m256i = _mm256_maddubs_epi16(input, _mm256_set1_epi32(0x01400140));
+        let out: __m256i = _mm256_madd_epi16(merge_ab_and_bc, _mm256_set1_epi32(0x00011000));
+
+        let out = _mm256_shuffle_epi8(
+            out,
+            _mm256_setr_epi8(
+                2, 1, 0, 6, 5, 4, 10, 9, 8, 14, 13, 12, -1, -1, -1, -1, 2, 1, 0, 6, 5, 4, 10, 9, 8,
+                14, 13, 12, -1, -1, -1, -1,
+            ),
+        );
+        _mm256_permutevar8x32_epi32(out, _mm256_setr_epi32(0, 1, 2, 4, 5, 6, -1, -1))
+    }
+
+    /// Encode using AVX2 SIMD instructions.
+    ///
+    /// # Safety
+    /// Caller must ensure AVX2 is available (check with `is_available()`).
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn encode_avx2(output: &mut [u8], data: &[u8], padding: bool) {
+        let len = data.len();
+        let mut in_offset: isize = 0;
+        let mut out_offset: isize = 0;
+
+        if len >= 28 {
+            // First load is masked - we load from position -4 to get proper alignment
+            // but mask out the first 4 bytes
+            let mask_vec = _mm256_set_epi32(
+                i32::MIN,
+                i32::MIN,
+                i32::MIN,
+                i32::MIN,
+                i32::MIN,
+                i32::MIN,
+                i32::MIN,
+                0, // we do not load the first 4 bytes
+            );
+
+            let mut inputvector: __m256i =
+                _mm256_maskload_epi32(data.as_ptr().offset(-4) as *const i32, mask_vec);
+
+            loop {
+                inputvector = enc_reshuffle(inputvector);
+                inputvector = enc_translate(inputvector);
+                _mm256_storeu_si256(
+                    output.as_mut_ptr().offset(out_offset) as *mut __m256i,
+                    inputvector,
+                );
+                in_offset += 24;
+                out_offset += 32;
+                let remaining = len as isize - in_offset;
+                if remaining < 32 {
+                    break;
+                }
+                // Load next chunk (we load from -4 offset to get proper byte arrangement)
+                inputvector =
+                    _mm256_loadu_si256(data.as_ptr().offset(in_offset - 4) as *const __m256i);
+            }
+        }
+
+        // Handle remaining bytes with scalar code
+        if in_offset < len as isize {
+            let remaining_data = &data[in_offset as usize..];
+            let remaining_output = &mut output[out_offset as usize..];
+            super::encode_to_slice(remaining_output, remaining_data, ALPHABET_STANDARD, padding);
+        }
+    }
+
+    /// Decode using AVX2 SIMD instructions.
+    ///
+    /// Returns the number of bytes written to output, or an error.
+    ///
+    /// # Safety
+    /// Caller must ensure AVX2 is available (check with `is_available()`).
+    #[target_feature(enable = "avx2")]
+    pub unsafe fn decode_avx2(output: &mut [u8], input: &[u8]) -> Result<usize, Error> {
+        let mut in_offset: isize = 0;
+        let mut out_offset: isize = 0;
+        let input_len = input.len();
+
+        while input_len - in_offset as usize >= 45 {
+            let str_vec = _mm256_loadu_si256(input.as_ptr().offset(in_offset) as *const __m256i);
+
+            // Lookup tables for decoding
+            let lut_lo: __m256i = _mm256_setr_epi8(
+                0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B,
+                0x1B, 0x1A, 0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A,
+                0x1B, 0x1B, 0x1B, 0x1A,
+            );
+            let lut_hi: __m256i = _mm256_setr_epi8(
+                0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+                0x10, 0x10, 0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10,
+                0x10, 0x10, 0x10, 0x10,
+            );
+            let lut_roll: __m256i = _mm256_setr_epi8(
+                0, 16, 19, 4, -65, -65, -71, -71, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 19, 4, -65, -65,
+                -71, -71, 0, 0, 0, 0, 0, 0, 0, 0,
+            );
+
+            let mask_2f: __m256i = _mm256_set1_epi8(0x2f);
+
+            // Lookup
+            let hi_nibbles: __m256i = _mm256_srli_epi32(str_vec, 4);
+            let lo_nibbles: __m256i = _mm256_and_si256(str_vec, mask_2f);
+
+            let lo: __m256i = _mm256_shuffle_epi8(lut_lo, lo_nibbles);
+            let eq_2f: __m256i = _mm256_cmpeq_epi8(str_vec, mask_2f);
+
+            let hi_nibbles = _mm256_and_si256(hi_nibbles, mask_2f);
+            let hi: __m256i = _mm256_shuffle_epi8(lut_hi, hi_nibbles);
+            let roll: __m256i = _mm256_shuffle_epi8(lut_roll, _mm256_add_epi8(eq_2f, hi_nibbles));
+
+            // Check for invalid characters
+            if _mm256_testz_si256(lo, hi) == 0 {
+                // Invalid character found, fall back to scalar for error detection
+                break;
+            }
+
+            let str_vec = _mm256_add_epi8(str_vec, roll);
+
+            in_offset += 32;
+
+            // Reshuffle to packed output
+            let result = dec_reshuffle(str_vec);
+            _mm256_storeu_si256(
+                output.as_mut_ptr().offset(out_offset) as *mut __m256i,
+                result,
+            );
+            out_offset += 24;
+        }
+
+        // Handle remaining bytes with scalar decoder
+        if in_offset < input_len as isize {
+            let remaining_input = &input[in_offset as usize..];
+            let remaining_output = &mut output[out_offset as usize..];
+
+            // Decode remaining bytes using scalar implementation
+            let remaining_str =
+                std::str::from_utf8(remaining_input).map_err(|_| Error::InvalidCharacter('\0'))?;
+            let decoded = super::decode_with(remaining_str, ALPHABET_STANDARD)?;
+            remaining_output[..decoded.len()].copy_from_slice(&decoded);
+            out_offset += decoded.len() as isize;
+        }
+
+        Ok(out_offset as usize)
     }
 }
 
 /// Encode binary data to a base64 string using AVX2 SIMD if available.
-/// Falls back to scalar implementation if AVX2 is not available.
+/// Falls back to scalar implementation if AVX2 is not available or for non-x86_64 architectures.
 ///
 /// # Arguments
 ///
@@ -262,14 +452,32 @@ mod avx2 {
 /// A base64-encoded string.
 #[inline]
 pub fn encode_with_avx2(data: &[u8], alphabet: &[u8; 64], padding: bool) -> String {
-    // For now, we use the optimized scalar implementation
-    // True AVX2 SIMD would require complex bit manipulation that's error-prone
-    // The scalar implementation already achieves >1 GB/s throughput
+    if data.is_empty() {
+        return String::new();
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    {
+        // Only use AVX2 for standard alphabet and sufficiently large inputs
+        if avx2::is_available() && alphabet == ALPHABET_STANDARD && data.len() >= 28 {
+            let output_len = encoded_len(data.len(), padding);
+            let mut output = vec![0u8; output_len];
+
+            // SAFETY: We just checked that AVX2 is available
+            unsafe {
+                avx2::encode_avx2(&mut output, data, padding);
+            }
+
+            return String::from_utf8(output).expect("base64 output is always valid UTF-8");
+        }
+    }
+
+    // Fall back to scalar implementation
     encode_with(data, alphabet, padding)
 }
 
 /// Decode a base64 string using AVX2 SIMD if available.
-/// Falls back to scalar implementation if AVX2 is not available.
+/// Falls back to scalar implementation if AVX2 is not available or for non-x86_64 architectures.
 ///
 /// # Arguments
 ///
@@ -281,9 +489,47 @@ pub fn encode_with_avx2(data: &[u8], alphabet: &[u8; 64], padding: bool) -> Stri
 /// A `Result` containing either the decoded binary data or an error.
 #[inline]
 pub fn decode_with_avx2(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, Error> {
-    // For now, we use the optimized scalar implementation
-    // True AVX2 SIMD would require complex bit manipulation that's error-prone
-    // The scalar implementation already achieves >1 GB/s throughput
+    if base64_input.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    {
+        // Only use AVX2 for standard alphabet and sufficiently large inputs
+        if avx2::is_available() && alphabet == ALPHABET_STANDARD && base64_input.len() >= 45 {
+            let input_bytes = base64_input.as_bytes();
+
+            // Count padding
+            let padding_len = input_bytes.iter().rev().take_while(|&&b| b == b'=').count();
+            if padding_len > 2 {
+                return Err(Error::InvalidPadding);
+            }
+
+            let input_len = input_bytes.len() - padding_len;
+
+            // Calculate output size
+            let full_groups = input_len / 4;
+            let remainder_len = input_len % 4;
+            let output_len = full_groups * 3
+                + match remainder_len {
+                    0 => 0,
+                    2 => 1,
+                    3 => 2,
+                    1 => return Err(Error::InvalidLength),
+                    _ => unreachable!(),
+                };
+
+            let mut output = vec![0u8; output_len + 32]; // Extra space for SIMD writes
+
+            // SAFETY: We just checked that AVX2 is available
+            let decoded_len = unsafe { avx2::decode_avx2(&mut output, input_bytes)? };
+
+            output.truncate(decoded_len);
+            return Ok(output);
+        }
+    }
+
+    // Fall back to scalar implementation
     decode_with(base64_input, alphabet)
 }
 
