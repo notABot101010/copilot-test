@@ -5,8 +5,8 @@ use serde::Deserialize;
 /// API error returned by Scaleway
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApiError {
-    /// HTTP status code received
-    #[serde(skip_deserializing)]
+    /// HTTP status code received (set from HTTP response, not from JSON)
+    #[serde(default)]
     pub status_code: u16,
     /// Error message from the API
     pub message: String,

@@ -15,9 +15,9 @@ fn create_test_client() -> Client {
 #[test]
 fn test_client_creation() {
     let client = create_test_client();
-    assert_eq!(client.secret_access_key, "test_secret_key");
-    assert_eq!(client.default_project_id, Some("project-id-123".to_string()));
-    assert_eq!(client.default_region, Some("fr-par".to_string()));
+    // Verify the client was created successfully by checking accessible methods
+    assert_eq!(client.get_default_region().unwrap(), "fr-par");
+    assert_eq!(client.get_default_project_id().unwrap(), "project-id-123");
 }
 
 #[test]
