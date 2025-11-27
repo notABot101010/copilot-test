@@ -1,13 +1,51 @@
 import { h, Fragment, ComponentType, VNode, ComponentChildren } from 'preact';
-import { useEffect, useState, useMemo } from 'preact/hooks';
+import { useEffect, useState, useMemo, useCallback } from 'preact/hooks';
 import { useSignalEffect } from '@preact/signals';
 import type { Router, RouterViewProps, RouterLinkProps, RouteComponentProps, RouteRecord, RouterContext } from './types';
 import { RouterContextProvider, useRouter, useRoute } from './hooks';
 import { createReactiveRoute } from './router';
 
 /**
+ * Check if a URL is internal (same origin, not external)
+ */
+/**
+ * Check if a URL is internal (same origin, not external)
+ */
+function isInternalUrl(href: string, base: string): boolean {
+  // Skip obviously non-internal URLs and potentially dangerous schemes
+  const lowerHref = href.toLowerCase();
+  if (
+    lowerHref.startsWith('javascript:') || 
+    lowerHref.startsWith('mailto:') || 
+    lowerHref.startsWith('tel:') || 
+    lowerHref.startsWith('data:') ||
+    lowerHref.startsWith('vbscript:') ||
+    lowerHref.startsWith('file:')
+  ) {
+    return false;
+  }
+  
+  try {
+    const url = new URL(href, window.location.origin);
+    // Check if same origin
+    if (url.origin !== window.location.origin) {
+      return false;
+    }
+    // Check if starts with base
+    if (base && !url.pathname.startsWith(base)) {
+      return false;
+    }
+    return true;
+  } catch {
+    // Invalid URLs should not be handled by the router
+    return false;
+  }
+}
+
+/**
  * Router Provider component
  * Wraps the application and provides router context
+ * Automatically intercepts clicks on <a> tags for SPA navigation
  */
 export interface RouterProviderProps {
   router: Router;
@@ -15,10 +53,82 @@ export interface RouterProviderProps {
 }
 
 export function RouterProvider({ router, children }: RouterProviderProps): VNode<unknown> {
-  // Initialize the router on mount
+  const base = router.options.base || '';
+  
+  // Handle clicks on anchor tags for SPA navigation
+  const handleClick = useCallback((event: MouseEvent) => {
+    // Find the closest anchor tag
+    const target = event.target as HTMLElement;
+    const anchor = target.closest('a');
+    
+    if (!anchor) return;
+    
+    // Get the href
+    const href = anchor.getAttribute('href');
+    if (!href) return;
+    
+    // Skip if modifier keys are pressed (allow open in new tab)
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    
+    // Skip right-click
+    if (event.button !== 0) {
+      return;
+    }
+    
+    // Skip if target is _blank or external
+    const targetAttr = anchor.getAttribute('target');
+    if (targetAttr === '_blank' || targetAttr === '_external') {
+      return;
+    }
+    
+    // Skip if download attribute is present
+    if (anchor.hasAttribute('download')) {
+      return;
+    }
+    
+    // Skip if data-native attribute is present (opt-out of SPA navigation)
+    if (anchor.hasAttribute('data-native') || anchor.hasAttribute('data-external')) {
+      return;
+    }
+    
+    // Skip external URLs
+    if (!isInternalUrl(href, base)) {
+      return;
+    }
+    
+    // Skip pure hash-only links that don't change the path (e.g., "#section")
+    // These should use native browser scrolling behavior
+    if (href.startsWith('#')) {
+      // Pure hash links on same page - let browser handle natively
+      return;
+    }
+    
+    // Prevent default and use router navigation
+    event.preventDefault();
+    
+    // Check for data-replace attribute
+    const replace = anchor.hasAttribute('data-replace');
+    
+    if (replace) {
+      router.replace(href);
+    } else {
+      router.push(href);
+    }
+  }, [router, base]);
+  
+  // Initialize the router and set up link interception
   useEffect(() => {
     router.install();
-  }, [router]);
+    
+    // Add click listener to document for link interception
+    document.addEventListener('click', handleClick);
+    
+    return () => {
+      document.removeEventListener('click', handleClick);
+    };
+  }, [router, handleClick]);
   
   // Create reactive route once
   const route = useMemo(() => createReactiveRoute(router), [router]);

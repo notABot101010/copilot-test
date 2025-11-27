@@ -7,10 +7,10 @@ A Vue Router-inspired router for Preact with signals support. This router provid
 - 🚀 **Vue Router-like API** - Familiar API for Vue developers
 - 📡 **Preact Signals** - Reactive route state using `@preact/signals`
 - 🔒 **Navigation Guards** - `beforeEach`, `beforeResolve`, `afterEach` hooks
-- 🎯 **Route Params & Query** - Easy access via signals (`route.params.website_id`)
+- 🎯 **Route Params & Query** - Easy access via signals (`route.params.value.website_id`)
 - 🔄 **Programmatic Navigation** - `router.push()`, `router.replace()`, `router.back()`
 - 📦 **Lazy Loading** - Support for lazy-loaded route components
-- 🎨 **RouterLink** - Declarative navigation with active state classes
+- 🔗 **Native Links** - Works with regular `<a>` tags, no special component needed
 
 ## Installation
 
@@ -51,8 +51,10 @@ function App() {
   return (
     <RouterProvider router={router}>
       <nav>
-        <RouterLink to="/">Home</RouterLink>
-        <RouterLink to="/users">Users</RouterLink>
+        {/* Use regular <a> tags - the router intercepts clicks automatically */}
+        <a href="/">Home</a>
+        <a href="/users">Users</a>
+        <a href="/dashboard">Dashboard</a>
       </nav>
       <RouterView />
     </RouterProvider>
@@ -60,6 +62,33 @@ function App() {
 }
 
 render(<App />, document.getElementById('app')!);
+```
+
+## Using Regular Links
+
+The router automatically intercepts clicks on `<a>` tags within the `RouterProvider`. No special component is needed:
+
+```tsx
+function Navigation() {
+  return (
+    <nav>
+      {/* All these work automatically */}
+      <a href="/users">Users</a>
+      <a href="/users/123">User Detail</a>
+      <a href="/search?q=hello">Search</a>
+      
+      {/* Use data-replace for replace navigation (no history entry) */}
+      <a href="/login" data-replace>Login</a>
+      
+      {/* External links work normally */}
+      <a href="https://google.com">Google</a>
+      <a href="/api/download" target="_blank">Download</a>
+      
+      {/* Opt-out of SPA navigation with data-native */}
+      <a href="/legacy-page" data-native>Legacy Page</a>
+    </nav>
+  );
+}
 ```
 
 ## Navigation Guards
@@ -102,47 +131,34 @@ const routes = [
 
 ## Reactive Route Signals
 
-Access route data using signals for automatic reactivity:
+Access all route data using the `useRoute()` hook which returns signals:
 
 ```tsx
-import { useRoute, useParams, useQuery } from '@copilot-test/preact-router';
+import { useRoute } from '@copilot-test/preact-router';
 
 function UserProfile() {
   const route = useRoute();
-  const params = useParams();
-  const query = useQuery();
   
   // Access route params as signals
   // route.params.value.website_id
-  // params.value.id
+  // route.params.value.id
   
   // Access query params as signals
   // route.query.value.org_id
-  // query.value.page
+  // route.query.value.page
+  
+  // Access other route properties
+  // route.path.value      - current path
+  // route.hash.value      - URL hash
+  // route.meta.value      - route meta data
+  // route.fullPath.value  - full path with query and hash
+  // route.name.value      - route name
   
   return (
     <div>
-      <h1>User: {params.value.id}</h1>
-      <p>Organization: {query.value.org_id}</p>
+      <h1>User: {route.params.value.id}</h1>
+      <p>Organization: {route.query.value.org_id}</p>
       <p>Current path: {route.path.value}</p>
-    </div>
-  );
-}
-```
-
-### Individual Param/Query Signals
-
-```tsx
-import { useParam, useQueryParam } from '@copilot-test/preact-router';
-
-function Component() {
-  const websiteId = useParam('website_id');
-  const orgId = useQueryParam('org_id');
-  
-  return (
-    <div>
-      <p>Website: {websiteId.value}</p>
-      <p>Org: {orgId.value}</p>
     </div>
   );
 }
@@ -177,39 +193,6 @@ function MyComponent() {
   };
   
   return <button onClick={handleClick}>Navigate</button>;
-}
-```
-
-## RouterLink Component
-
-```tsx
-import { RouterLink } from '@copilot-test/preact-router';
-
-function Navigation() {
-  return (
-    <nav>
-      {/* Simple path */}
-      <RouterLink to="/users">Users</RouterLink>
-      
-      {/* With params and query */}
-      <RouterLink to={{ 
-        name: 'user', 
-        params: { id: '123' },
-        query: { tab: 'profile' }
-      }}>
-        User Profile
-      </RouterLink>
-      
-      {/* Custom active classes */}
-      <RouterLink 
-        to="/dashboard"
-        activeClass="nav-active"
-        exactActiveClass="nav-exact-active"
-      >
-        Dashboard
-      </RouterLink>
-    </nav>
-  );
 }
 ```
 
@@ -284,21 +267,30 @@ Creates a new router instance.
 ### Hooks
 
 - `useRouter()` - Access router instance
-- `useRoute()` - Access reactive route object
-- `useParams()` - Access route params signal
-- `useParam(name)` - Access specific param signal
-- `useQuery()` - Access query params signal
-- `useQueryParam(name)` - Access specific query param signal
-- `useMeta()` - Access route meta signal
-- `usePath()` - Access path signal
-- `useHash()` - Access hash signal
-- `useNavigation()` - Access navigation methods
+- `useRoute()` - Access reactive route object with all route signals:
+  - `route.params` - Route params signal
+  - `route.query` - Query params signal
+  - `route.path` - Path signal
+  - `route.hash` - Hash signal
+  - `route.meta` - Meta signal
+  - `route.fullPath` - Full path signal
+  - `route.name` - Route name signal
+- `useNavigation()` - Access navigation methods (push, replace, back, forward, go)
 
 ### Components
 
-- `RouterProvider` - Provides router context to the app
+- `RouterProvider` - Provides router context and intercepts link clicks
 - `RouterView` - Renders the matched route component
-- `RouterLink` - Declarative navigation link
+- `RouterLink` - Optional declarative navigation link with active state classes
+
+### Link Attributes
+
+When using regular `<a>` tags:
+
+- `data-replace` - Use replace navigation instead of push
+- `data-native` or `data-external` - Skip SPA navigation, use native browser navigation
+- `target="_blank"` - Opens in new tab (native behavior)
+- `download` - Download attribute (native behavior)
 
 ## TypeScript Support
 
