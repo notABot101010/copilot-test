@@ -4,4 +4,3 @@ members = ["base64"]
 
 [workspace.dependencies]
 criterion = { version = "0.7.0", features = ["html_reports"] }
-base64-external = { package = "base64", version = "0.22.1" }
