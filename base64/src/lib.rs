@@ -311,49 +311,34 @@ mod avx2 {
     #[target_feature(enable = "avx2")]
     pub unsafe fn encode_avx2(output: &mut [u8], data: &[u8], padding: bool) {
         let len = data.len();
-        let mut in_offset: isize = 0;
-        let mut out_offset: isize = 0;
+        let mut in_offset: usize = 0;
+        let mut out_offset: usize = 0;
 
-        if len >= 28 {
-            // First load is masked - we load from position -4 to get proper alignment
-            // but mask out the first 4 bytes
-            let mask_vec = _mm256_set_epi32(
-                i32::MIN,
-                i32::MIN,
-                i32::MIN,
-                i32::MIN,
-                i32::MIN,
-                i32::MIN,
-                i32::MIN,
-                0, // we do not load the first 4 bytes
+        // We need at least 24 bytes for the AVX2 path
+        // Process 24 bytes at a time, producing 32 bytes of output
+        while in_offset + 24 <= len {
+            // Create a properly aligned buffer with 4 padding bytes at the start
+            let mut aligned_buf = [0u8; 32];
+            aligned_buf[4..28].copy_from_slice(&data[in_offset..in_offset + 24]);
+
+            // Load from offset 0 of our aligned buffer (which has the data at offset 4)
+            let inputvector = _mm256_loadu_si256(aligned_buf.as_ptr() as *const __m256i);
+            let reshuffled = enc_reshuffle(inputvector);
+            let translated = enc_translate(reshuffled);
+
+            _mm256_storeu_si256(
+                output.as_mut_ptr().add(out_offset) as *mut __m256i,
+                translated,
             );
 
-            let mut inputvector: __m256i =
-                _mm256_maskload_epi32(data.as_ptr().offset(-4) as *const i32, mask_vec);
-
-            loop {
-                inputvector = enc_reshuffle(inputvector);
-                inputvector = enc_translate(inputvector);
-                _mm256_storeu_si256(
-                    output.as_mut_ptr().offset(out_offset) as *mut __m256i,
-                    inputvector,
-                );
-                in_offset += 24;
-                out_offset += 32;
-                let remaining = len as isize - in_offset;
-                if remaining < 32 {
-                    break;
-                }
-                // Load next chunk (we load from -4 offset to get proper byte arrangement)
-                inputvector =
-                    _mm256_loadu_si256(data.as_ptr().offset(in_offset - 4) as *const __m256i);
-            }
+            in_offset += 24;
+            out_offset += 32;
         }
 
         // Handle remaining bytes with scalar code
-        if in_offset < len as isize {
-            let remaining_data = &data[in_offset as usize..];
-            let remaining_output = &mut output[out_offset as usize..];
+        if in_offset < len {
+            let remaining_data = &data[in_offset..];
+            let remaining_output = &mut output[out_offset..];
             super::encode_to_slice(remaining_output, remaining_data, ALPHABET_STANDARD, padding);
         }
     }
