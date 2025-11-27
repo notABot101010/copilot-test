@@ -856,4 +856,100 @@ mod tests {
             );
         }
     }
+
+    // Additional comprehensive tests
+    #[test]
+    fn test_encode_binary_with_high_bytes() {
+        // Test binary data with bytes > 127 (non-ASCII range)
+        let data: Vec<u8> = (128..=255).collect();
+        let encoded = encode(&data, ALPHABET_LOWER);
+        let decoded = decode(&encoded, ALPHABET_LOWER);
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_encode_null_and_control_chars() {
+        // Test encoding data with null bytes and control characters
+        let data = b"\x00\x01\x02\x1f\x7f\xff";
+        let encoded = encode(data, ALPHABET_LOWER);
+        let decoded = decode(&encoded, ALPHABET_LOWER);
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_large_data_roundtrip() {
+        // Test with larger data sizes
+        for size in [1000, 5000, 10000] {
+            let data: Vec<u8> = (0..size).map(|i| (i % 256) as u8).collect();
+            let encoded = encode(&data, ALPHABET_LOWER);
+            let decoded = decode(&encoded, ALPHABET_LOWER);
+            assert_eq!(decoded, data, "Roundtrip failed for size {}", size);
+        }
+    }
+
+    #[test]
+    fn test_avx2_large_data_roundtrip() {
+        // Test AVX2 with larger data sizes
+        for size in [1000, 5000, 10000] {
+            let data: Vec<u8> = (0..size).map(|i| (i % 256) as u8).collect();
+            let encoded = encode_avx2(&data, ALPHABET_LOWER);
+            let decoded = decode_avx2(&encoded, ALPHABET_LOWER);
+            assert_eq!(decoded, data, "AVX2 roundtrip failed for size {}", size);
+        }
+    }
+
+    #[test]
+    fn test_all_byte_values() {
+        // Test all 256 byte values
+        let data: Vec<u8> = (0..=255).collect();
+        
+        // Test with lower alphabet
+        let encoded = encode(&data, ALPHABET_LOWER);
+        let decoded = decode(&encoded, ALPHABET_LOWER);
+        assert_eq!(decoded, data);
+        
+        // Test with upper alphabet
+        let encoded = encode(&data, ALPHABET_UPPER);
+        let decoded = decode(&encoded, ALPHABET_UPPER);
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_various_lengths() {
+        // Test various input lengths to catch edge cases
+        for len in 0..50 {
+            let data: Vec<u8> = (0..len as u8).collect();
+            let encoded = encode(&data, ALPHABET_LOWER);
+            let decoded = decode(&encoded, ALPHABET_LOWER);
+            assert_eq!(decoded, data, "Failed for length {}", len);
+        }
+    }
+
+    #[test]
+    fn test_avx2_various_lengths() {
+        // Test AVX2 with various input lengths to catch edge cases
+        for len in 0..100 {
+            let data: Vec<u8> = (0..len).map(|i| i as u8).collect();
+            let encoded = encode_avx2(&data, ALPHABET_LOWER);
+            let decoded = decode_avx2(&encoded, ALPHABET_LOWER);
+            assert_eq!(decoded, data, "AVX2 failed for length {}", len);
+        }
+    }
+
+    #[test]
+    fn test_upper_alphabet_full() {
+        // More comprehensive upper alphabet tests
+        let test_cases = [
+            b"".to_vec(),
+            b"Hello".to_vec(),
+            (0..=255).collect::<Vec<u8>>(),
+            (0..1000).map(|i| (i % 256) as u8).collect::<Vec<u8>>(),
+        ];
+
+        for data in test_cases {
+            let encoded = encode(&data, ALPHABET_UPPER);
+            let decoded = decode(&encoded, ALPHABET_UPPER);
+            assert_eq!(decoded, data);
+        }
+    }
 }
