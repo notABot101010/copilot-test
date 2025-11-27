@@ -478,4 +478,3 @@ pub fn decode_with(base64_input: &str, alphabet: &[u8; 64]) -> Result<Vec<u8>, E
 
     Ok(result)
 }
-

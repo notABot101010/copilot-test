@@ -388,4 +388,3 @@ pub fn decode_avx2_checked(input: &str, alphabet: &[u8; 16]) -> Result<Vec<u8>, 
     // Fall back to scalar implementation
     decode_checked(input, alphabet)
 }
-
