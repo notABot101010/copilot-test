@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{check_api_error, Client, Error, Links, Meta, API_BASE_URL};
+use crate::{check_api_error, url_encode, Client, Error, Links, Meta, API_BASE_URL};
 
 /// A block storage volume.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -163,7 +163,7 @@ impl Client {
         let mut query_params = Vec::new();
 
         if let Some(n) = name {
-            query_params.push(format!("name={}", n));
+            query_params.push(format!("name={}", url_encode(n)));
         }
         if let Some(p) = page {
             query_params.push(format!("page={}", p));

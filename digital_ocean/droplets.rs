@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{check_api_error, Client, Error, Links, Meta, API_BASE_URL};
+use crate::{check_api_error, url_encode, Client, Error, Links, Meta, API_BASE_URL};
 
 /// A DigitalOcean Droplet (virtual machine).
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -418,7 +418,7 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListDropletsResponse, Error> {
-        let mut url = format!("{}/droplets?tag_name={}", API_BASE_URL, tag_name);
+        let mut url = format!("{}/droplets?tag_name={}", API_BASE_URL, url_encode(tag_name));
 
         if let Some(p) = page {
             url = format!("{}&page={}", url, p);

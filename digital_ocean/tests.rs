@@ -14,6 +14,21 @@ fn test_api_base_url() {
 }
 
 #[test]
+fn test_url_encode() {
+    // Simple string should pass through
+    assert_eq!(url_encode("simple"), "simple");
+    assert_eq!(url_encode("hello-world"), "hello-world");
+    assert_eq!(url_encode("test_value"), "test_value");
+    
+    // Special characters should be encoded
+    assert_eq!(url_encode("hello world"), "hello%20world");
+    assert_eq!(url_encode("tag=value"), "tag%3Dvalue");
+    assert_eq!(url_encode("foo&bar"), "foo%26bar");
+    assert_eq!(url_encode("test+plus"), "test%2Bplus");
+    assert_eq!(url_encode("path/segment"), "path%2Fsegment");
+}
+
+#[test]
 fn test_api_error_display() {
     let error = ApiError {
         id: "not_found".to_string(),
