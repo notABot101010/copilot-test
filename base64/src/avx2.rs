@@ -37,8 +37,8 @@ unsafe fn enc_reshuffle(input: __m256i) -> __m256i {
 #[inline]
 unsafe fn enc_translate(input: __m256i) -> __m256i {
     let lut: __m256i = _mm256_setr_epi8(
-        65, 71, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -19, -16, 0, 0, 65, 71, -4, -4, -4, -4,
-        -4, -4, -4, -4, -4, -4, -19, -16, 0, 0,
+        65, 71, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -19, -16, 0, 0, 65, 71, -4, -4, -4, -4, -4,
+        -4, -4, -4, -4, -4, -19, -16, 0, 0,
     );
     let mut indices = _mm256_subs_epu8(input, _mm256_set1_epi8(51));
     let mask = _mm256_cmpgt_epi8(input, _mm256_set1_epi8(25));
@@ -57,8 +57,8 @@ unsafe fn dec_reshuffle(input: __m256i) -> __m256i {
     let out = _mm256_shuffle_epi8(
         out,
         _mm256_setr_epi8(
-            2, 1, 0, 6, 5, 4, 10, 9, 8, 14, 13, 12, -1, -1, -1, -1, 2, 1, 0, 6, 5, 4, 10, 9, 8,
-            14, 13, 12, -1, -1, -1, -1,
+            2, 1, 0, 6, 5, 4, 10, 9, 8, 14, 13, 12, -1, -1, -1, -1, 2, 1, 0, 6, 5, 4, 10, 9, 8, 14,
+            13, 12, -1, -1, -1, -1,
         ),
     );
     _mm256_permutevar8x32_epi32(out, _mm256_setr_epi32(0, 1, 2, 4, 5, 6, -1, -1))
@@ -116,18 +116,18 @@ pub unsafe fn decode_avx2(output: &mut [u8], input: &[u8]) -> Result<usize, Erro
 
     // Lookup tables for decoding (moved outside loop for clarity)
     let lut_lo: __m256i = _mm256_setr_epi8(
-        0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B,
-        0x1B, 0x1A, 0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A,
-        0x1B, 0x1B, 0x1B, 0x1A,
+        0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B, 0x1B,
+        0x1A, 0x15, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x13, 0x1A, 0x1B, 0x1B,
+        0x1B, 0x1A,
     );
     let lut_hi: __m256i = _mm256_setr_epi8(
-        0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
-        0x10, 0x10, 0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10,
-        0x10, 0x10, 0x10, 0x10,
+        0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+        0x10, 0x10, 0x10, 0x01, 0x02, 0x04, 0x08, 0x04, 0x08, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+        0x10, 0x10,
     );
     let lut_roll: __m256i = _mm256_setr_epi8(
-        0, 16, 19, 4, -65, -65, -71, -71, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 19, 4, -65, -65, -71,
-        -71, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 16, 19, 4, -65, -65, -71, -71, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 19, 4, -65, -65, -71, -71,
+        0, 0, 0, 0, 0, 0, 0, 0,
     );
     let mask_2f: __m256i = _mm256_set1_epi8(0x2f);
 
@@ -150,8 +150,7 @@ pub unsafe fn decode_avx2(output: &mut [u8], input: &[u8]) -> Result<usize, Erro
 
             let hi_nibbles = _mm256_and_si256(hi_nibbles, mask_2f);
             let hi: __m256i = _mm256_shuffle_epi8(lut_hi, hi_nibbles);
-            let roll: __m256i =
-                _mm256_shuffle_epi8(lut_roll, _mm256_add_epi8(eq_2f, hi_nibbles));
+            let roll: __m256i = _mm256_shuffle_epi8(lut_roll, _mm256_add_epi8(eq_2f, hi_nibbles));
 
             // Check for invalid characters - return None to break iteration
             if _mm256_testz_si256(lo, hi) == 0 {
