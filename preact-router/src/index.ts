@@ -26,13 +26,6 @@ export { createRouter, createReactiveRoute, NavigationError } from './router';
 export {
   useRouter,
   useRoute,
-  useParams,
-  useParam,
-  useQuery,
-  useQueryParam,
-  useMeta,
-  usePath,
-  useHash,
   useNavigation
 } from './hooks';
 
