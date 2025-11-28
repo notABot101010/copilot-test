@@ -3,7 +3,7 @@ import { IconMessages, IconLock } from '@tabler/icons-react';
 
 export function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center h-full w-full bg-[#f0f2f5]">
+    <div className="flex flex-col items-center justify-center h-full bg-[#f0f2f5]">
       <div className="text-center max-w-md px-4">
         <div className="mb-6">
           <IconMessages size={80} stroke={1} className="mx-auto text-gray-400" />

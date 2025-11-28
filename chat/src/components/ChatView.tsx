@@ -94,7 +94,7 @@ export function ChatView({ conversation, currentUser, chatService, onBack, isMob
   }
   
   return (
-    <div className="flex flex-col h-full w-full bg-[#efeae2]">
+    <div className="flex flex-col h-full bg-[#efeae2]">
       {/* Header */}
       <div className="flex items-center gap-3 p-3 bg-gray-50 border-b border-gray-200">
         {isMobileView && onBack && (
