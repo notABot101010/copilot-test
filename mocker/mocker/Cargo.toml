@@ -1,0 +1,20 @@
+[package]
+name = "mocker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A Docker-like CLI for Linux microVMs using libkrun"
+
+[[bin]]
+name = "mocker"
+path = "src/main.rs"
+
+[dependencies]
+mocker-core = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+nix = { workspace = true }
