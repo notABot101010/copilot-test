@@ -1,0 +1,20 @@
+[package]
+name = "git-server"
+version = "0.1.0"
+edition = "2021"
+description = "A Git server over SSH implemented in Rust"
+license = "MIT"
+
+[[bin]]
+name = "git-server"
+path = "src/main.rs"
+
+[dependencies]
+russh = "0.54"
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "net"] }
+thiserror = "2.0"
+rand_core = "0.6"
