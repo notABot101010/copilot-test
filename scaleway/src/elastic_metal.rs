@@ -3,6 +3,7 @@
 //! Scaleway Elastic Metal allows you to order dedicated servers on-demand.
 
 use crate::client::{check_api_error, Client, Error};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 const BAREMETAL_API_URL: &str = "https://api.scaleway.com/baremetal/v1";
@@ -426,26 +427,26 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListBaremetalServersResponse, Error> {
-        let mut url = format!("{}/zones/{}/servers", BAREMETAL_API_URL, zone);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/zones/{}/servers", BAREMETAL_API_URL, zone))
+                .expect("valid URL");
 
-        if let Some(pid) = project_id {
-            params.push(format!("project_id={}", pid));
-        }
-        if let Some(p) = page {
-            params.push(format!("page={}", p));
-        }
-        if let Some(ps) = page_size {
-            params.push(format!("page_size={}", ps));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = project_id {
+                pairs.append_pair("project_id", v);
+            }
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
+            if let Some(v) = page_size {
+                pairs.append_pair("page_size", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -720,26 +721,25 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListServerEventsResponse, Error> {
-        let mut url = format!(
+        let mut url = Url::parse(&format!(
             "{}/zones/{}/servers/{}/events",
             BAREMETAL_API_URL, zone, server_id
-        );
-        let mut params = Vec::new();
+        ))
+        .expect("valid URL");
 
-        if let Some(p) = page {
-            params.push(format!("page={}", p));
-        }
-        if let Some(ps) = page_size {
-            params.push(format!("page_size={}", ps));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
+            if let Some(v) = page_size {
+                pairs.append_pair("page_size", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -866,23 +866,23 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListOffersResponse, Error> {
-        let mut url = format!("{}/zones/{}/offers", BAREMETAL_API_URL, zone);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/zones/{}/offers", BAREMETAL_API_URL, zone))
+                .expect("valid URL");
 
-        if let Some(p) = page {
-            params.push(format!("page={}", p));
-        }
-        if let Some(ps) = page_size {
-            params.push(format!("page_size={}", ps));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
+            if let Some(v) = page_size {
+                pairs.append_pair("page_size", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -919,23 +919,23 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListOptionsResponse, Error> {
-        let mut url = format!("{}/zones/{}/options", BAREMETAL_API_URL, zone);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/zones/{}/options", BAREMETAL_API_URL, zone))
+                .expect("valid URL");
 
-        if let Some(p) = page {
-            params.push(format!("page={}", p));
-        }
-        if let Some(ps) = page_size {
-            params.push(format!("page_size={}", ps));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
+            if let Some(v) = page_size {
+                pairs.append_pair("page_size", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -976,23 +976,23 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListOSResponse, Error> {
-        let mut url = format!("{}/zones/{}/os", BAREMETAL_API_URL, zone);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/zones/{}/os", BAREMETAL_API_URL, zone))
+                .expect("valid URL");
 
-        if let Some(p) = page {
-            params.push(format!("page={}", p));
-        }
-        if let Some(ps) = page_size {
-            params.push(format!("page_size={}", ps));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
+            if let Some(v) = page_size {
+                pairs.append_pair("page_size", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -1081,26 +1081,26 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListSettingsResponse, Error> {
-        let mut url = format!("{}/zones/{}/settings", BAREMETAL_API_URL, zone);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/zones/{}/settings", BAREMETAL_API_URL, zone))
+                .expect("valid URL");
 
-        if let Some(pid) = project_id {
-            params.push(format!("project_id={}", pid));
-        }
-        if let Some(p) = page {
-            params.push(format!("page={}", p));
-        }
-        if let Some(ps) = page_size {
-            params.push(format!("page_size={}", ps));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = project_id {
+                pairs.append_pair("project_id", v);
+            }
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
+            if let Some(v) = page_size {
+                pairs.append_pair("page_size", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;

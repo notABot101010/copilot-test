@@ -3,6 +3,7 @@
 //! Scaleway Managed Inference allows you to deploy and manage machine learning models.
 
 use crate::client::{check_api_error, Client, Error};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 const INFERENCE_API_URL: &str = "https://api.scaleway.com/inference/v1";
@@ -296,26 +297,26 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListDeploymentsResponse, Error> {
-        let mut url = format!("{}/regions/{}/deployments", INFERENCE_API_URL, region);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/regions/{}/deployments", INFERENCE_API_URL, region))
+                .expect("valid URL");
 
-        if let Some(pid) = project_id {
-            params.push(format!("project_id={}", pid));
-        }
-        if let Some(p) = page {
-            params.push(format!("page={}", p));
-        }
-        if let Some(ps) = page_size {
-            params.push(format!("page_size={}", ps));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = project_id {
+                pairs.append_pair("project_id", v);
+            }
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
+            if let Some(v) = page_size {
+                pairs.append_pair("page_size", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -524,26 +525,26 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListModelsResponse, Error> {
-        let mut url = format!("{}/regions/{}/models", INFERENCE_API_URL, region);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/regions/{}/models", INFERENCE_API_URL, region))
+                .expect("valid URL");
 
-        if let Some(pid) = project_id {
-            params.push(format!("project_id={}", pid));
-        }
-        if let Some(p) = page {
-            params.push(format!("page={}", p));
-        }
-        if let Some(ps) = page_size {
-            params.push(format!("page_size={}", ps));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = project_id {
+                pairs.append_pair("project_id", v);
+            }
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
+            if let Some(v) = page_size {
+                pairs.append_pair("page_size", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -636,23 +637,23 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListNodeTypesResponse, Error> {
-        let mut url = format!("{}/regions/{}/node-types", INFERENCE_API_URL, region);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/regions/{}/node-types", INFERENCE_API_URL, region))
+                .expect("valid URL");
 
-        if let Some(p) = page {
-            params.push(format!("page={}", p));
-        }
-        if let Some(ps) = page_size {
-            params.push(format!("page_size={}", ps));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
+            if let Some(v) = page_size {
+                pairs.append_pair("page_size", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;

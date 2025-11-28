@@ -3,6 +3,7 @@
 //! Scaleway Instances are computing units providing resources to run your applications on.
 
 use crate::client::{check_api_error, Client, Error};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 const INSTANCE_API_URL: &str = "https://api.scaleway.com/instance/v1";
@@ -786,26 +787,26 @@ impl Client {
         per_page: Option<u32>,
         page: Option<u32>,
     ) -> Result<ListServersResponse, Error> {
-        let mut url = format!("{}/zones/{}/servers", INSTANCE_API_URL, zone);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/zones/{}/servers", INSTANCE_API_URL, zone))
+                .expect("valid URL");
 
-        if let Some(p) = project {
-            params.push(format!("project={}", p));
-        }
-        if let Some(pp) = per_page {
-            params.push(format!("per_page={}", pp));
-        }
-        if let Some(pg) = page {
-            params.push(format!("page={}", pg));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = project {
+                pairs.append_pair("project", v);
+            }
+            if let Some(v) = per_page {
+                pairs.append_pair("per_page", &v.to_string());
+            }
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -988,26 +989,26 @@ impl Client {
         per_page: Option<u32>,
         page: Option<u32>,
     ) -> Result<ListVolumesResponse, Error> {
-        let mut url = format!("{}/zones/{}/volumes", INSTANCE_API_URL, zone);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/zones/{}/volumes", INSTANCE_API_URL, zone))
+                .expect("valid URL");
 
-        if let Some(p) = project {
-            params.push(format!("project={}", p));
-        }
-        if let Some(pp) = per_page {
-            params.push(format!("per_page={}", pp));
-        }
-        if let Some(pg) = page {
-            params.push(format!("page={}", pg));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = project {
+                pairs.append_pair("project", v);
+            }
+            if let Some(v) = per_page {
+                pairs.append_pair("per_page", &v.to_string());
+            }
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -1103,26 +1104,26 @@ impl Client {
         per_page: Option<u32>,
         page: Option<u32>,
     ) -> Result<ListImagesResponse, Error> {
-        let mut url = format!("{}/zones/{}/images", INSTANCE_API_URL, zone);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/zones/{}/images", INSTANCE_API_URL, zone))
+                .expect("valid URL");
 
-        if let Some(p) = project {
-            params.push(format!("project={}", p));
-        }
-        if let Some(pp) = per_page {
-            params.push(format!("per_page={}", pp));
-        }
-        if let Some(pg) = page {
-            params.push(format!("page={}", pg));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = project {
+                pairs.append_pair("project", v);
+            }
+            if let Some(v) = per_page {
+                pairs.append_pair("per_page", &v.to_string());
+            }
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -1196,26 +1197,26 @@ impl Client {
         per_page: Option<u32>,
         page: Option<u32>,
     ) -> Result<ListSnapshotsResponse, Error> {
-        let mut url = format!("{}/zones/{}/snapshots", INSTANCE_API_URL, zone);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/zones/{}/snapshots", INSTANCE_API_URL, zone))
+                .expect("valid URL");
 
-        if let Some(p) = project {
-            params.push(format!("project={}", p));
-        }
-        if let Some(pp) = per_page {
-            params.push(format!("per_page={}", pp));
-        }
-        if let Some(pg) = page {
-            params.push(format!("page={}", pg));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = project {
+                pairs.append_pair("project", v);
+            }
+            if let Some(v) = per_page {
+                pairs.append_pair("per_page", &v.to_string());
+            }
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -1293,26 +1294,26 @@ impl Client {
         per_page: Option<u32>,
         page: Option<u32>,
     ) -> Result<ListIpsResponse, Error> {
-        let mut url = format!("{}/zones/{}/ips", INSTANCE_API_URL, zone);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/zones/{}/ips", INSTANCE_API_URL, zone))
+                .expect("valid URL");
 
-        if let Some(p) = project {
-            params.push(format!("project={}", p));
-        }
-        if let Some(pp) = per_page {
-            params.push(format!("per_page={}", pp));
-        }
-        if let Some(pg) = page {
-            params.push(format!("page={}", pg));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = project {
+                pairs.append_pair("project", v);
+            }
+            if let Some(v) = per_page {
+                pairs.append_pair("per_page", &v.to_string());
+            }
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -1408,26 +1409,26 @@ impl Client {
         per_page: Option<u32>,
         page: Option<u32>,
     ) -> Result<ListSecurityGroupsResponse, Error> {
-        let mut url = format!("{}/zones/{}/security_groups", INSTANCE_API_URL, zone);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/zones/{}/security_groups", INSTANCE_API_URL, zone))
+                .expect("valid URL");
 
-        if let Some(p) = project {
-            params.push(format!("project={}", p));
-        }
-        if let Some(pp) = per_page {
-            params.push(format!("per_page={}", pp));
-        }
-        if let Some(pg) = page {
-            params.push(format!("page={}", pg));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = project {
+                pairs.append_pair("project", v);
+            }
+            if let Some(v) = per_page {
+                pairs.append_pair("per_page", &v.to_string());
+            }
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
@@ -1586,26 +1587,26 @@ impl Client {
         per_page: Option<u32>,
         page: Option<u32>,
     ) -> Result<ListPlacementGroupsResponse, Error> {
-        let mut url = format!("{}/zones/{}/placement_groups", INSTANCE_API_URL, zone);
-        let mut params = Vec::new();
+        let mut url =
+            Url::parse(&format!("{}/zones/{}/placement_groups", INSTANCE_API_URL, zone))
+                .expect("valid URL");
 
-        if let Some(p) = project {
-            params.push(format!("project={}", p));
-        }
-        if let Some(pp) = per_page {
-            params.push(format!("per_page={}", pp));
-        }
-        if let Some(pg) = page {
-            params.push(format!("page={}", pg));
-        }
-
-        if !params.is_empty() {
-            url = format!("{}?{}", url, params.join("&"));
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(v) = project {
+                pairs.append_pair("project", v);
+            }
+            if let Some(v) = per_page {
+                pairs.append_pair("per_page", &v.to_string());
+            }
+            if let Some(v) = page {
+                pairs.append_pair("page", &v.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("X-Auth-Token", &self.secret_access_key)
             .send()
             .await?;
