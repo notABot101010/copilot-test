@@ -10,7 +10,7 @@ interface DirectMessageListProps {
 
 export function DirectMessageList({ directMessages, currentUser, selectedDMId, onSelectDM }: DirectMessageListProps) {
   return (
-    <div className="flex flex-col h-full bg-[#2b2d31] w-60 shrink-0">
+    <div className="flex flex-col h-full bg-[#2b2d31] w-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 h-12 border-b border-[#1f2023] shadow-sm">
         <Text fw={600} size="sm" className="text-white">

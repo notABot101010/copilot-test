@@ -5,9 +5,9 @@ import type { Server } from '../types';
 interface ServerSidebarProps {
   servers: Server[];
   selectedServerId: string | null;
-  onSelectServer: (id: string | null) => void;
+  onSelectServer?: (id: string | null) => void;
   showDMs: boolean;
-  onToggleDMs: () => void;
+  onToggleDMs?: () => void;
 }
 
 export function ServerSidebar({
@@ -23,6 +23,8 @@ export function ServerSidebar({
       <Tooltip label="Direct Messages" position="right" withArrow>
         <UnstyledButton
           onClick={onToggleDMs}
+          component="a"
+          href="/"
           className={`flex items-center justify-center w-12 h-12 rounded-[24px] transition-all duration-200 ${
             showDMs
               ? 'bg-[#5865f2] rounded-[16px]'
@@ -40,7 +42,9 @@ export function ServerSidebar({
       {servers.map((server) => (
         <Tooltip key={server.id} label={server.name} position="right" withArrow>
           <UnstyledButton
-            onClick={() => onSelectServer(server.id)}
+            onClick={() => onSelectServer?.(server.id)}
+            component="a"
+            href={`/server/${server.id}`}
             className={`relative flex items-center justify-center w-12 h-12 rounded-[24px] transition-all duration-200 ${
               selectedServerId === server.id
                 ? 'rounded-[16px]'
@@ -70,7 +74,11 @@ export function ServerSidebar({
       
       {/* Add server button */}
       <Tooltip label="Add a Server" position="right" withArrow>
-        <UnstyledButton className="flex items-center justify-center w-12 h-12 rounded-[24px] bg-[#313338] text-[#23a559] hover:bg-[#23a559] hover:text-white hover:rounded-[16px] transition-all duration-200">
+        <UnstyledButton 
+          component="a"
+          href="/server/create"
+          className="flex items-center justify-center w-12 h-12 rounded-[24px] bg-[#313338] text-[#23a559] hover:bg-[#23a559] hover:text-white hover:rounded-[16px] transition-all duration-200"
+        >
           <IconPlus size={24} />
         </UnstyledButton>
       </Tooltip>

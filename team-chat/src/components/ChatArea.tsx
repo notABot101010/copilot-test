@@ -13,12 +13,17 @@ interface ChatAreaProps {
   showMembers: boolean;
 }
 
+// Maximum number of lines for the textarea
+const MAX_LINES = 5;
+const LINE_HEIGHT = 24; // approximate line height in pixels
+
 export function ChatArea({ channel, currentUser, chatService, onToggleMembers, showMembers }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   useEffect(() => {
     loadMessages();
@@ -27,6 +32,18 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    if (textareaRef.current) {
+      // Reset height to auto to get the correct scrollHeight
+      textareaRef.current.style.height = 'auto';
+      // Calculate new height, capped at max lines
+      const maxHeight = MAX_LINES * LINE_HEIGHT;
+      const newHeight = Math.min(textareaRef.current.scrollHeight, maxHeight);
+      textareaRef.current.style.height = `${newHeight}px`;
+    }
+  }, [newMessage]);
   
   async function loadMessages() {
     setLoading(true);
@@ -55,11 +72,13 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
     }
   }
   
-  function handleKeyPress(e: KeyboardEvent) {
+  function handleKeyDown(e: KeyboardEvent) {
+    // Enter without Shift sends the message
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
+    // Shift+Enter adds a new line (default behavior, no need to handle)
   }
   
   function shouldShowHeader(index: number): boolean {
@@ -170,29 +189,23 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
       
       {/* Message input */}
       <div className="px-4 pb-6 shrink-0">
-        <div className="flex items-center bg-[#383a40] rounded-lg px-4">
-          <ActionIcon variant="transparent" className="text-[#b5bac1] hover:text-[#dbdee1]">
+        <div className="flex items-start bg-[#383a40] rounded-lg px-4 py-2">
+          <ActionIcon variant="transparent" className="text-[#b5bac1] hover:text-[#dbdee1] mt-1">
             <IconPlus size={20} />
           </ActionIcon>
           
-          <TextInput
+          <textarea
+            ref={textareaRef}
             placeholder={`Message #${channel.name}`}
             value={newMessage}
-            onChange={(e) => setNewMessage((e.target as HTMLInputElement).value)}
-            onKeyPress={handleKeyPress}
-            className="flex-1"
-            variant="unstyled"
-            styles={{
-              input: {
-                color: '#dbdee1',
-                '&::placeholder': {
-                  color: '#6d6f78',
-                },
-              },
-            }}
+            onInput={(e) => setNewMessage((e.target as HTMLTextAreaElement).value)}
+            onKeyDown={handleKeyDown}
+            className="flex-1 bg-transparent border-none outline-none resize-none text-[#dbdee1] placeholder-[#6d6f78] py-1 px-2 text-sm leading-6"
+            style={{ minHeight: '24px', maxHeight: `${MAX_LINES * LINE_HEIGHT}px` }}
+            rows={1}
           />
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mt-1">
             <ActionIcon variant="transparent" className="text-[#b5bac1] hover:text-[#dbdee1] hidden md:flex">
               <IconGift size={20} />
             </ActionIcon>
