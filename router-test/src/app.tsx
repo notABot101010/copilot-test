@@ -1,4 +1,3 @@
-// Preact hooks are available if needed
 import viteLogo from '/vite.svg'
 import './app.css'
 import { createRouter, RouterProvider, RouterView, useRoute, useRouter } from '@copilot-test/preact-router';

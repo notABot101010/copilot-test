@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@copilot-test/preact-router": "file:../preact-router",
+    "@copilot-test/preact-router": "*",
     "@preact/signals": "^2.5.1",
     "preact": "^10.27.2"
   },

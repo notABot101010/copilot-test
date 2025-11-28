@@ -2,21 +2,21 @@
   "name": "@copilot-test/preact-router",
   "version": "1.0.0",
   "description": "A Vue Router-inspired router for Preact with signals support",
-  "main": "dist/index.js",
-  "module": "dist/index.mjs",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.esm.json",
+    "build": "node build.mjs && tsc --emitDeclarationOnly",
     "lint": "eslint src --ext .ts,.tsx",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -37,6 +37,7 @@
   "devDependencies": {
     "@preact/signals": "^2.5.1",
     "@types/node": "^20.10.0",
+    "esbuild": "^0.27.0",
     "eslint": "^8.55.0",
     "jsdom": "^23.0.1",
     "preact": "^10.19.3",
