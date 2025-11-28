@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'preact/hooks';
+import { useState, useRef, useCallback, useEffect } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 
 interface ResizableSidebarProps {
@@ -29,7 +29,7 @@ export function ResizableSidebar({
 
   const resize = useCallback(
     (e: MouseEvent) => {
-      if (!isResizing || !sidebarRef.current) return;
+      if (!sidebarRef.current) return;
       
       const sidebarRect = sidebarRef.current.getBoundingClientRect();
       const newWidth = e.clientX - sidebarRect.left;
@@ -38,19 +38,21 @@ export function ResizableSidebar({
         setWidth(newWidth);
       }
     },
-    [isResizing, minWidth, maxWidth]
+    [minWidth, maxWidth]
   );
 
-  // Add event listeners for mouse move and mouse up
-  if (typeof window !== 'undefined') {
-    if (isResizing) {
-      window.addEventListener('mousemove', resize);
-      window.addEventListener('mouseup', stopResizing);
-    } else {
+  // Add event listeners for mouse move and mouse up with proper cleanup
+  useEffect(() => {
+    if (!isResizing) return;
+
+    window.addEventListener('mousemove', resize);
+    window.addEventListener('mouseup', stopResizing);
+
+    return () => {
       window.removeEventListener('mousemove', resize);
       window.removeEventListener('mouseup', stopResizing);
-    }
-  }
+    };
+  }, [isResizing, resize, stopResizing]);
 
   return (
     <div
