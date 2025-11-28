@@ -12,6 +12,7 @@ mod vm;
 
 pub use config::{VmConfig, VolumeMount};
 pub use error::{Error, Result};
+#[cfg(feature = "libkrun")]
 pub use ffi::LogLevel;
 pub use image::{ImageManager, OciImage};
 pub use state::{StateManager, VmState, VmStatus};

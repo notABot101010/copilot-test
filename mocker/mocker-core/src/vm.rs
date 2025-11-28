@@ -4,11 +4,8 @@
 //! It uses FFI to call libkrun directly for VM creation and management.
 
 #[cfg(feature = "libkrun")]
-use crate::ffi;
-use crate::{
-    ffi::LogLevel, Error, ImageManager, OciImage, Result, StateManager, VmConfig, VmState,
-    VmStatus,
-};
+use crate::ffi::{self, LogLevel};
+use crate::{Error, ImageManager, OciImage, Result, StateManager, VmConfig, VmState, VmStatus};
 #[cfg(feature = "libkrun")]
 use std::ffi::CString;
 use std::os::unix::process::CommandExt;
@@ -30,6 +27,7 @@ pub struct VmManager {
     /// State manager for VM persistence
     state_manager: StateManager,
     /// Log level for libkrun
+    #[cfg(feature = "libkrun")]
     log_level: LogLevel,
 }
 
@@ -43,11 +41,13 @@ impl VmManager {
         Ok(Self {
             image_manager,
             state_manager,
+            #[cfg(feature = "libkrun")]
             log_level: LogLevel::Off,
         })
     }
 
     /// Set the log level for libkrun
+    #[cfg(feature = "libkrun")]
     pub fn set_log_level(&mut self, level: LogLevel) {
         self.log_level = level;
     }
@@ -94,10 +94,10 @@ impl VmManager {
         // Build the command to run inside the VM
         let exec_path = if let Some(ref cmd) = config.command {
             cmd.clone()
-        } else if !image.entrypoint.is_empty() {
-            image.entrypoint[0].clone()
-        } else if !image.cmd.is_empty() {
-            image.cmd[0].clone()
+        } else if let Some(first) = image.entrypoint.first() {
+            first.clone()
+        } else if let Some(first) = image.cmd.first() {
+            first.clone()
         } else {
             "/bin/sh".to_string()
         };
@@ -106,14 +106,14 @@ impl VmManager {
         let mut args: Vec<String> = Vec::new();
 
         // Add remaining entrypoint elements as args
-        if config.command.is_none() && !image.entrypoint.is_empty() {
+        if config.command.is_none() && image.entrypoint.len() > 1 {
             args.extend(image.entrypoint[1..].iter().cloned());
         }
 
         // Add image cmd if no command specified and we used entrypoint
         if config.command.is_none() && !image.entrypoint.is_empty() && !image.cmd.is_empty() {
             args.extend(image.cmd.iter().cloned());
-        } else if config.command.is_none() && image.entrypoint.is_empty() && !image.cmd.is_empty() {
+        } else if config.command.is_none() && image.entrypoint.is_empty() && image.cmd.len() > 1 {
             args.extend(image.cmd[1..].iter().cloned());
         }
 
@@ -148,21 +148,15 @@ impl VmManager {
             return self.run_libkrun_detached(image, config, state, exec_path, args);
         }
 
-        // Create libkrun context
-        let ctx_id = unsafe { ffi::krun_create_ctx() };
-        if ctx_id < 0 {
-            return Err(Error::Libkrun(format!(
-                "Failed to create libkrun context: {}",
-                ctx_id
-            )));
-        }
-        let ctx_id = ctx_id as u32;
+        // Create libkrun context with RAII wrapper for automatic cleanup
+        let ctx = ffi::KrunContext::new()
+            .map_err(|e| Error::Libkrun(format!("Failed to create libkrun context: {}", e)))?;
+        let ctx_id = ctx.id();
 
         // Set log level
         unsafe {
             let status = ffi::krun_set_log_level(self.log_level as u32);
             if status < 0 {
-                ffi::krun_free_ctx(ctx_id);
                 return Err(Error::Libkrun(format!(
                     "Failed to set log level: {}",
                     status
@@ -174,7 +168,6 @@ impl VmManager {
         unsafe {
             let status = ffi::krun_set_vm_config(ctx_id, config.vcpus as u8, config.memory_mb);
             if status < 0 {
-                ffi::krun_free_ctx(ctx_id);
                 return Err(Error::Libkrun(format!(
                     "Failed to set VM config: {}",
                     status
@@ -188,7 +181,6 @@ impl VmManager {
         unsafe {
             let status = ffi::krun_set_root(ctx_id, c_root.as_ptr());
             if status < 0 {
-                ffi::krun_free_ctx(ctx_id);
                 return Err(Error::Libkrun(format!("Failed to set root: {}", status)));
             }
         }
@@ -203,7 +195,6 @@ impl VmManager {
             unsafe {
                 let status = ffi::krun_add_virtiofs(ctx_id, tag.as_ptr(), host_path.as_ptr());
                 if status < 0 {
-                    ffi::krun_free_ctx(ctx_id);
                     return Err(Error::Libkrun(format!(
                         "Failed to add virtiofs mount: {}",
                         status
@@ -218,7 +209,6 @@ impl VmManager {
         unsafe {
             let status = ffi::krun_set_workdir(ctx_id, c_workdir.as_ptr());
             if status < 0 {
-                ffi::krun_free_ctx(ctx_id);
                 return Err(Error::Libkrun(format!(
                     "Failed to set workdir: {}",
                     status
@@ -264,7 +254,6 @@ impl VmManager {
                 c_env_ptrs.as_ptr(),
             );
             if status < 0 {
-                ffi::krun_free_ctx(ctx_id);
                 return Err(Error::Libkrun(format!("Failed to set exec: {}", status)));
             }
         }
@@ -280,6 +269,9 @@ impl VmManager {
                 eprintln!("Warning: Failed to set console output: {}", status);
             }
         }
+
+        // Consume the context before starting (krun_start_enter takes ownership)
+        let ctx_id = ctx.consume();
 
         // Start the VM - this will take over the process
         eprintln!("Starting microVM with libkrun...");

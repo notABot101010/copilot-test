@@ -166,6 +166,51 @@ pub fn to_null_terminated_c_array(strings: &[std::ffi::CString]) -> Vec<*const c
     ptrs
 }
 
+/// RAII wrapper for libkrun context that automatically frees the context on drop
+#[cfg(feature = "libkrun")]
+pub struct KrunContext {
+    ctx_id: u32,
+    /// If true, the context has been consumed (e.g., by krun_start_enter) and should not be freed
+    consumed: bool,
+}
+
+#[cfg(feature = "libkrun")]
+impl KrunContext {
+    /// Create a new libkrun context
+    pub fn new() -> Result<Self, i32> {
+        let ctx_id = unsafe { krun_create_ctx() };
+        if ctx_id < 0 {
+            return Err(ctx_id);
+        }
+        Ok(Self {
+            ctx_id: ctx_id as u32,
+            consumed: false,
+        })
+    }
+
+    /// Get the context ID
+    pub fn id(&self) -> u32 {
+        self.ctx_id
+    }
+
+    /// Mark the context as consumed (will not be freed on drop)
+    pub fn consume(mut self) -> u32 {
+        self.consumed = true;
+        self.ctx_id
+    }
+}
+
+#[cfg(feature = "libkrun")]
+impl Drop for KrunContext {
+    fn drop(&mut self) {
+        if !self.consumed {
+            unsafe {
+                krun_free_ctx(self.ctx_id);
+            }
+        }
+    }
+}
+
 /// Check if libkrun is available at runtime
 #[cfg(feature = "libkrun")]
 pub fn is_libkrun_available() -> bool {
