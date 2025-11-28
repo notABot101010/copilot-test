@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["base64", "hex", "base32"]
+members = ["base64", "hex", "base32", "scaleway"]
 
 [workspace.dependencies]
 criterion = { version = "0.7", features = ["html_reports"] }
