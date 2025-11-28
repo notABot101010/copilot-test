@@ -1,4 +1,3 @@
-import { useState } from 'preact/hooks'
 import viteLogo from '/vite.svg'
 import './app.css'
 import { createRouter, RouterProvider, RouterView, useRoute, useRouter } from '@copilot-test/preact-router';
