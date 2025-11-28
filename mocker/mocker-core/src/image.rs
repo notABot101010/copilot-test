@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use uuid::Uuid;
 
 /// Image configuration metadata (cmd, entrypoint, workdir, env)
 type ImageConfig = (Vec<String>, Vec<String>, String, Vec<String>);
@@ -212,6 +213,9 @@ impl ImageManager {
             return Err(Error::OciRegistry("podman not available".to_string()));
         }
 
+        // Generate unique container name to avoid conflicts
+        let container_name = format!("mocker_temp_{}", Uuid::new_v4().simple());
+
         // Pull the image
         let output = Command::new("podman").args(["pull", image_name]).output()?;
 
@@ -223,7 +227,7 @@ impl ImageManager {
 
         // Create a container
         let output = Command::new("podman")
-            .args(["create", "--name", "mocker_temp_container", image_name])
+            .args(["create", "--name", &container_name, image_name])
             .output()?;
 
         if !output.status.success() {
@@ -235,14 +239,12 @@ impl ImageManager {
         // Export the container filesystem
         let tar_path = rootfs_path.parent().unwrap().join("rootfs.tar");
         let output = Command::new("podman")
-            .args(["export", "mocker_temp_container", "-o"])
+            .args(["export", &container_name, "-o"])
             .arg(&tar_path)
             .output()?;
 
         // Clean up container
-        let _ = Command::new("podman")
-            .args(["rm", "mocker_temp_container"])
-            .output();
+        let _ = Command::new("podman").args(["rm", &container_name]).output();
 
         if !output.status.success() {
             return Err(Error::OciRegistry(
@@ -286,6 +288,9 @@ impl ImageManager {
             return Err(Error::OciRegistry("docker not available".to_string()));
         }
 
+        // Generate unique container name to avoid conflicts
+        let container_name = format!("mocker_temp_{}", Uuid::new_v4().simple());
+
         // Pull the image
         let output = Command::new("docker").args(["pull", image_name]).output()?;
 
@@ -297,7 +302,7 @@ impl ImageManager {
 
         // Create a container
         let output = Command::new("docker")
-            .args(["create", "--name", "mocker_temp_container", image_name])
+            .args(["create", "--name", &container_name, image_name])
             .output()?;
 
         if !output.status.success() {
@@ -309,14 +314,12 @@ impl ImageManager {
         // Export the container filesystem
         let tar_path = rootfs_path.parent().unwrap().join("rootfs.tar");
         let output = Command::new("docker")
-            .args(["export", "mocker_temp_container", "-o"])
+            .args(["export", &container_name, "-o"])
             .arg(&tar_path)
             .output()?;
 
         // Clean up container
-        let _ = Command::new("docker")
-            .args(["rm", "mocker_temp_container"])
-            .output();
+        let _ = Command::new("docker").args(["rm", &container_name]).output();
 
         if !output.status.success() {
             return Err(Error::OciRegistry(

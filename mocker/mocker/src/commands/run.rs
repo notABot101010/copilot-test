@@ -31,8 +31,12 @@ pub fn run(
             parsed_env.push((key.to_string(), value.to_string()));
         } else {
             // Environment variable without value - check host environment
-            if let Ok(value) = std::env::var(e) {
-                parsed_env.push((e.clone(), value));
+            match std::env::var(e) {
+                Ok(value) => parsed_env.push((e.clone(), value)),
+                Err(_) => eprintln!(
+                    "Warning: environment variable '{}' not found in host environment",
+                    e
+                ),
             }
         }
     }

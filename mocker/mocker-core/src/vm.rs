@@ -8,6 +8,9 @@ use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+/// Default PATH environment variable for guest VMs
+const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+
 /// Manager for microVM operations
 pub struct VmManager {
     /// Image manager for OCI images
@@ -301,9 +304,7 @@ impl VmManager {
 
         // Add default PATH if not set
         if !env_vars.iter().any(|e| e.starts_with("PATH=")) {
-            env_vars.push(
-                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string(),
-            );
+            env_vars.push(format!("PATH={}", DEFAULT_PATH));
         }
 
         let oci_config = serde_json::json!({

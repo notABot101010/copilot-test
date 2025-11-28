@@ -137,11 +137,12 @@ impl StateManager {
 
     /// Check if a process exists
     fn process_exists(pid: u32) -> bool {
-        use nix::sys::signal::{kill, Signal};
+        use nix::sys::signal::kill;
         use nix::unistd::Pid;
 
         // Sending signal 0 checks if the process exists without affecting it
-        kill(Pid::from_raw(pid as i32), Signal::SIGCONT).is_ok()
+        // Using None as the signal sends signal 0
+        kill(Pid::from_raw(pid as i32), None).is_ok()
     }
 
     /// List all VM states
