@@ -1,8 +1,9 @@
 import { useState, useEffect, useContext } from 'preact/hooks';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
 import { effect } from '@preact/signals';
+import { useMediaQuery } from '@mantine/hooks';
 import { ChatContext } from '../context';
-import { ServerSidebar, ChannelList, ChatArea, MemberList, ResizableSidebar } from '../components';
+import { ServerSidebar, ChannelList, ChatArea, MemberList, ResizableSidebar, MobileHeader } from '../components';
 import type { Channel, User } from '../types';
 
 export function ChannelPage() {
@@ -14,6 +15,8 @@ export function ChannelPage() {
   const [showMembers, setShowMembers] = useState(true);
   const [currentServerId, setCurrentServerId] = useState<string | null>(null);
   const [currentChannelId, setCurrentChannelId] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   // Subscribe to route changes
   useEffect(() => {
@@ -52,36 +55,76 @@ export function ChannelPage() {
 
   function handleSelectChannel(id: string) {
     router.push(`/server/${currentServerId}/channels/${id}`);
+    setMobileMenuOpen(false);
   }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#313338]">
-      <ServerSidebar
-        servers={servers}
-        selectedServerId={currentServerId}
-        showDMs={false}
-      />
+      {/* Server sidebar - hidden on mobile, shown via drawer */}
+      {!isMobile && (
+        <ServerSidebar
+          servers={servers}
+          selectedServerId={currentServerId}
+          showDMs={false}
+        />
+      )}
       {selectedServer && (
-        <ResizableSidebar minWidth={200} maxWidth={400} defaultWidth={240}>
-          <ChannelList
-            server={selectedServer}
-            channels={channels}
-            selectedChannelId={currentChannelId}
-            onSelectChannel={handleSelectChannel}
-          />
+        <ResizableSidebar 
+          minWidth={200} 
+          maxWidth={400} 
+          defaultWidth={240}
+          mobileOpen={mobileMenuOpen}
+          onMobileClose={() => setMobileMenuOpen(false)}
+        >
+          {/* Show ServerSidebar inside drawer on mobile */}
+          {isMobile && (
+            <div className="flex h-full">
+              <ServerSidebar
+                servers={servers}
+                selectedServerId={currentServerId}
+                showDMs={false}
+              />
+              <ChannelList
+                server={selectedServer}
+                channels={channels}
+                selectedChannelId={currentChannelId}
+                onSelectChannel={handleSelectChannel}
+              />
+            </div>
+          )}
+          {/* Show only ChannelList on desktop */}
+          {!isMobile && (
+            <ChannelList
+              server={selectedServer}
+              channels={channels}
+              selectedChannelId={currentChannelId}
+              onSelectChannel={handleSelectChannel}
+            />
+          )}
         </ResizableSidebar>
       )}
-      {selectedChannel ? (
-        <ChatArea
-          key={currentChannelId}
-          channel={selectedChannel}
-          currentUser={currentUser}
-          chatService={chatService}
-          onToggleMembers={() => setShowMembers(!showMembers)}
-          showMembers={showMembers}
-        />
-      ) : null}
-      {selectedServer && showMembers && (
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Mobile header */}
+        {isMobile && (
+          <MobileHeader
+            server={selectedServer || null}
+            channel={selectedChannel || null}
+            showDMs={false}
+            onMenuClick={() => setMobileMenuOpen(true)}
+          />
+        )}
+        {selectedChannel ? (
+          <ChatArea
+            key={currentChannelId}
+            channel={selectedChannel}
+            currentUser={currentUser}
+            chatService={chatService}
+            onToggleMembers={() => setShowMembers(!showMembers)}
+            showMembers={showMembers}
+          />
+        ) : null}
+      </div>
+      {selectedServer && showMembers && !isMobile && (
         <MemberList
           members={members}
           currentUserId={currentUser.id}
