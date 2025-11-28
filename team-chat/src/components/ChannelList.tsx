@@ -52,7 +52,7 @@ export function ChannelList({ server, channels, selectedChannelId, onSelectChann
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#2b2d31] w-60 shrink-0">
+    <div className="flex flex-col h-full bg-[#2b2d31] w-full">
       {/* Server header */}
       <div className="flex items-center justify-between px-4 h-12 border-b border-[#1f2023] shadow-sm cursor-pointer hover:bg-[#35373c]">
         <Text fw={600} size="sm" className="text-white truncate">
