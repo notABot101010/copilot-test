@@ -138,7 +138,7 @@ async fn serve(
         authorized_keys,
     );
 
-    server.run().await.map_err(|e| e.to_string())?;
+    server.run().await.map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
     Ok(())
 }

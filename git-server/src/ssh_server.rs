@@ -154,6 +154,13 @@ impl russh::server::Handler for GitSessionHandler {
             return Ok(());
         }
 
+        // Validate repository name contains no path traversal sequences
+        if repo_name.contains("..") || repo_name.starts_with('/') || repo_name.contains('\0') {
+            eprintln!("Invalid repository name (potential path traversal): {}", repo_name);
+            session.channel_failure(channel)?;
+            return Ok(());
+        }
+
         // Look up repository
         let repo = match self.db.get_repository(repo_name).await {
             Ok(Some(repo)) => repo,
@@ -169,11 +176,41 @@ impl russh::server::Handler for GitSessionHandler {
             }
         };
 
+        // Validate that the repository path doesn't contain path traversal
+        if repo.path.contains("..") || repo.path.starts_with('/') {
+            eprintln!("Invalid repository path in database: {}", repo.path);
+            session.channel_failure(channel)?;
+            return Ok(());
+        }
+
         let repo_path = self.repos_path.join(&repo.path);
+
+        // Verify the resolved path is within the repos directory
+        let canonical_repos = match self.repos_path.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Failed to canonicalize repos path: {}", e);
+                session.channel_failure(channel)?;
+                return Ok(());
+            }
+        };
+        let canonical_repo = match repo_path.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Failed to canonicalize repository path: {}", e);
+                session.channel_failure(channel)?;
+                return Ok(());
+            }
+        };
+        if !canonical_repo.starts_with(&canonical_repos) {
+            eprintln!("Repository path escape attempt: {:?}", canonical_repo);
+            session.channel_failure(channel)?;
+            return Ok(());
+        }
 
         // Spawn git process
         let child = Command::new(git_cmd)
-            .arg(&repo_path)
+            .arg(&canonical_repo)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -203,7 +240,8 @@ impl russh::server::Handler for GitSessionHandler {
 
         if let Some(child) = processes.get_mut(&channel) {
             if let Some(stdin) = child.stdin.as_mut() {
-                if stdin.write_all(data).await.is_err() {
+                if let Err(e) = stdin.write_all(data).await {
+                    eprintln!("Failed to write to git process stdin: {}", e);
                     session.channel_failure(channel)?;
                 }
             }
@@ -223,17 +261,36 @@ impl russh::server::Handler for GitSessionHandler {
             // Close stdin to signal end of input
             drop(child.stdin.take());
 
-            // Read stdout and send to client
+            // Read stdout and send to client in chunks to handle large repositories
             if let Some(mut stdout) = child.stdout.take() {
-                let mut buffer = Vec::new();
-                if stdout.read_to_end(&mut buffer).await.is_ok() && !buffer.is_empty() {
-                    session.data(channel, CryptoVec::from(buffer))?;
+                const CHUNK_SIZE: usize = 32768; // 32KB chunks
+                let mut buffer = vec![0u8; CHUNK_SIZE];
+                loop {
+                    match stdout.read(&mut buffer).await {
+                        Ok(0) => break, // EOF
+                        Ok(n) => {
+                            session.data(channel, CryptoVec::from(&buffer[..n]))?;
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to read git process stdout: {}", e);
+                            break;
+                        }
+                    }
                 }
             }
 
             // Wait for process to finish
-            let status = child.wait().await.ok();
-            let exit_code = status.and_then(|s| s.code()).unwrap_or(1) as u32;
+            let status = child.wait().await;
+            let exit_code = match status {
+                Ok(s) => s.code().unwrap_or_else(|| {
+                    // Process was terminated by signal
+                    if s.success() { 0 } else { 1 }
+                }) as u32,
+                Err(e) => {
+                    eprintln!("Failed to wait for git process: {}", e);
+                    1
+                }
+            };
 
             session.exit_status_request(channel, exit_code)?;
             session.close(channel)?;

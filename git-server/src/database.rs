@@ -57,6 +57,7 @@ impl Database {
     }
 
     /// List all repositories
+    #[allow(dead_code)]
     pub async fn list_repositories(&self) -> Result<Vec<Repository>, sqlx::Error> {
         let rows = sqlx::query("SELECT id, name, path FROM repositories")
             .fetch_all(&self.pool)
@@ -75,6 +76,7 @@ impl Database {
 
 /// Repository model
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Repository {
     pub id: i64,
     pub name: String,
