@@ -3,7 +3,7 @@ import { useRoute, useRouter } from '@copilot-test/preact-router';
 import { effect } from '@preact/signals';
 import { useMediaQuery } from '@mantine/hooks';
 import { ChatContext } from '../context';
-import { ServerSidebar, ChannelList, ChatArea, MemberList, ResizableSidebar, MobileHeader } from '../components';
+import { ServerSidebar, ChannelList, ChatArea, MemberList, ResizableSidebar, MobileHeader, MOBILE_BREAKPOINT } from '../components';
 import type { Channel, User } from '../types';
 
 export function ChannelPage() {
@@ -16,7 +16,7 @@ export function ChannelPage() {
   const [currentServerId, setCurrentServerId] = useState<string | null>(null);
   const [currentChannelId, setCurrentChannelId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  const isMobile = useMediaQuery(`(max-width: ${MOBILE_BREAKPOINT})`);
 
   // Subscribe to route changes
   useEffect(() => {

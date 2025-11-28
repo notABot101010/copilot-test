@@ -1,7 +1,6 @@
 import { useState, useContext } from 'preact/hooks';
 import { ChatContext } from '../context';
-import { DirectMessageList, ResizableSidebar, MobileHeader } from '../components';
-import { ServerSidebar } from '../components';
+import { DirectMessageList, ResizableSidebar, MobileHeader, ServerSidebar, MOBILE_BREAKPOINT } from '../components';
 import { Text } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconMessages } from '@tabler/icons-react';
@@ -9,7 +8,7 @@ import { IconMessages } from '@tabler/icons-react';
 export function HomePage() {
   const chatContext = useContext(ChatContext);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  const isMobile = useMediaQuery(`(max-width: ${MOBILE_BREAKPOINT})`);
 
   if (!chatContext || !chatContext.currentUser) {
     return null;

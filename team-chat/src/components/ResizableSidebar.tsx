@@ -3,6 +3,9 @@ import type { ComponentChildren } from 'preact';
 import { Drawer } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 
+/** Breakpoint for mobile responsive behavior */
+export const MOBILE_BREAKPOINT = '768px';
+
 interface ResizableSidebarProps {
   children: ComponentChildren;
   minWidth?: number;
@@ -23,7 +26,7 @@ export function ResizableSidebar({
   const [width, setWidth] = useState(defaultWidth);
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  const isMobile = useMediaQuery(`(max-width: ${MOBILE_BREAKPOINT})`);
 
   const startResizing = useCallback((e: MouseEvent) => {
     e.preventDefault();
