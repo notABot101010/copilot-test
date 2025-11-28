@@ -9,9 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@emotion/react": "^11.14.0",
     "@mantine/core": "^8.3.9",
     "@mantine/hooks": "^8.3.9",
+    "@tabler/icons-react": "^3.35.0",
     "preact": "^10.27.2",
     "preact-iso": "^2.11.0"
   },

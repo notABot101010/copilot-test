@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import { Avatar, TextInput, ActionIcon, Text } from '@mantine/core';
+import { IconDotsVertical, IconSearch } from '@tabler/icons-react';
 import { ConversationItem } from './ConversationItem';
 import type { Conversation, User } from '../types';
 
@@ -27,36 +28,27 @@ export function Sidebar({
   });
 
   return (
-    <div class={`flex flex-col h-full bg-white ${isMobileView ? 'w-full' : 'w-full md:w-96 border-r border-gray-200'}`}>
+    <div className={`flex flex-col h-full bg-white ${isMobileView ? 'w-full' : 'w-full md:w-96 border-r border-gray-200'}`}>
       {/* Header */}
-      <div class="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200">
-        <div class="flex items-center gap-3">
+      <div className="flex items-center justify-between p-4 bg-gray-50 border-b border-gray-200">
+        <div className="flex items-center gap-3">
           <Avatar src={currentUser.avatar} alt={currentUser.name} size="md" radius="xl" />
           <Text fw={500}>{currentUser.name}</Text>
         </div>
-        <div class="flex gap-2">
+        <div className="flex gap-2">
           <ActionIcon variant="subtle" color="gray" size="lg">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="1" />
-              <circle cx="19" cy="12" r="1" />
-              <circle cx="5" cy="12" r="1" />
-            </svg>
+            <IconDotsVertical size={20} />
           </ActionIcon>
         </div>
       </div>
       
       {/* Search */}
-      <div class="p-2 bg-white">
+      <div className="p-2 bg-white">
         <TextInput
           placeholder="Search or start new chat"
           value={searchQuery}
           onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
-          leftSection={
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
-          }
+          leftSection={<IconSearch size={16} />}
           size="sm"
           radius="lg"
           styles={{
@@ -69,9 +61,9 @@ export function Sidebar({
       </div>
       
       {/* Conversations List */}
-      <div class="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto">
         {filteredConversations.length === 0 ? (
-          <div class="flex items-center justify-center h-32">
+          <div className="flex items-center justify-center h-32">
             <Text c="dimmed" size="sm">No conversations found</Text>
           </div>
         ) : (

@@ -36,19 +36,19 @@ export function ConversationItem({ conversation, currentUser, isSelected, onClic
   return (
     <div
       onClick={onClick}
-      class={`flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-100 transition-colors ${
+      className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-100 transition-colors ${
         isSelected ? 'bg-gray-100' : ''
       }`}
     >
-      <div class="relative">
+      <div className="relative">
         <Avatar src={avatar} alt={displayName} size="lg" radius="xl" />
         {!conversation.isGroup && otherUser.status === 'online' && (
-          <div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+          <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
         )}
       </div>
       
-      <div class="flex-1 min-w-0">
-        <div class="flex justify-between items-center">
+      <div className="flex-1 min-w-0">
+        <div className="flex justify-between items-center">
           <Text fw={conversation.unreadCount > 0 ? 700 : 400} size="sm" truncate>
             {displayName}
           </Text>
@@ -57,17 +57,17 @@ export function ConversationItem({ conversation, currentUser, isSelected, onClic
           </Text>
         </div>
         
-        <div class="flex justify-between items-center mt-0.5">
-          <Text size="xs" c="dimmed" truncate class="flex-1">
+        <div className="flex justify-between items-center mt-0.5">
+          <Text size="xs" c="dimmed" truncate className="flex-1">
             {conversation.lastMessage?.senderId === currentUser.id && (
-              <span class="text-blue-500 mr-1">
+              <span className="text-blue-500 mr-1">
                 {conversation.lastMessage.status === 'read' ? '✓✓' : conversation.lastMessage.status === 'delivered' ? '✓✓' : '✓'}
               </span>
             )}
             {conversation.lastMessage?.content || 'No messages yet'}
           </Text>
           {conversation.unreadCount > 0 && (
-            <Badge size="sm" circle color="teal" class="ml-2">
+            <Badge size="sm" circle color="teal" className="ml-2">
               {conversation.unreadCount}
             </Badge>
           )}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { Avatar, TextInput, ActionIcon, Text, Loader } from '@mantine/core';
+import { IconArrowLeft, IconPhone, IconDotsVertical, IconMoodSmile, IconPaperclip, IconSend } from '@tabler/icons-react';
 import { MessageBubble } from './MessageBubble';
 import type { Conversation, Message, User } from '../types';
 import type { ChatApiInterface } from '../types';
@@ -93,20 +94,18 @@ export function ChatView({ conversation, currentUser, chatService, onBack, isMob
   }
   
   return (
-    <div class="flex flex-col h-full bg-[#efeae2]">
+    <div className="flex flex-col h-full w-full bg-[#efeae2]">
       {/* Header */}
-      <div class="flex items-center gap-3 p-3 bg-gray-50 border-b border-gray-200">
+      <div className="flex items-center gap-3 p-3 bg-gray-50 border-b border-gray-200">
         {isMobileView && onBack && (
           <ActionIcon variant="subtle" color="gray" size="lg" onClick={onBack}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="m15 18-6-6 6-6" />
-            </svg>
+            <IconArrowLeft size={20} />
           </ActionIcon>
         )}
         
         <Avatar src={avatar} alt={displayName} size="md" radius="xl" />
         
-        <div class="flex-1">
+        <div className="flex-1">
           <Text fw={500} size="sm">{displayName}</Text>
           <Text size="xs" c="dimmed">
             {!conversation.isGroup && (
@@ -120,26 +119,20 @@ export function ChatView({ conversation, currentUser, chatService, onBack, isMob
           </Text>
         </div>
         
-        <div class="flex gap-1">
+        <div className="flex gap-1">
           <ActionIcon variant="subtle" color="gray" size="lg">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-            </svg>
+            <IconPhone size={20} />
           </ActionIcon>
           <ActionIcon variant="subtle" color="gray" size="lg">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="1" />
-              <circle cx="19" cy="12" r="1" />
-              <circle cx="5" cy="12" r="1" />
-            </svg>
+            <IconDotsVertical size={20} />
           </ActionIcon>
         </div>
       </div>
       
       {/* Messages */}
-      <div class="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4">
         {loading ? (
-          <div class="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center h-full">
             <Loader color="teal" />
           </div>
         ) : (
@@ -159,20 +152,13 @@ export function ChatView({ conversation, currentUser, chatService, onBack, isMob
       </div>
       
       {/* Input */}
-      <div class="flex items-center gap-2 p-3 bg-gray-50 border-t border-gray-200">
+      <div className="flex items-center gap-2 p-3 bg-gray-50 border-t border-gray-200">
         <ActionIcon variant="subtle" color="gray" size="lg">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-            <line x1="9" x2="9.01" y1="9" y2="9" />
-            <line x1="15" x2="15.01" y1="9" y2="9" />
-          </svg>
+          <IconMoodSmile size={20} />
         </ActionIcon>
         
         <ActionIcon variant="subtle" color="gray" size="lg">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-          </svg>
+          <IconPaperclip size={20} />
         </ActionIcon>
         
         <TextInput
@@ -180,7 +166,7 @@ export function ChatView({ conversation, currentUser, chatService, onBack, isMob
           value={newMessage}
           onChange={(e) => setNewMessage((e.target as HTMLInputElement).value)}
           onKeyPress={handleKeyPress}
-          class="flex-1"
+          className="flex-1"
           size="md"
           radius="lg"
           styles={{
@@ -199,10 +185,7 @@ export function ChatView({ conversation, currentUser, chatService, onBack, isMob
           loading={sending}
           disabled={!newMessage.trim()}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="m22 2-7 20-4-9-9-4Z" />
-            <path d="M22 2 11 13" />
-          </svg>
+          <IconSend size={18} />
         </ActionIcon>
       </div>
     </div>
