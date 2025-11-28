@@ -11,10 +11,11 @@ The project is split into two crates as requested:
 ### mocker-core
 
 The core library that handles:
+- **FFI Bindings**: Direct Rust FFI bindings for libkrun (no CLI shelling out)
 - **VmConfig**: Configuration for microVMs (vCPUs, memory, volumes, environment variables)
 - **ImageManager**: OCI image pulling and management
 - **StateManager**: Persistence of VM state (running, stopped, failed)
-- **VmManager**: High-level VM lifecycle management
+- **VmManager**: High-level VM lifecycle management using libkrun FFI
 
 ### mocker (CLI)
 
@@ -29,6 +30,21 @@ The command-line interface using clap derive:
 
 ## Implementation Details
 
+### libkrun Integration (FFI)
+
+The implementation uses direct FFI bindings to libkrun, similar to how [microsandbox](https://github.com/zerocore-ai/microsandbox) does it. The FFI module (`mocker-core/src/ffi.rs`) defines the following libkrun functions:
+
+- `krun_create_ctx()` - Create a VM context
+- `krun_set_vm_config()` - Configure vCPUs and RAM
+- `krun_set_root()` - Set the root filesystem
+- `krun_add_virtiofs()` - Add virtio-fs mounts for volumes
+- `krun_set_workdir()` - Set the working directory
+- `krun_set_exec()` - Set the executable, arguments, and environment
+- `krun_set_console_output()` - Configure console output
+- `krun_start_enter()` - Start the VM
+
+The implementation uses `#[link(name = "krun")]` to link against the installed libkrun library. This is guarded by a `libkrun` feature flag - when the feature is not enabled, the code falls back to a simulation mode using `unshare`.
+
 ### Image Pulling
 
 The image pulling system supports multiple container tools in order of preference:
@@ -40,11 +56,11 @@ Images are extracted to a rootfs directory structure that can be used directly b
 
 ### Volume Mounting
 
-Volume mounting uses the Docker-style `-v host_path:guest_path` syntax. When running with libkrun, these are exposed via virtio-fs for efficient host-guest file sharing.
+Volume mounting uses the Docker-style `-v host_path:guest_path` syntax. When running with libkrun, these are exposed via virtio-fs using `krun_add_virtiofs()` for efficient host-guest file sharing.
 
 ### Detached Mode
 
-The `-d` flag allows running VMs in the background. The VM process is daemonized using `setsid()` and its PID is tracked in the state file.
+The `-d` flag allows running VMs in the background. For libkrun, this is handled by forking the process before calling `krun_start_enter()`. The VM process is daemonized using `setsid()` and its PID is tracked in the state file.
 
 ### State Management
 
@@ -54,16 +70,28 @@ VM state is persisted in JSON files under `~/.local/share/mocker/state/<vm-id>/`
 - Status (creating, running, stopped, failed)
 - Creation timestamp
 
+## Building with libkrun
+
+To build with libkrun support, you need:
+
+1. Install libkrun and libkrunfw on your system
+2. Build with the `libkrun` feature:
+
+```bash
+cd mocker
+cargo build --release --features libkrun
+```
+
+Without the `libkrun` feature, the tool falls back to simulation mode using `unshare`.
+
 ## Limitations
 
-### libkrun Availability
+### libkrun Installation
 
-The primary limitation is that libkrun is not widely packaged. The implementation:
-1. First tries `krun` (CLI wrapper for libkrun)
-2. Falls back to `crun --runtime=krun` (OCI runtime)
-3. Falls back to a simulated mode using `unshare` (requires privileges)
-
-In environments without libkrun, the tool runs in simulation mode which uses Linux namespaces directly instead of virtualization.
+libkrun must be installed on the system for VM execution. On most systems, you can:
+- On Fedora/RHEL: `dnf install libkrun libkrunfw`
+- On macOS: Build from source with HVF support
+- From source: Follow instructions at https://github.com/containers/libkrun
 
 ### Root Privileges
 
@@ -77,6 +105,7 @@ While the code is designed to be cross-platform:
 - libkrun requires the EFI variant on macOS
 - Image pulling works on macOS if Docker/podman is available
 - VM execution requires libkrun to be properly installed with HVF entitlements
+- Binary must be signed with hypervisor entitlements
 
 ### No Native Networking
 
@@ -95,26 +124,26 @@ All dependencies are well-maintained crates with high download counts:
 - **thiserror** (2.0.x) - Error handling derive macro
 - **uuid** (1.18.x) - UUID generation for VM IDs
 - **nix** (0.30.x) - Unix system call bindings
+- **libc** (0.2.x) - C library bindings for FFI
 
 ## Future Improvements
 
 ### Short-term
 
-1. **Add proper libkrun bindings**: Create or use existing Rust bindings for libkrun instead of shelling out
-2. **Better error messages**: Provide more helpful guidance when required tools are missing
-3. **Logging**: Add structured logging with configurable verbosity
-4. **Port mapping**: Implement `-p` flag for port forwarding (similar to Docker)
+1. **Better error messages**: Provide more helpful guidance when libkrun is not installed
+2. **Logging**: Add structured logging with configurable verbosity
+3. **Port mapping**: Implement `-p` flag for port forwarding using `krun_set_port_map()`
 
 ### Medium-term
 
 1. **Image layers**: Support proper OCI image layer caching to avoid re-downloading
 2. **Build support**: Add `mocker build` command for building images
 3. **Network modes**: Support different networking backends (TSI, passt, gvproxy)
-4. **Resource limits**: Better control over CPU and memory limits
+4. **Resource limits**: Better control over CPU and memory limits using `krun_set_rlimits()`
 
 ### Long-term
 
-1. **GPU passthrough**: Support virtio-gpu for GPU-accelerated workloads
+1. **GPU passthrough**: Support virtio-gpu using `krun_set_gpu_options()`
 2. **Compose support**: A Docker Compose-like multi-VM orchestration
 3. **Remote API**: HTTP API for remote VM management
 4. **Checkpoint/restore**: Save and restore VM state
@@ -160,7 +189,12 @@ mocker rm <vm-id>
 
 ```bash
 cd mocker
+
+# Without libkrun (simulation mode only)
 cargo build --release
+
+# With libkrun support
+cargo build --release --features libkrun
 ```
 
 The binary will be at `target/release/mocker`.
@@ -169,6 +203,7 @@ The binary will be at `target/release/mocker`.
 
 ### Linux
 - Works best with libkrun and libkrunfw installed
+- Enable the `libkrun` feature flag when building
 - Fallback simulation mode uses unshare (requires root or user namespaces)
 
 ### macOS
@@ -176,8 +211,16 @@ The binary will be at `target/release/mocker`.
 - Requires macOS 14+ for HVF support
 - Binary must be signed with hypervisor entitlements
 
+## References
+
+- [libkrun](https://github.com/containers/libkrun) - The virtualization library used
+- [microsandbox](https://github.com/zerocore-ai/microsandbox) - Reference implementation for libkrun FFI usage
+
 ## Conclusion
 
-This implementation provides a solid foundation for a Docker-like microVM manager. The main work remaining is integrating proper libkrun bindings rather than the current shim approach, and adding networking features that would make it more useful for real workloads.
+This implementation provides a Docker-like microVM manager using direct libkrun FFI bindings. The architecture allows for:
+- Native libkrun integration via FFI (no CLI shelling out)
+- Feature-flag controlled compilation for systems without libkrun
+- Fallback simulation mode for development/testing
 
 The split architecture (core library + CLI) makes it easy to add alternative interfaces (TUI, GUI, API) in the future while reusing the core functionality.

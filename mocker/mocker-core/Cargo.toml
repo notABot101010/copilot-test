@@ -12,3 +12,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 nix = { workspace = true }
+libc = "0.2"
+
+[features]
+default = []
+# Enable libkrun integration (requires libkrun to be installed)
+libkrun = []
