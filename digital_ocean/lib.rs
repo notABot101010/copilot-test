@@ -61,6 +61,10 @@ pub enum Error {
     /// API error returned by DigitalOcean.
     #[error("API error (status {0}): {1}")]
     API(u16, ApiError),
+
+    /// URL parsing error.
+    #[error("URL parse error: {0}")]
+    UrlParse(#[from] url::ParseError),
 }
 
 /// API error structure from DigitalOcean.
