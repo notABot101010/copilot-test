@@ -153,7 +153,7 @@ export function RouterView({ name, props: additionalProps }: RouterViewProps = {
   const [loading, setLoading] = useState(false);
 
   // Subscribe to route changes using signals
-  effect(() => {
+  useSignalEffect(() => {
     const currentRoute = router.currentRoute.value;
     const matched = currentRoute.matched;
 
