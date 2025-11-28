@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{check_api_error, Client, Error, API_BASE_URL};
+use crate::{check_api_error, Client, Error, Url, API_BASE_URL};
 
 /// Account information.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -63,11 +63,11 @@ impl Client {
     /// # }
     /// ```
     pub async fn get_account(&self) -> Result<AccountResponse, Error> {
-        let url = format!("{}/account", API_BASE_URL);
+        let url = Url::parse(&format!("{}/account", API_BASE_URL)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;

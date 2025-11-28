@@ -14,18 +14,16 @@ fn test_api_base_url() {
 }
 
 #[test]
-fn test_url_encode() {
-    // Simple string should pass through
-    assert_eq!(url_encode("simple"), "simple");
-    assert_eq!(url_encode("hello-world"), "hello-world");
-    assert_eq!(url_encode("test_value"), "test_value");
-    
-    // Special characters should be encoded
-    assert_eq!(url_encode("hello world"), "hello%20world");
-    assert_eq!(url_encode("tag=value"), "tag%3Dvalue");
-    assert_eq!(url_encode("foo&bar"), "foo%26bar");
-    assert_eq!(url_encode("test+plus"), "test%2Bplus");
-    assert_eq!(url_encode("path/segment"), "path%2Fsegment");
+fn test_url_builder() {
+    // Test that Url can parse the base URL and add query parameters
+    let mut url = Url::parse(&format!("{}/droplets", API_BASE_URL)).expect("Invalid URL");
+    {
+        let mut query = url.query_pairs_mut();
+        query.append_pair("tag_name", "my tag");
+        query.append_pair("page", "1");
+    }
+    assert!(url.as_str().contains("tag_name=my+tag") || url.as_str().contains("tag_name=my%20tag"));
+    assert!(url.as_str().contains("page=1"));
 }
 
 #[test]

@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{check_api_error, Client, Error, API_BASE_URL};
+use crate::{check_api_error, Client, Error, Url, API_BASE_URL};
 
 /// A managed database cluster.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -189,11 +189,11 @@ impl Client {
     /// # }
     /// ```
     pub async fn list_database_clusters(&self) -> Result<ListDatabaseClustersResponse, Error> {
-        let url = format!("{}/databases", API_BASE_URL);
+        let url = Url::parse(&format!("{}/databases", API_BASE_URL)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -210,11 +210,11 @@ impl Client {
         &self,
         cluster_id: &str,
     ) -> Result<DatabaseClusterResponse, Error> {
-        let url = format!("{}/databases/{}", API_BASE_URL, cluster_id);
+        let url = Url::parse(&format!("{}/databases/{}", API_BASE_URL, cluster_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -252,11 +252,11 @@ impl Client {
         &self,
         request: CreateDatabaseClusterRequest,
     ) -> Result<DatabaseClusterResponse, Error> {
-        let url = format!("{}/databases", API_BASE_URL);
+        let url = Url::parse(&format!("{}/databases", API_BASE_URL)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .post(&url)
+            .post(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .json(&request)
             .send()
@@ -271,11 +271,11 @@ impl Client {
     ///
     /// * `cluster_id` - The ID of the database cluster to delete.
     pub async fn delete_database_cluster(&self, cluster_id: &str) -> Result<(), Error> {
-        let url = format!("{}/databases/{}", API_BASE_URL, cluster_id);
+        let url = Url::parse(&format!("{}/databases/{}", API_BASE_URL, cluster_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .delete(&url)
+            .delete(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -293,11 +293,11 @@ impl Client {
         &self,
         cluster_id: &str,
     ) -> Result<ListDatabaseUsersResponse, Error> {
-        let url = format!("{}/databases/{}/users", API_BASE_URL, cluster_id);
+        let url = Url::parse(&format!("{}/databases/{}/users", API_BASE_URL, cluster_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -316,11 +316,11 @@ impl Client {
         cluster_id: &str,
         request: CreateDatabaseUserRequest,
     ) -> Result<DatabaseUserResponse, Error> {
-        let url = format!("{}/databases/{}/users", API_BASE_URL, cluster_id);
+        let url = Url::parse(&format!("{}/databases/{}/users", API_BASE_URL, cluster_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .post(&url)
+            .post(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .json(&request)
             .send()
@@ -340,11 +340,11 @@ impl Client {
         cluster_id: &str,
         username: &str,
     ) -> Result<(), Error> {
-        let url = format!("{}/databases/{}/users/{}", API_BASE_URL, cluster_id, username);
+        let url = Url::parse(&format!("{}/databases/{}/users/{}", API_BASE_URL, cluster_id, username)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .delete(&url)
+            .delete(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -359,11 +359,11 @@ impl Client {
     ///
     /// * `cluster_id` - The ID of the database cluster.
     pub async fn list_databases(&self, cluster_id: &str) -> Result<ListDatabasesResponse, Error> {
-        let url = format!("{}/databases/{}/dbs", API_BASE_URL, cluster_id);
+        let url = Url::parse(&format!("{}/databases/{}/dbs", API_BASE_URL, cluster_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -382,11 +382,11 @@ impl Client {
         cluster_id: &str,
         request: CreateDatabaseRequest,
     ) -> Result<DatabaseResponse, Error> {
-        let url = format!("{}/databases/{}/dbs", API_BASE_URL, cluster_id);
+        let url = Url::parse(&format!("{}/databases/{}/dbs", API_BASE_URL, cluster_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .post(&url)
+            .post(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .json(&request)
             .send()
@@ -402,11 +402,11 @@ impl Client {
     /// * `cluster_id` - The ID of the database cluster.
     /// * `db_name` - The name of the database to delete.
     pub async fn delete_database(&self, cluster_id: &str, db_name: &str) -> Result<(), Error> {
-        let url = format!("{}/databases/{}/dbs/{}", API_BASE_URL, cluster_id, db_name);
+        let url = Url::parse(&format!("{}/databases/{}/dbs/{}", API_BASE_URL, cluster_id, db_name)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .delete(&url)
+            .delete(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;

@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{check_api_error, Client, Error, Links, Meta, API_BASE_URL};
+use crate::{check_api_error, Client, Error, Links, Meta, Url, API_BASE_URL};
 
 /// An SSH key stored in your DigitalOcean account.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -79,22 +79,21 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListSshKeysResponse, Error> {
-        let mut url = format!("{}/account/keys", API_BASE_URL);
-        let mut query_params = Vec::new();
+        let mut url = Url::parse(&format!("{}/account/keys", API_BASE_URL)).expect("Invalid URL");
 
-        if let Some(p) = page {
-            query_params.push(format!("page={}", p));
-        }
-        if let Some(pp) = per_page {
-            query_params.push(format!("per_page={}", pp));
-        }
-        if !query_params.is_empty() {
-            url = format!("{}?{}", url, query_params.join("&"));
+        {
+            let mut query = url.query_pairs_mut();
+            if let Some(p) = page {
+                query.append_pair("page", &p.to_string());
+            }
+            if let Some(pp) = per_page {
+                query.append_pair("per_page", &pp.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -108,11 +107,11 @@ impl Client {
     ///
     /// * `key_id` - The ID of the SSH key.
     pub async fn get_ssh_key_by_id(&self, key_id: u64) -> Result<SshKeyResponse, Error> {
-        let url = format!("{}/account/keys/{}", API_BASE_URL, key_id);
+        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, key_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -129,11 +128,11 @@ impl Client {
         &self,
         fingerprint: &str,
     ) -> Result<SshKeyResponse, Error> {
-        let url = format!("{}/account/keys/{}", API_BASE_URL, fingerprint);
+        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, fingerprint)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -165,11 +164,11 @@ impl Client {
         &self,
         request: CreateSshKeyRequest,
     ) -> Result<SshKeyResponse, Error> {
-        let url = format!("{}/account/keys", API_BASE_URL);
+        let url = Url::parse(&format!("{}/account/keys", API_BASE_URL)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .post(&url)
+            .post(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .json(&request)
             .send()
@@ -189,11 +188,11 @@ impl Client {
         key_id: u64,
         request: UpdateSshKeyRequest,
     ) -> Result<SshKeyResponse, Error> {
-        let url = format!("{}/account/keys/{}", API_BASE_URL, key_id);
+        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, key_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .put(&url)
+            .put(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .json(&request)
             .send()
@@ -208,11 +207,11 @@ impl Client {
     ///
     /// * `key_id` - The ID of the SSH key to delete.
     pub async fn delete_ssh_key_by_id(&self, key_id: u64) -> Result<(), Error> {
-        let url = format!("{}/account/keys/{}", API_BASE_URL, key_id);
+        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, key_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .delete(&url)
+            .delete(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -227,11 +226,11 @@ impl Client {
     ///
     /// * `fingerprint` - The MD5 fingerprint of the SSH key to delete.
     pub async fn delete_ssh_key_by_fingerprint(&self, fingerprint: &str) -> Result<(), Error> {
-        let url = format!("{}/account/keys/{}", API_BASE_URL, fingerprint);
+        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, fingerprint)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .delete(&url)
+            .delete(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;

@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{build_url, check_api_error, Client, Error, Links, Meta, API_BASE_URL};
+use crate::{check_api_error, Client, Error, Links, Meta, Url, API_BASE_URL};
 
 /// A domain registered in DigitalOcean DNS.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -172,7 +172,7 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListDomainsResponse, Error> {
-        let mut url = build_url(API_BASE_URL, "/domains");
+        let mut url = Url::parse(&format!("{}/domains", API_BASE_URL)).expect("Invalid URL");
 
         {
             let mut query = url.query_pairs_mut();
@@ -200,11 +200,11 @@ impl Client {
     ///
     /// * `domain_name` - The domain name.
     pub async fn get_domain(&self, domain_name: &str) -> Result<DomainResponse, Error> {
-        let url = format!("{}/domains/{}", API_BASE_URL, domain_name);
+        let url = Url::parse(&format!("{}/domains/{}", API_BASE_URL, domain_name)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -233,11 +233,11 @@ impl Client {
     /// # }
     /// ```
     pub async fn create_domain(&self, request: CreateDomainRequest) -> Result<DomainResponse, Error> {
-        let url = format!("{}/domains", API_BASE_URL);
+        let url = Url::parse(&format!("{}/domains", API_BASE_URL)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .post(&url)
+            .post(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .json(&request)
             .send()
@@ -252,11 +252,11 @@ impl Client {
     ///
     /// * `domain_name` - The domain name to delete.
     pub async fn delete_domain(&self, domain_name: &str) -> Result<(), Error> {
-        let url = format!("{}/domains/{}", API_BASE_URL, domain_name);
+        let url = Url::parse(&format!("{}/domains/{}", API_BASE_URL, domain_name)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .delete(&url)
+            .delete(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -278,22 +278,21 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListDomainRecordsResponse, Error> {
-        let mut url = format!("{}/domains/{}/records", API_BASE_URL, domain_name);
-        let mut query_params = Vec::new();
+        let mut url = Url::parse(&format!("{}/domains/{}/records", API_BASE_URL, domain_name)).expect("Invalid URL");
 
-        if let Some(p) = page {
-            query_params.push(format!("page={}", p));
-        }
-        if let Some(pp) = per_page {
-            query_params.push(format!("per_page={}", pp));
-        }
-        if !query_params.is_empty() {
-            url = format!("{}?{}", url, query_params.join("&"));
+        {
+            let mut query = url.query_pairs_mut();
+            if let Some(p) = page {
+                query.append_pair("page", &p.to_string());
+            }
+            if let Some(pp) = per_page {
+                query.append_pair("per_page", &pp.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -312,11 +311,11 @@ impl Client {
         domain_name: &str,
         record_id: u64,
     ) -> Result<DomainRecordResponse, Error> {
-        let url = format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id);
+        let url = Url::parse(&format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
@@ -357,11 +356,11 @@ impl Client {
         domain_name: &str,
         request: CreateDomainRecordRequest,
     ) -> Result<DomainRecordResponse, Error> {
-        let url = format!("{}/domains/{}/records", API_BASE_URL, domain_name);
+        let url = Url::parse(&format!("{}/domains/{}/records", API_BASE_URL, domain_name)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .post(&url)
+            .post(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .json(&request)
             .send()
@@ -383,11 +382,11 @@ impl Client {
         record_id: u64,
         request: UpdateDomainRecordRequest,
     ) -> Result<DomainRecordResponse, Error> {
-        let url = format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id);
+        let url = Url::parse(&format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .put(&url)
+            .put(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .json(&request)
             .send()
@@ -403,11 +402,11 @@ impl Client {
     /// * `domain_name` - The domain name.
     /// * `record_id` - The record ID.
     pub async fn delete_domain_record(&self, domain_name: &str, record_id: u64) -> Result<(), Error> {
-        let url = format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id);
+        let url = Url::parse(&format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id)).expect("Invalid URL");
 
         let res = self
             .http_client
-            .delete(&url)
+            .delete(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;

@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{check_api_error, Client, Error, Links, Meta, API_BASE_URL};
+use crate::{check_api_error, Client, Error, Links, Meta, Url, API_BASE_URL};
 
 /// A DigitalOcean region.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -53,22 +53,21 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListRegionsResponse, Error> {
-        let mut url = format!("{}/regions", API_BASE_URL);
-        let mut query_params = Vec::new();
+        let mut url = Url::parse(&format!("{}/regions", API_BASE_URL)).expect("Invalid URL");
 
-        if let Some(p) = page {
-            query_params.push(format!("page={}", p));
-        }
-        if let Some(pp) = per_page {
-            query_params.push(format!("per_page={}", pp));
-        }
-        if !query_params.is_empty() {
-            url = format!("{}?{}", url, query_params.join("&"));
+        {
+            let mut query = url.query_pairs_mut();
+            if let Some(p) = page {
+                query.append_pair("page", &p.to_string());
+            }
+            if let Some(pp) = per_page {
+                query.append_pair("per_page", &pp.to_string());
+            }
         }
 
         let res = self
             .http_client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.access_token))
             .send()
             .await?;
