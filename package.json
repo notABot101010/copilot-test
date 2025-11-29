@@ -1,0 +1,8 @@
+{
+  "name": "copilot-test-monorepo",
+  "private": true,
+  "workspaces": [
+    "preact-router",
+    "router-test"
+  ]
+}

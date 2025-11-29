@@ -1,14 +1,7 @@
 {
-    "name": "Rust Development Container",
-    "build": {
-        "dockerfile": "Dockerfile"
-    },
-    "remoteUser": "dev",
-    "customizations": {
-        "vscode": {
-            "extensions": [
-                "rust-lang.rust-analyzer"
-            ]
-        }
-    }
+  "dockerFile": "Dockerfile",
+  "extensions": [
+    "rust-lang.rust-analyzer"
+  ],
+  "forwardPorts": [4000, 4001, 4002, 4003]
 }
