@@ -198,8 +198,8 @@ async fn create_spreadsheet(
         .put_object(automerge::ROOT, "cells", automerge::ObjType::Map)
         .unwrap();
     let _ = cells; // cells is created but empty initially
-    doc.put(automerge::ROOT, "createdAt", now as f64).unwrap();
-    doc.put(automerge::ROOT, "updatedAt", now as f64).unwrap();
+    doc.put(automerge::ROOT, "createdAt", now).unwrap();
+    doc.put(automerge::ROOT, "updatedAt", now).unwrap();
 
     let binary = doc.save();
 

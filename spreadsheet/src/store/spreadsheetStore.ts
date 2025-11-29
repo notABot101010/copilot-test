@@ -103,6 +103,8 @@ export function redo(): void {
 }
 
 // Derived computed value for current spreadsheet data
+// Note: String() and Number() casts are required because Automerge returns
+// CRDT wrapper objects, not primitive JavaScript values
 export const currentSpreadsheet = computed<SpreadsheetData | null>(() => {
   const doc = currentSpreadsheetDoc.value;
   if (!doc) return null;
