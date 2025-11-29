@@ -15,9 +15,11 @@ export function HomePage() {
     try {
       loading.value = true;
       error.value = null;
-      repos.value = await listRepos();
+      const data = await listRepos();
+      repos.value = Array.isArray(data) ? data : [];
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load repositories';
+      repos.value = [];
     } finally {
       loading.value = false;
     }

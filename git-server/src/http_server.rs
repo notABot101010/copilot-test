@@ -243,7 +243,12 @@ async fn create_repo(
     }
     
     // Check if already exists
-    if state.db.get_repository(name).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?.is_some() {
+    let existing = state.db
+        .get_repository(name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    if existing.is_some() {
         return Err((StatusCode::CONFLICT, "Repository already exists".to_string()));
     }
     
@@ -401,16 +406,29 @@ async fn update_file(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     
     // Configure git user for this commit
-    let _ = Command::new("git")
+    let email_output = Command::new("git")
         .args(["config", "user.email", "webapp@git-server.local"])
         .current_dir(&temp_dir)
         .output()
-        .await;
-    let _ = Command::new("git")
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    if !email_output.status.success() {
+        let _ = fs::remove_dir_all(&temp_dir).await;
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to configure git user email".to_string()));
+    }
+    
+    let name_output = Command::new("git")
         .args(["config", "user.name", "Git Server Webapp"])
         .current_dir(&temp_dir)
         .output()
-        .await;
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    if !name_output.status.success() {
+        let _ = fs::remove_dir_all(&temp_dir).await;
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to configure git user name".to_string()));
+    }
     
     // Add the file
     let output = Command::new("git")
