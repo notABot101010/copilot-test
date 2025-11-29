@@ -63,7 +63,7 @@ impl Client {
     /// # }
     /// ```
     pub async fn get_account(&self) -> Result<AccountResponse, Error> {
-        let url = Url::parse(&format!("{}/account", API_BASE_URL)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/account", API_BASE_URL))?;
 
         let res = self
             .http_client

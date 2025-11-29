@@ -79,7 +79,7 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListSshKeysResponse, Error> {
-        let mut url = Url::parse(&format!("{}/account/keys", API_BASE_URL)).expect("Invalid URL");
+        let mut url = Url::parse(&format!("{}/account/keys", API_BASE_URL))?;
 
         {
             let mut query = url.query_pairs_mut();
@@ -107,7 +107,7 @@ impl Client {
     ///
     /// * `key_id` - The ID of the SSH key.
     pub async fn get_ssh_key_by_id(&self, key_id: u64) -> Result<SshKeyResponse, Error> {
-        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, key_id)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, key_id))?;
 
         let res = self
             .http_client
@@ -128,7 +128,7 @@ impl Client {
         &self,
         fingerprint: &str,
     ) -> Result<SshKeyResponse, Error> {
-        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, fingerprint)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, fingerprint))?;
 
         let res = self
             .http_client
@@ -164,7 +164,7 @@ impl Client {
         &self,
         request: CreateSshKeyRequest,
     ) -> Result<SshKeyResponse, Error> {
-        let url = Url::parse(&format!("{}/account/keys", API_BASE_URL)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/account/keys", API_BASE_URL))?;
 
         let res = self
             .http_client
@@ -188,7 +188,7 @@ impl Client {
         key_id: u64,
         request: UpdateSshKeyRequest,
     ) -> Result<SshKeyResponse, Error> {
-        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, key_id)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, key_id))?;
 
         let res = self
             .http_client
@@ -207,7 +207,7 @@ impl Client {
     ///
     /// * `key_id` - The ID of the SSH key to delete.
     pub async fn delete_ssh_key_by_id(&self, key_id: u64) -> Result<(), Error> {
-        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, key_id)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, key_id))?;
 
         let res = self
             .http_client
@@ -226,7 +226,7 @@ impl Client {
     ///
     /// * `fingerprint` - The MD5 fingerprint of the SSH key to delete.
     pub async fn delete_ssh_key_by_fingerprint(&self, fingerprint: &str) -> Result<(), Error> {
-        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, fingerprint)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/account/keys/{}", API_BASE_URL, fingerprint))?;
 
         let res = self
             .http_client

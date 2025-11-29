@@ -159,7 +159,7 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListVolumesResponse, Error> {
-        let mut url = Url::parse(&format!("{}/volumes", API_BASE_URL)).expect("Invalid URL");
+        let mut url = Url::parse(&format!("{}/volumes", API_BASE_URL))?;
 
         {
             let mut query = url.query_pairs_mut();
@@ -190,7 +190,7 @@ impl Client {
     ///
     /// * `volume_id` - The ID of the volume.
     pub async fn get_volume(&self, volume_id: &str) -> Result<VolumeResponse, Error> {
-        let url = Url::parse(&format!("{}/volumes/{}", API_BASE_URL, volume_id)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/volumes/{}", API_BASE_URL, volume_id))?;
 
         let res = self
             .http_client
@@ -229,7 +229,7 @@ impl Client {
     /// # }
     /// ```
     pub async fn create_volume(&self, request: CreateVolumeRequest) -> Result<VolumeResponse, Error> {
-        let url = Url::parse(&format!("{}/volumes", API_BASE_URL)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/volumes", API_BASE_URL))?;
 
         let res = self
             .http_client
@@ -248,7 +248,7 @@ impl Client {
     ///
     /// * `volume_id` - The ID of the volume to delete.
     pub async fn delete_volume(&self, volume_id: &str) -> Result<(), Error> {
-        let url = Url::parse(&format!("{}/volumes/{}", API_BASE_URL, volume_id)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/volumes/{}", API_BASE_URL, volume_id))?;
 
         let res = self
             .http_client
@@ -274,7 +274,7 @@ impl Client {
         droplet_id: u64,
         region: Option<&str>,
     ) -> Result<VolumeActionResponse, Error> {
-        let url = Url::parse(&format!("{}/volumes/{}/actions", API_BASE_URL, volume_id)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/volumes/{}/actions", API_BASE_URL, volume_id))?;
 
         let request = AttachVolumeRequest {
             action_type: "attach".to_string(),
@@ -306,7 +306,7 @@ impl Client {
         droplet_id: u64,
         region: Option<&str>,
     ) -> Result<VolumeActionResponse, Error> {
-        let url = Url::parse(&format!("{}/volumes/{}/actions", API_BASE_URL, volume_id)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/volumes/{}/actions", API_BASE_URL, volume_id))?;
 
         let request = AttachVolumeRequest {
             action_type: "detach".to_string(),

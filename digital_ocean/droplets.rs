@@ -277,7 +277,7 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListDropletsResponse, Error> {
-        let mut url = Url::parse(&format!("{}/droplets", API_BASE_URL)).expect("Invalid URL");
+        let mut url = Url::parse(&format!("{}/droplets", API_BASE_URL))?;
 
         {
             let mut query = url.query_pairs_mut();
@@ -316,7 +316,7 @@ impl Client {
     /// # }
     /// ```
     pub async fn get_droplet(&self, droplet_id: u64) -> Result<GetDropletResponse, Error> {
-        let url = Url::parse(&format!("{}/droplets/{}", API_BASE_URL, droplet_id)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/droplets/{}", API_BASE_URL, droplet_id))?;
 
         let res = self
             .http_client
@@ -361,7 +361,7 @@ impl Client {
         &self,
         request: CreateDropletRequest,
     ) -> Result<CreateDropletResponse, Error> {
-        let url = Url::parse(&format!("{}/droplets", API_BASE_URL)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/droplets", API_BASE_URL))?;
 
         let res = self
             .http_client
@@ -391,7 +391,7 @@ impl Client {
     /// # }
     /// ```
     pub async fn delete_droplet(&self, droplet_id: u64) -> Result<(), Error> {
-        let url = Url::parse(&format!("{}/droplets/{}", API_BASE_URL, droplet_id)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/droplets/{}", API_BASE_URL, droplet_id))?;
 
         let res = self
             .http_client
@@ -417,7 +417,7 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListDropletsResponse, Error> {
-        let mut url = Url::parse(&format!("{}/droplets", API_BASE_URL)).expect("Invalid URL");
+        let mut url = Url::parse(&format!("{}/droplets", API_BASE_URL))?;
 
         {
             let mut query = url.query_pairs_mut();

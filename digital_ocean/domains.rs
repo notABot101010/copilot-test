@@ -172,7 +172,7 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListDomainsResponse, Error> {
-        let mut url = Url::parse(&format!("{}/domains", API_BASE_URL)).expect("Invalid URL");
+        let mut url = Url::parse(&format!("{}/domains", API_BASE_URL))?;
 
         {
             let mut query = url.query_pairs_mut();
@@ -200,7 +200,7 @@ impl Client {
     ///
     /// * `domain_name` - The domain name.
     pub async fn get_domain(&self, domain_name: &str) -> Result<DomainResponse, Error> {
-        let url = Url::parse(&format!("{}/domains/{}", API_BASE_URL, domain_name)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/domains/{}", API_BASE_URL, domain_name))?;
 
         let res = self
             .http_client
@@ -233,7 +233,7 @@ impl Client {
     /// # }
     /// ```
     pub async fn create_domain(&self, request: CreateDomainRequest) -> Result<DomainResponse, Error> {
-        let url = Url::parse(&format!("{}/domains", API_BASE_URL)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/domains", API_BASE_URL))?;
 
         let res = self
             .http_client
@@ -252,7 +252,7 @@ impl Client {
     ///
     /// * `domain_name` - The domain name to delete.
     pub async fn delete_domain(&self, domain_name: &str) -> Result<(), Error> {
-        let url = Url::parse(&format!("{}/domains/{}", API_BASE_URL, domain_name)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/domains/{}", API_BASE_URL, domain_name))?;
 
         let res = self
             .http_client
@@ -278,7 +278,7 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListDomainRecordsResponse, Error> {
-        let mut url = Url::parse(&format!("{}/domains/{}/records", API_BASE_URL, domain_name)).expect("Invalid URL");
+        let mut url = Url::parse(&format!("{}/domains/{}/records", API_BASE_URL, domain_name))?;
 
         {
             let mut query = url.query_pairs_mut();
@@ -311,7 +311,7 @@ impl Client {
         domain_name: &str,
         record_id: u64,
     ) -> Result<DomainRecordResponse, Error> {
-        let url = Url::parse(&format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id))?;
 
         let res = self
             .http_client
@@ -356,7 +356,7 @@ impl Client {
         domain_name: &str,
         request: CreateDomainRecordRequest,
     ) -> Result<DomainRecordResponse, Error> {
-        let url = Url::parse(&format!("{}/domains/{}/records", API_BASE_URL, domain_name)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/domains/{}/records", API_BASE_URL, domain_name))?;
 
         let res = self
             .http_client
@@ -382,7 +382,7 @@ impl Client {
         record_id: u64,
         request: UpdateDomainRecordRequest,
     ) -> Result<DomainRecordResponse, Error> {
-        let url = Url::parse(&format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id))?;
 
         let res = self
             .http_client
@@ -402,7 +402,7 @@ impl Client {
     /// * `domain_name` - The domain name.
     /// * `record_id` - The record ID.
     pub async fn delete_domain_record(&self, domain_name: &str, record_id: u64) -> Result<(), Error> {
-        let url = Url::parse(&format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id)).expect("Invalid URL");
+        let url = Url::parse(&format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id))?;
 
         let res = self
             .http_client

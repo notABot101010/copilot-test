@@ -16,7 +16,7 @@ fn test_api_base_url() {
 #[test]
 fn test_url_builder() {
     // Test that Url can parse the base URL and add query parameters
-    let mut url = Url::parse(&format!("{}/droplets", API_BASE_URL)).expect("Invalid URL");
+    let mut url = Url::parse(&format!("{}/droplets", API_BASE_URL)).unwrap();
     {
         let mut query = url.query_pairs_mut();
         query.append_pair("tag_name", "my tag");

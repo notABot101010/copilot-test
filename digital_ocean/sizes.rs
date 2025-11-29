@@ -64,7 +64,7 @@ impl Client {
         page: Option<u32>,
         per_page: Option<u32>,
     ) -> Result<ListSizesResponse, Error> {
-        let mut url = Url::parse(&format!("{}/sizes", API_BASE_URL)).expect("Invalid URL");
+        let mut url = Url::parse(&format!("{}/sizes", API_BASE_URL))?;
 
         {
             let mut query = url.query_pairs_mut();
