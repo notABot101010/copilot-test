@@ -65,18 +65,15 @@ pub struct TreeQuery {
 pub fn create_router(state: AppState) -> Router {
     let api_routes = Router::new()
         .route("/repos", get(list_repos))
-        .route("/repos/{name}", get(get_repo))
-        .route("/repos/{name}/files", get(list_files))
-        .route("/repos/{name}/commits", get(list_commits))
-        .route("/repos/{name}/tree", get(get_tree))
-        .route("/repos/{name}/tree/{*path}", get(get_tree_path))
-        .route("/repos/{name}/blob/{*path}", get(get_blob))
+        .route("/repos/:name", get(get_repo))
+        .route("/repos/:name/files", get(list_files))
+        .route("/repos/:name/commits", get(list_commits))
+        .route("/repos/:name/tree", get(get_tree))
+        .route("/repos/:name/blob", get(get_blob_root))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
-    // Check if static files exist
-    let static_dir = std::env::current_dir()
-        .map(|p| p.join("static"))
-        .unwrap_or_else(|_| PathBuf::from("static"));
+    // Try to find static directory - check multiple locations
+    let static_dir = find_static_dir();
 
     let app = Router::new()
         .nest("/api", api_routes)
@@ -84,6 +81,35 @@ pub fn create_router(state: AppState) -> Router {
         .with_state(state);
 
     app
+}
+
+/// Find the static directory by checking multiple locations
+fn find_static_dir() -> PathBuf {
+    // Try current dir/static
+    if let Ok(cwd) = std::env::current_dir() {
+        let dir = cwd.join("static");
+        if dir.exists() {
+            return dir;
+        }
+        // Try current dir/git-server/static
+        let dir = cwd.join("git-server").join("static");
+        if dir.exists() {
+            return dir;
+        }
+    }
+    
+    // Try relative to executable
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            let dir = exe_dir.join("static");
+            if dir.exists() {
+                return dir;
+            }
+        }
+    }
+    
+    // Fall back to "static" relative path
+    PathBuf::from("static")
 }
 
 /// Basic auth middleware
@@ -238,6 +264,7 @@ async fn get_tree(
 }
 
 /// Get tree at a specific path
+#[allow(dead_code)]
 async fn get_tree_path(
     State(state): State<AppState>,
     Path((name, path)): Path<(String, String)>,
@@ -257,7 +284,29 @@ async fn get_tree_path(
     Ok(Json(files))
 }
 
-/// Get blob content
+/// Get blob content (for root path, uses query param)
+async fn get_blob_root(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Query(query): Query<TreeQuery>,
+) -> Result<String, (StatusCode, String)> {
+    let repo = state
+        .db
+        .get_repository(&name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+
+    let repo_path = state.repos_path.join(&repo.path);
+    let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
+    let path = query.path.as_deref().ok_or((StatusCode::BAD_REQUEST, "path query parameter required".to_string()))?;
+    let content = get_git_blob(&repo_path, git_ref, path).await?;
+
+    Ok(content)
+}
+
+/// Get blob content (legacy, with path in URL)
+#[allow(dead_code)]
 async fn get_blob(
     State(state): State<AppState>,
     Path((name, path)): Path<(String, String)>,
