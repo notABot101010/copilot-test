@@ -1,13 +1,14 @@
 import { useRouter } from '@copilot-test/preact-router';
 import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
-import { Button, Card, Group, Table, Text, Title, Badge, LoadingOverlay, Box } from '@mantine/core';
+import { Button, Card, Group, Table, Text, Title, Badge, LoadingOverlay, Box, Alert } from '@mantine/core';
 import { listNamespaces, deleteNamespace } from '../api';
 import type { Namespace } from '../api';
 
 const namespaces = signal<Namespace[]>([]);
 const loading = signal(true);
 const error = signal<string | null>(null);
+const backendUnavailable = signal(false);
 
 export function NamespacesPage() {
   const router = useRouter();
@@ -15,11 +16,18 @@ export function NamespacesPage() {
   const loadNamespaces = async () => {
     loading.value = true;
     error.value = null;
+    backendUnavailable.value = false;
     try {
       const data = await listNamespaces();
       namespaces.value = data;
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load namespaces';
+      const errMsg = e instanceof Error ? e.message : 'Failed to load namespaces';
+      // Check if it's a connection error (backend not running)
+      if (errMsg.includes('Internal Server Error') || errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError')) {
+        backendUnavailable.value = true;
+      } else {
+        error.value = errMsg;
+      }
     } finally {
       loading.value = false;
     }
@@ -53,6 +61,20 @@ export function NamespacesPage() {
         <Card withBorder mb="md" className="bg-red-50">
           <Text c="red">{error.value}</Text>
         </Card>
+      )}
+
+      {backendUnavailable.value && (
+        <Alert color="yellow" title="Backend Server Not Running" mb="md">
+          <Text size="sm">
+            The VectorDB backend server is not running. Start the server with:
+          </Text>
+          <Text size="sm" mt="xs" ff="monospace" className="bg-gray-100 p-2 rounded">
+            S3_BUCKET=your-bucket cargo run -p vectordb
+          </Text>
+          <Text size="sm" mt="xs" c="dimmed">
+            Make sure to set the required environment variables (S3_BUCKET, AWS credentials, etc.)
+          </Text>
+        </Alert>
       )}
 
       <Box pos="relative">

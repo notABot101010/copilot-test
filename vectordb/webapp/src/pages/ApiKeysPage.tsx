@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals';
 import { useEffect } from 'preact/hooks';
-import { Button, Card, Group, Text, Title, Table, TextInput, Stack, LoadingOverlay, Box, Code, CopyButton } from '@mantine/core';
+import { Button, Card, Group, Text, Title, Table, TextInput, Stack, LoadingOverlay, Box, Code, CopyButton, Alert } from '@mantine/core';
 import { listApiKeys, createApiKey, deleteApiKey } from '../api';
 import type { ApiKey, CreateApiKeyResponse } from '../api';
 import type { JSX } from 'preact';
@@ -8,6 +8,7 @@ import type { JSX } from 'preact';
 const apiKeys = signal<ApiKey[]>([]);
 const loading = signal(true);
 const error = signal<string | null>(null);
+const backendUnavailable = signal(false);
 const newKeyName = signal('');
 const createdKey = signal<CreateApiKeyResponse | null>(null);
 
@@ -15,11 +16,18 @@ export function ApiKeysPage() {
   const loadApiKeys = async () => {
     loading.value = true;
     error.value = null;
+    backendUnavailable.value = false;
     try {
       const data = await listApiKeys();
       apiKeys.value = data;
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load API keys';
+      const errMsg = e instanceof Error ? e.message : 'Failed to load API keys';
+      // Check if it's a connection error (backend not running)
+      if (errMsg.includes('Internal Server Error') || errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError')) {
+        backendUnavailable.value = true;
+      } else {
+        error.value = errMsg;
+      }
     } finally {
       loading.value = false;
     }
@@ -64,6 +72,20 @@ export function ApiKeysPage() {
         <Card withBorder mb="md" className="bg-red-50">
           <Text c="red">{error.value}</Text>
         </Card>
+      )}
+
+      {backendUnavailable.value && (
+        <Alert color="yellow" title="Backend Server Not Running" mb="md">
+          <Text size="sm">
+            The VectorDB backend server is not running. Start the server with:
+          </Text>
+          <Text size="sm" mt="xs" ff="monospace" className="bg-gray-100 p-2 rounded">
+            S3_BUCKET=your-bucket cargo run -p vectordb
+          </Text>
+          <Text size="sm" mt="xs" c="dimmed">
+            Make sure to set the required environment variables (S3_BUCKET, AWS credentials, etc.)
+          </Text>
+        </Alert>
       )}
 
       {createdKey.value && (
