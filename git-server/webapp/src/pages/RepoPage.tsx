@@ -4,14 +4,17 @@ import { useRoute } from '@copilot-test/preact-router';
 import {
   getRepoTree,
   getRepoCommits,
+  getRepo,
   type FileEntry,
   type CommitInfo,
+  type RepoInfo,
   formatSize,
   formatDate,
 } from '../api';
 
 export function RepoPage() {
   const route = useRoute();
+  const repo = useSignal<RepoInfo | null>(null);
   const files = useSignal<FileEntry[]>([]);
   const commits = useSignal<CommitInfo[]>([]);
   const loading = useSignal(true);
@@ -33,10 +36,12 @@ export function RepoPage() {
     try {
       loading.value = true;
       error.value = null;
-      const [filesData, commitsData] = await Promise.all([
+      const [repoData, filesData, commitsData] = await Promise.all([
+        getRepo(repoName),
         getRepoTree(repoName, gitRef, currentPath),
         getRepoCommits(repoName),
       ]);
+      repo.value = repoData;
       files.value = filesData;
       commits.value = commitsData;
     } catch (e) {
@@ -96,17 +101,53 @@ export function RepoPage() {
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
       <div class="border-b border-gray-200 pb-4 mb-4">
-        <div class="flex items-center gap-3">
-          <Anchor href="/" c="blue">
-            Repositories
-          </Anchor>
-          <span class="text-gray-400">/</span>
-          <Text fw={600}>{repoName}</Text>
-          {gitRef !== 'HEAD' && (
-            <Badge color="blue" variant="light">
-              {gitRef.substring(0, 7)}
-            </Badge>
-          )}
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <Anchor href="/" c="blue">
+              Repositories
+            </Anchor>
+            <span class="text-gray-400">/</span>
+            <Text fw={600}>{repoName}</Text>
+            {gitRef !== 'HEAD' && (
+              <Badge color="blue" variant="light">
+                {gitRef.substring(0, 7)}
+              </Badge>
+            )}
+            {repo.value?.forked_from && (
+              <Badge color="gray" variant="light">
+                Forked from{' '}
+                <Anchor href={`/repos/${encodeURIComponent(repo.value.forked_from)}`}>
+                  {repo.value.forked_from}
+                </Anchor>
+              </Badge>
+            )}
+          </div>
+          <div class="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              component="a"
+              href={`/repos/${encodeURIComponent(repoName)}/issues`}
+            >
+              🐛 Issues
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              component="a"
+              href={`/repos/${encodeURIComponent(repoName)}/pulls`}
+            >
+              🔀 Pull Requests
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              component="a"
+              href={`/repos/${encodeURIComponent(repoName)}/fork`}
+            >
+              🍴 Fork
+            </Button>
+          </div>
         </div>
       </div>
 
