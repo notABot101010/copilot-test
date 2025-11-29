@@ -2,3 +2,4 @@ test-server-run/
 git-server.db
 config.json
 static/dist/
+repos/
