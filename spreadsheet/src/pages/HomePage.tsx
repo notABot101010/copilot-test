@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import { useRouter } from '@copilot-test/preact-router';
-import { Button, Card, Text, TextInput, Title, Stack, Group, ActionIcon, Container, Modal } from '@mantine/core';
-import { spreadsheetList, createSpreadsheet, deleteSpreadsheet, loadSpreadsheetList } from '../store/spreadsheetStore';
+import { Button, Card, Text, TextInput, Title, Stack, Group, ActionIcon, Container, Modal, Loader } from '@mantine/core';
+import { spreadsheetList, createSpreadsheet, deleteSpreadsheet, loadSpreadsheetList, isLoadingList } from '../store/spreadsheetStore';
 import { useEffect } from 'preact/hooks';
 
 export function HomePage() {
@@ -9,22 +9,37 @@ export function HomePage() {
   const [newSheetName, setNewSheetName] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadSpreadsheetList();
   }, []);
 
-  const handleCreateSpreadsheet = () => {
-    if (!newSheetName.trim()) return;
-    const id = createSpreadsheet(newSheetName.trim());
-    setNewSheetName('');
-    setIsCreateModalOpen(false);
-    router.push(`/spreadsheets/${id}`);
+  const handleCreateSpreadsheet = async () => {
+    if (!newSheetName.trim() || isCreating) return;
+    setIsCreating(true);
+    try {
+      const id = await createSpreadsheet(newSheetName.trim());
+      setNewSheetName('');
+      setIsCreateModalOpen(false);
+      if (id) {
+        router.push(`/spreadsheets/${id}`);
+      }
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  const handleDeleteSpreadsheet = (id: string) => {
-    deleteSpreadsheet(id);
-    setDeleteConfirmId(null);
+  const handleDeleteSpreadsheet = async (id: string) => {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await deleteSpreadsheet(id);
+      setDeleteConfirmId(null);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleOpenSpreadsheet = (id: string) => {
@@ -42,6 +57,7 @@ export function HomePage() {
   };
 
   const sheets = spreadsheetList.value;
+  const isLoading = isLoadingList.value;
 
   return (
     <Container size="lg" className="py-8">
@@ -55,7 +71,11 @@ export function HomePage() {
         </Button>
       </div>
 
-      {sheets.length === 0 ? (
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <Loader size="xl" />
+        </div>
+      ) : sheets.length === 0 ? (
         <Card className="text-center py-12 bg-gray-800">
           <Text size="lg" c="dimmed" className="mb-4">
             No spreadsheets yet
@@ -114,12 +134,13 @@ export function HomePage() {
             onKeyDown={(e: KeyboardEvent) => {
               if (e.key === 'Enter') handleCreateSpreadsheet();
             }}
+            disabled={isCreating}
           />
           <Group justify="flex-end">
-            <Button variant="subtle" onClick={() => setIsCreateModalOpen(false)}>
+            <Button variant="subtle" onClick={() => setIsCreateModalOpen(false)} disabled={isCreating}>
               Cancel
             </Button>
-            <Button onClick={handleCreateSpreadsheet} disabled={!newSheetName.trim()}>
+            <Button onClick={handleCreateSpreadsheet} disabled={!newSheetName.trim() || isCreating} loading={isCreating}>
               Create
             </Button>
           </Group>
@@ -136,12 +157,13 @@ export function HomePage() {
         <Stack gap="md">
           <Text>Are you sure you want to delete this spreadsheet? This action cannot be undone.</Text>
           <Group justify="flex-end">
-            <Button variant="subtle" onClick={() => setDeleteConfirmId(null)}>
+            <Button variant="subtle" onClick={() => setDeleteConfirmId(null)} disabled={isDeleting}>
               Cancel
             </Button>
             <Button
               color="red"
               onClick={() => deleteConfirmId && handleDeleteSpreadsheet(deleteConfirmId)}
+              loading={isDeleting}
             >
               Delete
             </Button>

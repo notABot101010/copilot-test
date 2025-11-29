@@ -22,3 +22,5 @@ dist/
 .npm/
 coverage/
 
+# SQLite database files
+*.db

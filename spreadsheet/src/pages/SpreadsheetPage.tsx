@@ -129,11 +129,15 @@ export function SpreadsheetPage() {
       return;
     }
     
-    const success = loadSpreadsheet(id);
-    if (!success) {
-      setNotFound(true);
-    }
-    setIsLoading(false);
+    const load = async () => {
+      const success = await loadSpreadsheet(id);
+      if (!success) {
+        setNotFound(true);
+      }
+      setIsLoading(false);
+    };
+    
+    load();
   }, [id]);
 
   // Update container dimensions
