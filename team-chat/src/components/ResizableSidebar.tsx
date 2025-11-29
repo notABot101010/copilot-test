@@ -1,11 +1,18 @@
 import { useState, useRef, useCallback, useEffect } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
+import { Drawer } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
+
+/** Breakpoint for mobile responsive behavior */
+export const MOBILE_BREAKPOINT = '768px';
 
 interface ResizableSidebarProps {
   children: ComponentChildren;
   minWidth?: number;
   maxWidth?: number;
   defaultWidth?: number;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 export function ResizableSidebar({
@@ -13,10 +20,13 @@ export function ResizableSidebar({
   minWidth = 200,
   maxWidth = 400,
   defaultWidth = 240,
+  mobileOpen = false,
+  onMobileClose,
 }: ResizableSidebarProps) {
   const [width, setWidth] = useState(defaultWidth);
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const isMobile = useMediaQuery(`(max-width: ${MOBILE_BREAKPOINT})`);
 
   const startResizing = useCallback((e: MouseEvent) => {
     e.preventDefault();
@@ -54,6 +64,28 @@ export function ResizableSidebar({
     };
   }, [isResizing, resize, stopResizing]);
 
+  // On mobile, render as a drawer
+  if (isMobile) {
+    return (
+      <Drawer
+        opened={mobileOpen}
+        onClose={onMobileClose || (() => {})}
+        position="left"
+        size="80%"
+        withCloseButton={false}
+        styles={{
+          body: { padding: 0, height: '100%' },
+          content: { backgroundColor: '#2b2d31' },
+        }}
+      >
+        <div className="h-full overflow-hidden">
+          {children}
+        </div>
+      </Drawer>
+    );
+  }
+
+  // On desktop, render as resizable sidebar
   return (
     <div
       ref={sidebarRef}

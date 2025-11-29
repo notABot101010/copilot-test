@@ -6,4 +6,4 @@ export { MemberList } from './MemberList';
 export { EmptyState } from './EmptyState';
 export { DirectMessageList } from './DirectMessageList';
 export { MobileHeader } from './MobileHeader';
-export { ResizableSidebar } from './ResizableSidebar';
+export { ResizableSidebar, MOBILE_BREAKPOINT } from './ResizableSidebar';
