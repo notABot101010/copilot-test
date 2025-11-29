@@ -1,13 +1,13 @@
 import { useSignal, useSignalEffect } from '@preact/signals';
 import { Card, Text, Loader, Alert, Badge, Button, Group, SimpleGrid } from '@mantine/core';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
-import { getOrganization, listRepos, type Organization, type RepoInfo } from '../api';
+import { getOrganization, listProjects, type Organization, type Project } from '../api';
 
 export function OrgPage() {
   const route = useRoute();
   const router = useRouter();
   const org = useSignal<Organization | null>(null);
-  const repos = useSignal<RepoInfo[]>([]);
+  const projects = useSignal<Project[]>([]);
   const loading = useSignal(true);
   const error = useSignal<string | null>(null);
 
@@ -22,12 +22,12 @@ export function OrgPage() {
     try {
       loading.value = true;
       error.value = null;
-      const [orgData, reposData] = await Promise.all([
+      const [orgData, projectsData] = await Promise.all([
         getOrganization(orgName),
-        listRepos(orgName),
+        listProjects(orgName),
       ]);
       org.value = orgData;
-      repos.value = Array.isArray(reposData) ? reposData : [];
+      projects.value = Array.isArray(projectsData) ? projectsData : [];
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load organization';
     } finally {
@@ -83,62 +83,60 @@ export function OrgPage() {
             </Button>
             <Button
               color="green"
-              onClick={() => router.push(`/${orgName}/new`)}
+              onClick={() => router.push(`/${orgName}/new-project`)}
             >
-              + New Repository
+              + New Project
             </Button>
           </Group>
         </Group>
       </Card>
 
-      <Text size="lg" fw={600} mb="md">Repositories</Text>
+      <Text size="lg" fw={600} mb="md">Projects</Text>
 
-      {repos.value.length === 0 ? (
+      {projects.value.length === 0 ? (
         <Card shadow="sm" padding="xl" radius="md" withBorder>
           <div class="text-center py-8">
-            <Text size="lg" fw={500} mb="xs">No repositories yet</Text>
+            <Text size="lg" fw={500} mb="xs">No projects yet</Text>
             <Text size="sm" c="dimmed" mb="lg">
-              Create your first repository in this organization
+              Create your first project in this organization
             </Text>
             <Button
               variant="filled"
               color="blue"
-              onClick={() => router.push(`/${orgName}/new`)}
+              onClick={() => router.push(`/${orgName}/new-project`)}
             >
-              Create Repository
+              Create Project
             </Button>
           </div>
         </Card>
       ) : (
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          {repos.value.map((repo) => (
+          {projects.value.map((project) => (
             <Card
-              key={repo.name}
+              key={project.name}
               shadow="sm"
               padding="lg"
               radius="md"
               withBorder
               component="a"
-              href={`/${orgName}/${repo.name}`}
+              href={`/${orgName}/${project.name}`}
               onClick={(e: Event) => {
                 e.preventDefault();
-                router.push(`/${orgName}/${repo.name}`);
+                router.push(`/${orgName}/${project.name}`);
               }}
               style={{ cursor: 'pointer' }}
             >
               <Group justify="space-between" mb="xs">
                 <Text fw={600}>
-                  📁 {repo.name}
+                  📦 {project.display_name}
                 </Text>
-                {repo.forked_from && (
-                  <Badge color="gray" variant="light" size="sm">
-                    Forked
-                  </Badge>
-                )}
+                <Badge color="gray" variant="light" size="sm">
+                  @{project.name}
+                </Badge>
               </Group>
-              {repo.forked_from && (
+              {project.description && (
                 <Text size="xs" c="dimmed">
-                  Forked from {repo.forked_from}
+                  {project.description}
                 </Text>
               )}
             </Card>
