@@ -1,16 +1,14 @@
 import { useSignal, useSignalEffect } from '@preact/signals';
 import { Card, Text, TextInput, Button, Alert, Group, Select } from '@mantine/core';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
-import { forkRepo, listOrganizations, listProjects, type Organization, type Project } from '../api';
+import { forkProject, listOrganizations, type Organization } from '../api';
 
 export function ForkRepoPage() {
   const route = useRoute();
   const router = useRouter();
   const newName = useSignal('');
   const targetOrg = useSignal<string | null>(null);
-  const targetProject = useSignal<string | null>(null);
   const orgs = useSignal<Organization[]>([]);
-  const projects = useSignal<Project[]>([]);
   const loading = useSignal(false);
   const loadingOrgs = useSignal(true);
   const error = useSignal<string | null>(null);
@@ -18,7 +16,6 @@ export function ForkRepoPage() {
   const params = route.value.params;
   const orgName = params.org as string;
   const projectName = params.project as string;
-  const repoName = params.name as string;
 
   useSignalEffect(() => {
     loadOrgs();
@@ -30,9 +27,7 @@ export function ForkRepoPage() {
       const data = await listOrganizations();
       orgs.value = data;
       targetOrg.value = orgName; // Default to current org
-      newName.value = `${repoName}-fork`;
-      // Load projects for the default org
-      await loadProjectsForOrg(orgName);
+      newName.value = `${projectName}-fork`;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load organizations';
     } finally {
@@ -40,47 +35,26 @@ export function ForkRepoPage() {
     }
   }
 
-  async function loadProjectsForOrg(org: string) {
-    try {
-      const data = await listProjects(org);
-      projects.value = data;
-      if (org === orgName) {
-        targetProject.value = projectName; // Default to current project
-      } else if (data.length > 0) {
-        targetProject.value = data[0].name;
-      }
-    } catch (e) {
-      projects.value = [];
-    }
-  }
-
-  async function handleOrgChange(value: string | null) {
-    targetOrg.value = value;
-    if (value) {
-      await loadProjectsForOrg(value);
-    }
-  }
-
   async function handleSubmit(e: Event) {
     e.preventDefault();
 
     if (!newName.value.trim()) {
-      error.value = 'New repository name is required';
+      error.value = 'New project name is required';
       return;
     }
 
-    if (!targetOrg.value || !targetProject.value) {
-      error.value = 'Target organization and project are required';
+    if (!targetOrg.value) {
+      error.value = 'Target organization is required';
       return;
     }
 
     try {
       loading.value = true;
       error.value = null;
-      const repo = await forkRepo(orgName, projectName, repoName, newName.value.trim(), targetOrg.value, targetProject.value);
-      router.push(`/${repo.org_name}/${repo.project_name}/${repo.name}`);
+      const repo = await forkProject(orgName, projectName, newName.value.trim(), targetOrg.value);
+      router.push(`/${repo.org_name}/${repo.project_name}`);
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to fork repository';
+      error.value = e instanceof Error ? e.message : 'Failed to fork project';
       loading.value = false;
     }
   }
@@ -88,10 +62,10 @@ export function ForkRepoPage() {
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
       <Text size="xl" fw={600} mb="xs">
-        🍴 Fork this repository
+        🍴 Fork this project
       </Text>
       <Text size="sm" c="dimmed" mb="lg">
-        Create a copy of {orgName}/{projectName}/{repoName} under a new name
+        Create a copy of {orgName}/{projectName} under a new name
       </Text>
 
       {error.value && (
@@ -106,24 +80,14 @@ export function ForkRepoPage() {
           placeholder="Select organization"
           data={orgs.value.map((org) => ({ value: org.name, label: org.display_name }))}
           value={targetOrg.value}
-          onChange={handleOrgChange}
+          onChange={(value: string | null) => (targetOrg.value = value)}
           disabled={loadingOrgs.value}
           mb="md"
         />
 
-        <Select
-          label="Target project"
-          placeholder="Select project"
-          data={projects.value.map((proj) => ({ value: proj.name, label: proj.display_name }))}
-          value={targetProject.value}
-          onChange={(value: string | null) => (targetProject.value = value)}
-          disabled={loadingOrgs.value || projects.value.length === 0}
-          mb="md"
-        />
-
         <TextInput
-          label="New repository name"
-          placeholder={`${repoName}-fork`}
+          label="New project name"
+          placeholder={`${projectName}-fork`}
           value={newName.value}
           onChange={(e: Event) => (newName.value = (e.target as HTMLInputElement).value)}
           required
@@ -132,11 +96,11 @@ export function ForkRepoPage() {
 
         <Group>
           <Button type="submit" loading={loading.value} color="green">
-            Fork repository
+            Fork project
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/${orgName}/${projectName}/${repoName}`)}
+            onClick={() => router.push(`/${orgName}/${projectName}`)}
             disabled={loading.value}
           >
             Cancel

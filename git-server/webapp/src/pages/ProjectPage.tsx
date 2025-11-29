@@ -1,19 +1,42 @@
 import { useSignal, useSignalEffect } from '@preact/signals';
-import { Card, Text, Loader, Alert, Button, Group, Title } from '@mantine/core';
+import { Card, Text, Loader, Alert, Tabs, Badge, Breadcrumbs, Anchor, Button, Group, CopyButton, ActionIcon, Tooltip, Modal, Code } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
-import { getProject, listRepos, type Project, type RepoInfo } from '../api';
+import {
+  getProjectTree,
+  getProjectCommits,
+  getProject,
+  type FileEntry,
+  type CommitInfo,
+  type Project,
+  formatSize,
+  formatDate,
+} from '../api';
 
 export function ProjectPage() {
   const route = useRoute();
   const router = useRouter();
   const project = useSignal<Project | null>(null);
-  const repos = useSignal<RepoInfo[]>([]);
+  const files = useSignal<FileEntry[]>([]);
+  const commits = useSignal<CommitInfo[]>([]);
   const loading = useSignal(true);
   const error = useSignal<string | null>(null);
+  const activeTab = useSignal<string>('files');
+  const [cloneModalOpened, { open: openCloneModal, close: closeCloneModal }] = useDisclosure(false);
 
+  // Get query params
   const params = route.value.params;
+  const query = route.value.query as { ref?: string; path?: string };
   const orgName = params.org as string;
   const projectName = params.project as string;
+  const gitRef = (query.ref as string) || 'HEAD';
+  const currentPath = (query.path as string) || '';
+
+  // Clone URLs - use current host for HTTP URL
+  const sshCloneUrl = `git@localhost:${orgName}/${projectName}.git`;
+  const httpCloneUrl = typeof window !== 'undefined' 
+    ? `${window.location.origin}/${orgName}/${projectName}.git`
+    : `http://localhost:8080/${orgName}/${projectName}.git`;
 
   useSignalEffect(() => {
     loadData();
@@ -23,12 +46,14 @@ export function ProjectPage() {
     try {
       loading.value = true;
       error.value = null;
-      const [projectData, reposData] = await Promise.all([
+      const [projectData, filesData, commitsData] = await Promise.all([
         getProject(orgName, projectName),
-        listRepos(orgName, projectName),
+        getProjectTree(orgName, projectName, gitRef, currentPath),
+        getProjectCommits(orgName, projectName),
       ]);
       project.value = projectData;
-      repos.value = reposData;
+      files.value = filesData;
+      commits.value = commitsData;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load project';
     } finally {
@@ -52,84 +77,241 @@ export function ProjectPage() {
     );
   }
 
-  return (
-    <div class="space-y-6">
-      <Card shadow="sm" padding="lg" radius="md" withBorder>
-        <Group justify="space-between" mb="md">
-          <div>
-            <Title order={2}>📦 {project.value?.display_name}</Title>
-            {project.value?.description && (
-              <Text c="dimmed" size="sm" mt="xs">
-                {project.value.description}
-              </Text>
-            )}
-          </div>
-          <Button
-            variant="filled"
-            onClick={() => router.push(`/${orgName}/${projectName}/new-repo`)}
+  // Build breadcrumb items
+  const breadcrumbItems = [];
+  if (currentPath) {
+    const parts = currentPath.split('/');
+    breadcrumbItems.push(
+      <Anchor
+        key="root"
+        href={`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}`}
+        onClick={(e: Event) => {
+          e.preventDefault();
+          router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}`);
+        }}
+      >
+        {projectName}
+      </Anchor>
+    );
+    parts.forEach((part, i) => {
+      const partPath = parts.slice(0, i + 1).join('/');
+      if (i === parts.length - 1) {
+        breadcrumbItems.push(<Text key={partPath}>{part}</Text>);
+      } else {
+        breadcrumbItems.push(
+          <Anchor
+            key={partPath}
+            href={`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
+            onClick={(e: Event) => {
+              e.preventDefault();
+              router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
+            }}
           >
-            ➕ New Repository
-          </Button>
+            {part}
+          </Anchor>
+        );
+      }
+    });
+  }
+
+  return (
+    <>
+      <Modal opened={cloneModalOpened} onClose={closeCloneModal} title="Clone Repository" size="lg">
+        <Text size="sm" fw={500} mb="xs">SSH</Text>
+        <Group mb="md">
+          <Code block style={{ flex: 1 }}>git clone {sshCloneUrl}</Code>
+          <CopyButton value={`git clone ${sshCloneUrl}`}>
+            {({ copied, copy }) => (
+              <Tooltip label={copied ? 'Copied!' : 'Copy'}>
+                <ActionIcon color={copied ? 'teal' : 'gray'} onClick={copy}>
+                  {copied ? '✓' : '📋'}
+                </ActionIcon>
+              </Tooltip>
+            )}
+          </CopyButton>
         </Group>
-      </Card>
+        
+        <Text size="sm" fw={500} mb="xs">HTTP</Text>
+        <Group>
+          <Code block style={{ flex: 1 }}>git clone {httpCloneUrl}</Code>
+          <CopyButton value={`git clone ${httpCloneUrl}`}>
+            {({ copied, copy }) => (
+              <Tooltip label={copied ? 'Copied!' : 'Copy'}>
+                <ActionIcon color={copied ? 'teal' : 'gray'} onClick={copy}>
+                  {copied ? '✓' : '📋'}
+                </ActionIcon>
+              </Tooltip>
+            )}
+          </CopyButton>
+        </Group>
+      </Modal>
 
       <Card shadow="sm" padding="lg" radius="md" withBorder>
-        <Title order={3} mb="md">Repositories</Title>
-        
-        {repos.value.length === 0 ? (
-          <div class="text-center py-8">
-            <Text c="dimmed" mb="md">No repositories in this project yet.</Text>
-            <Button onClick={() => router.push(`/${orgName}/${projectName}/new-repo`)}>
-              Create your first repository
-            </Button>
-          </div>
-        ) : (
-          <ul class="divide-y divide-gray-200">
-            {repos.value.map((repo) => (
-              <li key={repo.name} class="py-3">
-                <Group justify="space-between">
-                  <div>
-                    <Text
-                      component="a"
-                      href={`/${orgName}/${projectName}/${repo.name}`}
-                      fw={500}
-                      c="blue"
-                      style={{ cursor: 'pointer' }}
+        <div class="border-b border-gray-200 pb-4 mb-4">
+          <Group justify="space-between">
+            <Group gap="xs">
+              <Text fw={600} size="lg">📦 {project.value?.display_name || projectName}</Text>
+              {gitRef !== 'HEAD' && (
+                <Badge color="blue" variant="light">
+                  {gitRef.substring(0, 7)}
+                </Badge>
+              )}
+              {project.value?.description && (
+                <Text size="sm" c="dimmed">
+                  {project.value.description}
+                </Text>
+              )}
+            </Group>
+            <Group gap="xs">
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={openCloneModal}
+              >
+                📥 Clone
+              </Button>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => router.push(`/${orgName}/${projectName}/files/new`)}
+              >
+                ➕ New File
+              </Button>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => router.push(`/${orgName}/${projectName}/fork`)}
+              >
+                🍴 Fork
+              </Button>
+              <Button
+                variant="subtle"
+                size="xs"
+                onClick={() => router.push(`/${orgName}/${projectName}/issues`)}
+              >
+                🐛 Issues
+              </Button>
+              <Button
+                variant="subtle"
+                size="xs"
+                onClick={() => router.push(`/${orgName}/${projectName}/pulls`)}
+              >
+                🔀 Pull Requests
+              </Button>
+            </Group>
+          </Group>
+        </div>
+
+        <Tabs value={activeTab.value} onChange={(value: string | null) => (activeTab.value = value || 'files')}>
+          <Tabs.List>
+            <Tabs.Tab value="files">📁 Files</Tabs.Tab>
+            <Tabs.Tab value="commits">📝 Commits</Tabs.Tab>
+          </Tabs.List>
+
+          <Tabs.Panel value="files" pt="md">
+            {currentPath && (
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 mb-4 -mx-4 -mt-4">
+                <Breadcrumbs>{breadcrumbItems}</Breadcrumbs>
+              </div>
+            )}
+
+            {files.value.length === 0 && !currentPath ? (
+              <div class="text-center py-8 text-gray-500">
+                <Text size="lg" mb="md">No files in this project</Text>
+                <Button
+                  onClick={() => router.push(`/${orgName}/${projectName}/files/new`)}
+                >
+                  Create your first file
+                </Button>
+              </div>
+            ) : (
+              <ul class="divide-y divide-gray-200">
+                {currentPath && (
+                  <li class="py-2 flex items-center gap-3">
+                    <span class="w-5 text-center">📁</span>
+                    <Anchor
+                      href={`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(currentPath.split('/').slice(0, -1).join('/'))}`}
                       onClick={(e: Event) => {
                         e.preventDefault();
-                        router.push(`/${orgName}/${projectName}/${repo.name}`);
+                        router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(currentPath.split('/').slice(0, -1).join('/'))}`);
                       }}
                     >
-                      📁 {repo.name}
-                    </Text>
-                    {repo.forked_from && (
-                      <Text size="xs" c="dimmed">
-                        Forked from {repo.forked_from}
-                      </Text>
+                      ..
+                    </Anchor>
+                  </li>
+                )}
+                {files.value.map((file) => (
+                  <li key={file.path} class="py-2 flex items-center gap-3">
+                    <span class="w-5 text-center">{file.type === 'dir' ? '📁' : '📄'}</span>
+                    <Anchor
+                      href={
+                        file.type === 'dir'
+                          ? `/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(file.path)}`
+                          : `/${orgName}/${projectName}/blob/${file.path}?ref=${encodeURIComponent(gitRef)}`
+                      }
+                      onClick={(e: Event) => {
+                        e.preventDefault();
+                        if (file.type === 'dir') {
+                          router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(file.path)}`);
+                        } else {
+                          router.push(`/${orgName}/${projectName}/blob/${file.path}?ref=${encodeURIComponent(gitRef)}`);
+                        }
+                      }}
+                    >
+                      {file.name}
+                    </Anchor>
+                    {file.size !== null && (
+                      <span class="ml-auto text-sm text-gray-500">{formatSize(file.size)}</span>
                     )}
-                  </div>
-                  <Group gap="xs">
-                    <Button
-                      variant="subtle"
-                      size="xs"
-                      onClick={() => router.push(`/${orgName}/${projectName}/${repo.name}/issues`)}
-                    >
-                      Issues
-                    </Button>
-                    <Button
-                      variant="subtle"
-                      size="xs"
-                      onClick={() => router.push(`/${orgName}/${projectName}/${repo.name}/pulls`)}
-                    >
-                      Pull Requests
-                    </Button>
-                  </Group>
-                </Group>
-              </li>
-            ))}
-          </ul>
-        )}
+                    {file.type === 'file' && (
+                      <Button
+                        variant="subtle"
+                        size="xs"
+                        onClick={() => router.push(`/${orgName}/${projectName}/edit/${file.path}?ref=${encodeURIComponent(gitRef)}`)}
+                      >
+                        Edit
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Tabs.Panel>
+
+          <Tabs.Panel value="commits" pt="md">
+            {commits.value.length === 0 ? (
+              <div class="text-center py-8 text-gray-500">
+                <Text size="lg">No commits yet</Text>
+              </div>
+            ) : (
+              <ul class="divide-y divide-gray-200">
+                {commits.value.map((commit) => (
+                  <li key={commit.hash} class="py-3">
+                    <div class="flex items-start gap-3">
+                      <Anchor
+                        href={`/${orgName}/${projectName}?ref=${encodeURIComponent(commit.hash)}`}
+                        class="font-mono bg-gray-100 px-2 py-1 rounded text-sm text-blue-600 hover:bg-blue-50"
+                        onClick={(e: Event) => {
+                          e.preventDefault();
+                          router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(commit.hash)}`);
+                        }}
+                      >
+                        {commit.short_hash}
+                      </Anchor>
+                      <div>
+                        <Text fw={500}>{commit.message}</Text>
+                        <Text size="sm" c="dimmed">
+                          {commit.author} committed on {formatDate(commit.date)}
+                        </Text>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Tabs.Panel>
+        </Tabs>
       </Card>
-    </div>
+    </>
   );
 }

@@ -1,7 +1,7 @@
 import { useSignal, useSignalEffect } from '@preact/signals';
 import { Card, Text, Loader, Alert, Badge, Button, Anchor, Group } from '@mantine/core';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
-import { listIssues, type Issue, formatDate } from '../api';
+import { listProjectIssues, type Issue, formatDate } from '../api';
 
 export function IssuesPage() {
   const route = useRoute();
@@ -13,7 +13,6 @@ export function IssuesPage() {
   const params = route.value.params;
   const orgName = params.org as string;
   const projectName = params.project as string;
-  const repoName = params.name as string;
 
   useSignalEffect(() => {
     loadIssues();
@@ -23,7 +22,7 @@ export function IssuesPage() {
     try {
       loading.value = true;
       error.value = null;
-      const data = await listIssues(orgName, projectName, repoName);
+      const data = await listProjectIssues(orgName, projectName);
       issues.value = data;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load issues';
@@ -55,7 +54,7 @@ export function IssuesPage() {
           🐛 Issues
         </Text>
         <Button
-          onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/issues/new`)}
+          onClick={() => router.push(`/${orgName}/${projectName}/issues/new`)}
           color="green"
         >
           + New Issue
@@ -82,11 +81,11 @@ export function IssuesPage() {
                 </Badge>
                 <div class="flex-1">
                   <Anchor
-                    href={`/${orgName}/${projectName}/${repoName}/issues/${issue.number}`}
+                    href={`/${orgName}/${projectName}/issues/${issue.number}`}
                     class="font-semibold text-lg hover:underline"
                     onClick={(e: Event) => {
                       e.preventDefault();
-                      router.push(`/${orgName}/${projectName}/${repoName}/issues/${issue.number}`);
+                      router.push(`/${orgName}/${projectName}/issues/${issue.number}`);
                     }}
                   >
                     {issue.title}

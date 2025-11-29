@@ -57,16 +57,44 @@ export function stringifyQuery(query: RouteQuery): string {
  */
 export function pathToRegex(path: string): { regex: RegExp; paramNames: string[] } {
   const paramNames: string[] = [];
+  const paramPositions: { name: string; index: number; isMulti: boolean }[] = [];
   
-  // Escape special regex characters except for our param syntax
+  // Find all parameter positions in order of their appearance in the path
+  let match: RegExpExecArray | null;
+  const multiParamRegex = /:([a-zA-Z_][a-zA-Z0-9_]*)\+/g;
+  const singleParamRegex = /:([a-zA-Z_][a-zA-Z0-9_]*)(?!\+)/g;
+  
+  // First pass: find multi-segment params (:param+)
+  while ((match = multiParamRegex.exec(path)) !== null) {
+    paramPositions.push({ name: match[1], index: match.index, isMulti: true });
+  }
+  
+  // Second pass: find single-segment params (:param)
+  while ((match = singleParamRegex.exec(path)) !== null) {
+    // Skip if this is part of a multi-segment param (we already captured it)
+    const matchIndex = match.index;
+    const isMulti = paramPositions.some(p => p.index === matchIndex);
+    if (!isMulti) {
+      paramPositions.push({ name: match[1], index: matchIndex, isMulti: false });
+    }
+  }
+  
+  // Sort by position in the path string to maintain correct order
+  paramPositions.sort((a, b) => a.index - b.index);
+  
+  // Extract param names in order
+  for (const p of paramPositions) {
+    paramNames.push(p.name);
+  }
+  
+  // Build the regex string
   let regexStr = path
-    // Escape dots and other special chars
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    // Replace :paramName with capture groups
-    .replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, (_, name) => {
-      paramNames.push(name);
-      return '([^/]+)';
-    })
+    // Escape dots and other special chars (but not + which we handle separately)
+    .replace(/[.?^${}()|[\]\\]/g, '\\$&')
+    // Replace :paramName+ with capture groups that match multiple path segments
+    .replace(/:([a-zA-Z_][a-zA-Z0-9_]*)\+/g, '(.+)')
+    // Replace :paramName with capture groups that match a single segment
+    .replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, '([^/]+)')
     // Handle wildcard/catch-all routes
     .replace(/\*/g, '.*');
   

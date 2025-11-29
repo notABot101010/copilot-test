@@ -48,11 +48,11 @@ export function OrganizationsPage() {
       <Group justify="space-between" mb="lg">
         <div>
           <Text size="xl" fw={700}>Organizations</Text>
-          <Text size="sm" c="dimmed">Manage your organizations and repositories</Text>
+          <Text size="sm" c="dimmed">Manage your organizations and projects</Text>
         </div>
         <Button
           color="green"
-          onClick={() => router.push('/new-org')}
+          onClick={() => router.push('/organizations/new')}
         >
           + New Organization
         </Button>
@@ -68,7 +68,7 @@ export function OrganizationsPage() {
             <Button
               variant="filled"
               color="blue"
-              onClick={() => router.push('/new-org')}
+              onClick={() => router.push('/organizations/new')}
             >
               Create Organization
             </Button>

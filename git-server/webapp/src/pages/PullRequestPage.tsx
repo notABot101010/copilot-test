@@ -12,12 +12,12 @@ import {
 } from '@mantine/core';
 import { useRoute } from '@copilot-test/preact-router';
 import {
-  getPullRequest,
-  getPullRequestComments,
-  getPullRequestCommits,
-  getPullRequestFiles,
-  createPullRequestComment,
-  updatePullRequest,
+  getProjectPullRequest,
+  getProjectPullRequestComments,
+  getProjectPullRequestCommits,
+  getProjectPullRequestFiles,
+  createProjectPullRequestComment,
+  updateProjectPullRequest,
   type PullRequest,
   type PullRequestComment,
   type CommitInfo,
@@ -40,7 +40,6 @@ export function PullRequestPage() {
   const params = route.value.params;
   const orgName = params.org as string;
   const projectName = params.project as string;
-  const repoName = params.name as string;
   const prNumber = parseInt(params.number as string, 10);
 
   useSignalEffect(() => {
@@ -52,10 +51,10 @@ export function PullRequestPage() {
       loading.value = true;
       error.value = null;
       const [prData, commentsData, commitsData, filesData] = await Promise.all([
-        getPullRequest(orgName, projectName, repoName, prNumber),
-        getPullRequestComments(orgName, projectName, repoName, prNumber),
-        getPullRequestCommits(orgName, projectName, repoName, prNumber),
-        getPullRequestFiles(orgName, projectName, repoName, prNumber),
+        getProjectPullRequest(orgName, projectName, prNumber),
+        getProjectPullRequestComments(orgName, projectName, prNumber),
+        getProjectPullRequestCommits(orgName, projectName, prNumber),
+        getProjectPullRequestFiles(orgName, projectName, prNumber),
       ]);
       pr.value = prData;
       comments.value = commentsData;
@@ -74,7 +73,7 @@ export function PullRequestPage() {
 
     try {
       submitting.value = true;
-      const comment = await createPullRequestComment(orgName, projectName, repoName, prNumber, newComment.value);
+      const comment = await createProjectPullRequestComment(orgName, projectName, prNumber, newComment.value);
       comments.value = [...comments.value, comment];
       newComment.value = '';
     } catch (e) {
@@ -88,7 +87,7 @@ export function PullRequestPage() {
     if (!pr.value) return;
 
     try {
-      const updated = await updatePullRequest(orgName, projectName, repoName, prNumber, { state: newState });
+      const updated = await updateProjectPullRequest(orgName, projectName, prNumber, { state: newState });
       pr.value = updated;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to update pull request';

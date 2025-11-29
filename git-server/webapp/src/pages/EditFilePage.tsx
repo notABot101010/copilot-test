@@ -13,7 +13,7 @@ import {
   Group,
 } from '@mantine/core';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
-import { getBlob, updateFile } from '../api';
+import { getProjectBlob, updateProjectFile } from '../api';
 
 export function EditFilePage() {
   const route = useRoute();
@@ -28,7 +28,6 @@ export function EditFilePage() {
   const query = route.value.query as { ref?: string };
   const orgName = params.org as string;
   const projectName = params.project as string;
-  const repoName = params.name as string;
   const filePath = params.path as string;
   const gitRef = (query.ref as string) || 'HEAD';
 
@@ -37,10 +36,15 @@ export function EditFilePage() {
   });
 
   async function loadContent() {
+    if (!filePath) {
+      error.value = 'No file path provided';
+      loading.value = false;
+      return;
+    }
     try {
       loading.value = true;
       error.value = null;
-      content.value = await getBlob(orgName, projectName, repoName, filePath, gitRef);
+      content.value = await getProjectBlob(orgName, projectName, filePath, gitRef);
       commitMessage.value = `Update ${filePath}`;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load file';
@@ -60,8 +64,8 @@ export function EditFilePage() {
     try {
       saving.value = true;
       error.value = null;
-      await updateFile(orgName, projectName, repoName, filePath, content.value, commitMessage.value.trim());
-      router.push(`/${orgName}/${projectName}/${repoName}/blob/${filePath}`);
+      await updateProjectFile(orgName, projectName, filePath, content.value, commitMessage.value.trim());
+      router.push(`/${orgName}/${projectName}/blob/${filePath}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to save file';
       saving.value = false;
@@ -77,17 +81,17 @@ export function EditFilePage() {
   }
 
   // Build breadcrumb items
-  const parts = filePath.split('/');
+  const parts = filePath ? filePath.split('/') : [];
   const breadcrumbItems = [
     <Anchor
       key="root"
-      href={`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}`}
+      href={`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}`}
       onClick={(e: Event) => {
         e.preventDefault();
-        router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}`);
+        router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}`);
       }}
     >
-      {repoName}
+      {projectName}
     </Anchor>,
     ...parts.map((part, i) => {
       const partPath = parts.slice(0, i + 1).join('/');
@@ -97,10 +101,10 @@ export function EditFilePage() {
       return (
         <Anchor
           key={partPath}
-          href={`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
+          href={`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
           onClick={(e: Event) => {
             e.preventDefault();
-            router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
+            router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
           }}
         >
           {part}
@@ -162,7 +166,7 @@ export function EditFilePage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/blob/${filePath}?ref=${encodeURIComponent(gitRef)}`)}
+            onClick={() => router.push(`/${orgName}/${projectName}/blob/${filePath}?ref=${encodeURIComponent(gitRef)}`)}
             disabled={saving.value}
           >
             Cancel
