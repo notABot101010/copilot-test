@@ -25,6 +25,11 @@ const OVERSCAN = 5;
 const TOTAL_ROWS = 10000;
 const TOTAL_COLS = 702; // A to ZZ
 
+// Selection border colors
+const SELECTION_BORDER_COLOR = 'rgb(96, 165, 250)'; // blue-400
+const ACTIVE_CELL_BORDER_COLOR = 'rgb(59, 130, 246)'; // blue-500
+const DEFAULT_BORDER_COLOR = 'rgb(55, 65, 81)'; // gray-700
+
 interface Selection {
   start: { row: number; col: number };
   end: { row: number; col: number };
@@ -773,13 +778,12 @@ export function SpreadsheetPage() {
                 // Build border styles for selection (only outer edges)
                 const borderStyle: Record<string, string> = {};
                 if (isActiveCell) {
-                  borderStyle.border = '2px solid rgb(59, 130, 246)'; // blue-500
+                  borderStyle.border = `2px solid ${ACTIVE_CELL_BORDER_COLOR}`;
                 } else if (selectionBorders) {
-                  const borderColor = 'rgb(96, 165, 250)'; // blue-400
-                  borderStyle.borderTop = selectionBorders.top ? `2px solid ${borderColor}` : '1px solid rgb(55, 65, 81)';
-                  borderStyle.borderRight = selectionBorders.right ? `2px solid ${borderColor}` : '1px solid rgb(55, 65, 81)';
-                  borderStyle.borderBottom = selectionBorders.bottom ? `2px solid ${borderColor}` : '1px solid rgb(55, 65, 81)';
-                  borderStyle.borderLeft = selectionBorders.left ? `2px solid ${borderColor}` : '1px solid rgb(55, 65, 81)';
+                  borderStyle.borderTop = selectionBorders.top ? `2px solid ${SELECTION_BORDER_COLOR}` : `1px solid ${DEFAULT_BORDER_COLOR}`;
+                  borderStyle.borderRight = selectionBorders.right ? `2px solid ${SELECTION_BORDER_COLOR}` : `1px solid ${DEFAULT_BORDER_COLOR}`;
+                  borderStyle.borderBottom = selectionBorders.bottom ? `2px solid ${SELECTION_BORDER_COLOR}` : `1px solid ${DEFAULT_BORDER_COLOR}`;
+                  borderStyle.borderLeft = selectionBorders.left ? `2px solid ${SELECTION_BORDER_COLOR}` : `1px solid ${DEFAULT_BORDER_COLOR}`;
                 }
                 
                 return (
