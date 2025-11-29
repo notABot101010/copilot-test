@@ -12,6 +12,7 @@ export function PullRequestsPage() {
 
   const params = route.value.params;
   const orgName = params.org as string;
+  const projectName = params.project as string;
   const repoName = params.name as string;
 
   useSignalEffect(() => {
@@ -22,7 +23,7 @@ export function PullRequestsPage() {
     try {
       loading.value = true;
       error.value = null;
-      const data = await listPullRequests(orgName, repoName);
+      const data = await listPullRequests(orgName, projectName, repoName);
       prs.value = data;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load pull requests';
@@ -67,7 +68,7 @@ export function PullRequestsPage() {
           🔀 Pull Requests
         </Text>
         <Button
-          onClick={() => router.push(`/${orgName}/${repoName}/pulls/new`)}
+          onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/pulls/new`)}
           color="green"
         >
           + New Pull Request
@@ -91,11 +92,11 @@ export function PullRequestsPage() {
                 </Badge>
                 <div class="flex-1">
                   <Anchor
-                    href={`/${orgName}/${repoName}/pulls/${pr.number}`}
+                    href={`/${orgName}/${projectName}/${repoName}/pulls/${pr.number}`}
                     class="font-semibold text-lg hover:underline"
                     onClick={(e: Event) => {
                       e.preventDefault();
-                      router.push(`/${orgName}/${repoName}/pulls/${pr.number}`);
+                      router.push(`/${orgName}/${projectName}/${repoName}/pulls/${pr.number}`);
                     }}
                   >
                     {pr.title}

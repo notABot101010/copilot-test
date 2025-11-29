@@ -53,6 +53,7 @@ export function IssuePage() {
 
   const params = route.value.params;
   const orgName = params.org as string;
+  const projectName = params.project as string;
   const repoName = params.name as string;
   const issueNumber = parseInt(params.number as string, 10);
 
@@ -65,8 +66,8 @@ export function IssuePage() {
       loading.value = true;
       error.value = null;
       const [issueData, commentsData] = await Promise.all([
-        getIssue(orgName, repoName, issueNumber),
-        getIssueComments(orgName, repoName, issueNumber),
+        getIssue(orgName, projectName, repoName, issueNumber),
+        getIssueComments(orgName, projectName, repoName, issueNumber),
       ]);
       issue.value = issueData;
       comments.value = commentsData;
@@ -83,7 +84,7 @@ export function IssuePage() {
 
     try {
       submitting.value = true;
-      const comment = await createIssueComment(orgName, repoName, issueNumber, newComment.value);
+      const comment = await createIssueComment(orgName, projectName, repoName, issueNumber, newComment.value);
       comments.value = [...comments.value, comment];
       newComment.value = '';
     } catch (e) {
@@ -98,7 +99,7 @@ export function IssuePage() {
 
     try {
       const newState = issue.value.state === 'open' ? 'closed' : 'open';
-      const updated = await updateIssue(orgName, repoName, issueNumber, { state: newState });
+      const updated = await updateIssue(orgName, projectName, repoName, issueNumber, { state: newState });
       issue.value = updated;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to update issue';

@@ -12,6 +12,7 @@ export function BranchesPage() {
 
   const params = route.value.params;
   const orgName = params.org as string;
+  const projectName = params.project as string;
   const repoName = params.name as string;
 
   useSignalEffect(() => {
@@ -22,7 +23,7 @@ export function BranchesPage() {
     try {
       loading.value = true;
       error.value = null;
-      const data = await getRepoBranches(orgName, repoName);
+      const data = await getRepoBranches(orgName, projectName, repoName);
       branches.value = Array.isArray(data) ? data : [];
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load branches';
@@ -66,10 +67,10 @@ export function BranchesPage() {
             <li key={branch} class="py-3">
               <Group justify="space-between">
                 <Anchor
-                  href={`/${orgName}/${repoName}?ref=${encodeURIComponent(branch)}`}
+                  href={`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(branch)}`}
                   onClick={(e: Event) => {
                     e.preventDefault();
-                    router.push(`/${orgName}/${repoName}?ref=${encodeURIComponent(branch)}`);
+                    router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(branch)}`);
                   }}
                 >
                   <Group gap="xs">

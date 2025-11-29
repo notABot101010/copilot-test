@@ -28,15 +28,16 @@ export function RepoPage() {
   const params = route.value.params;
   const query = route.value.query as { ref?: string; path?: string };
   const orgName = params.org as string;
+  const projectName = params.project as string;
   const repoName = params.name as string;
   const gitRef = (query.ref as string) || 'HEAD';
   const currentPath = (query.path as string) || '';
 
   // Clone URLs - use current host for HTTP URL
-  const sshCloneUrl = `git@localhost:${orgName}/${repoName}.git`;
+  const sshCloneUrl = `git@localhost:${orgName}/${projectName}/${repoName}.git`;
   const httpCloneUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/${orgName}/${repoName}.git`
-    : `http://localhost:8080/${orgName}/${repoName}.git`;
+    ? `${window.location.origin}/${orgName}/${projectName}/${repoName}.git`
+    : `http://localhost:8080/${orgName}/${projectName}/${repoName}.git`;
 
   useSignalEffect(() => {
     loadData();
@@ -47,9 +48,9 @@ export function RepoPage() {
       loading.value = true;
       error.value = null;
       const [repoData, filesData, commitsData] = await Promise.all([
-        getRepo(orgName, repoName),
-        getRepoTree(orgName, repoName, gitRef, currentPath),
-        getRepoCommits(orgName, repoName),
+        getRepo(orgName, projectName, repoName),
+        getRepoTree(orgName, projectName, repoName, gitRef, currentPath),
+        getRepoCommits(orgName, projectName, repoName),
       ]);
       repo.value = repoData;
       files.value = filesData;
@@ -84,10 +85,10 @@ export function RepoPage() {
     breadcrumbItems.push(
       <Anchor
         key="root"
-        href={`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}`}
+        href={`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}`}
         onClick={(e: Event) => {
           e.preventDefault();
-          router.push(`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}`);
+          router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}`);
         }}
       >
         {repoName}
@@ -101,10 +102,10 @@ export function RepoPage() {
         breadcrumbItems.push(
           <Anchor
             key={partPath}
-            href={`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
+            href={`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
             onClick={(e: Event) => {
               e.preventDefault();
-              router.push(`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
+              router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
             }}
           >
             {part}
@@ -173,14 +174,14 @@ export function RepoPage() {
               <Button
                 variant="outline"
                 size="xs"
-                onClick={() => router.push(`/${orgName}/${repoName}/new-file`)}
+                onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/new-file`)}
               >
                 ➕ New File
               </Button>
               <Button
                 variant="outline"
                 size="xs"
-                onClick={() => router.push(`/${orgName}/${repoName}/fork`)}
+                onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/fork`)}
               >
                 🍴 Fork
               </Button>
@@ -205,7 +206,7 @@ export function RepoPage() {
               <div class="text-center py-8 text-gray-500">
                 <Text size="lg" mb="md">No files in this repository</Text>
                 <Button
-                  onClick={() => router.push(`/${orgName}/${repoName}/new-file`)}
+                  onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/new-file`)}
                 >
                   Create your first file
                 </Button>
@@ -216,10 +217,10 @@ export function RepoPage() {
                   <li class="py-2 flex items-center gap-3">
                     <span class="w-5 text-center">📁</span>
                     <Anchor
-                      href={`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(currentPath.split('/').slice(0, -1).join('/'))}`}
+                      href={`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(currentPath.split('/').slice(0, -1).join('/'))}`}
                       onClick={(e: Event) => {
                         e.preventDefault();
-                        router.push(`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(currentPath.split('/').slice(0, -1).join('/'))}`);
+                        router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(currentPath.split('/').slice(0, -1).join('/'))}`);
                       }}
                     >
                       ..
@@ -232,15 +233,15 @@ export function RepoPage() {
                     <Anchor
                       href={
                         file.type === 'dir'
-                          ? `/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(file.path)}`
-                          : `/${orgName}/${repoName}/blob/${file.path}?ref=${encodeURIComponent(gitRef)}`
+                          ? `/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(file.path)}`
+                          : `/${orgName}/${projectName}/${repoName}/blob/${file.path}?ref=${encodeURIComponent(gitRef)}`
                       }
                       onClick={(e: Event) => {
                         e.preventDefault();
                         if (file.type === 'dir') {
-                          router.push(`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(file.path)}`);
+                          router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(file.path)}`);
                         } else {
-                          router.push(`/${orgName}/${repoName}/blob/${file.path}?ref=${encodeURIComponent(gitRef)}`);
+                          router.push(`/${orgName}/${projectName}/${repoName}/blob/${file.path}?ref=${encodeURIComponent(gitRef)}`);
                         }
                       }}
                     >
@@ -253,7 +254,7 @@ export function RepoPage() {
                       <Button
                         variant="subtle"
                         size="xs"
-                        onClick={() => router.push(`/${orgName}/${repoName}/edit/${file.path}?ref=${encodeURIComponent(gitRef)}`)}
+                        onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/edit/${file.path}?ref=${encodeURIComponent(gitRef)}`)}
                       >
                         Edit
                       </Button>
@@ -275,11 +276,11 @@ export function RepoPage() {
                   <li key={commit.hash} class="py-3">
                     <div class="flex items-start gap-3">
                       <Anchor
-                        href={`/${orgName}/${repoName}?ref=${encodeURIComponent(commit.hash)}`}
+                        href={`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(commit.hash)}`}
                         class="font-mono bg-gray-100 px-2 py-1 rounded text-sm text-blue-600 hover:bg-blue-50"
                         onClick={(e: Event) => {
                           e.preventDefault();
-                          router.push(`/${orgName}/${repoName}?ref=${encodeURIComponent(commit.hash)}`);
+                          router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(commit.hash)}`);
                         }}
                       >
                         {commit.short_hash}
