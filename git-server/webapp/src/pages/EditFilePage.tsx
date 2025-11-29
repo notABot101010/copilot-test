@@ -10,6 +10,7 @@ import {
   Button,
   Textarea,
   TextInput,
+  Group,
 } from '@mantine/core';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
 import { getBlob, updateFile } from '../api';
@@ -25,6 +26,7 @@ export function EditFilePage() {
 
   const params = route.value.params;
   const query = route.value.query as { ref?: string };
+  const orgName = params.org as string;
   const repoName = params.name as string;
   const filePath = params.path as string;
   const gitRef = (query.ref as string) || 'HEAD';
@@ -37,7 +39,7 @@ export function EditFilePage() {
     try {
       loading.value = true;
       error.value = null;
-      content.value = await getBlob(repoName, filePath, gitRef);
+      content.value = await getBlob(orgName, repoName, filePath, gitRef);
       commitMessage.value = `Update ${filePath}`;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load file';
@@ -57,10 +59,8 @@ export function EditFilePage() {
     try {
       saving.value = true;
       error.value = null;
-      await updateFile(repoName, filePath, content.value, commitMessage.value.trim());
-      router.push(
-        `/repos/${encodeURIComponent(repoName)}/blob/${encodeURIComponent(filePath)}`
-      );
+      await updateFile(orgName, repoName, filePath, content.value, commitMessage.value.trim());
+      router.push(`/${orgName}/${repoName}/blob/${filePath}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to save file';
       saving.value = false;
@@ -80,7 +80,11 @@ export function EditFilePage() {
   const breadcrumbItems = [
     <Anchor
       key="root"
-      href={`/repos/${encodeURIComponent(repoName)}?ref=${encodeURIComponent(gitRef)}`}
+      href={`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}`}
+      onClick={(e: Event) => {
+        e.preventDefault();
+        router.push(`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}`);
+      }}
     >
       {repoName}
     </Anchor>,
@@ -92,9 +96,11 @@ export function EditFilePage() {
       return (
         <Anchor
           key={partPath}
-          href={`/repos/${encodeURIComponent(repoName)}?ref=${encodeURIComponent(
-            gitRef
-          )}&path=${encodeURIComponent(partPath)}`}
+          href={`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
+          onClick={(e: Event) => {
+            e.preventDefault();
+            router.push(`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
+          }}
         >
           {part}
         </Anchor>
@@ -105,11 +111,7 @@ export function EditFilePage() {
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
       <div class="border-b border-gray-200 pb-4 mb-4">
-        <div class="flex items-center gap-3">
-          <Anchor href="/" c="blue">
-            Repositories
-          </Anchor>
-          <span class="text-gray-400">/</span>
+        <Group gap="xs">
           <Breadcrumbs>{breadcrumbItems}</Breadcrumbs>
           {gitRef !== 'HEAD' && (
             <Badge color="blue" variant="light">
@@ -119,7 +121,7 @@ export function EditFilePage() {
           <Badge color="yellow" variant="light">
             Editing
           </Badge>
-        </div>
+        </Group>
       </div>
 
       {error.value && (
@@ -153,22 +155,18 @@ export function EditFilePage() {
           mb="lg"
         />
 
-        <div class="flex gap-3">
+        <Group>
           <Button type="submit" loading={saving.value} color="green">
             Commit changes
           </Button>
           <Button
             variant="outline"
-            onClick={() =>
-              router.push(
-                `/repos/${encodeURIComponent(repoName)}/blob/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(gitRef)}`
-              )
-            }
+            onClick={() => router.push(`/${orgName}/${repoName}/blob/${filePath}?ref=${encodeURIComponent(gitRef)}`)}
             disabled={saving.value}
           >
             Cancel
           </Button>
-        </div>
+        </Group>
       </form>
     </Card>
   );

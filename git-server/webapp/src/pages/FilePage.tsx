@@ -1,16 +1,19 @@
 import { useSignal, useSignalEffect } from '@preact/signals';
-import { Card, Text, Loader, Alert, Breadcrumbs, Anchor, Badge, Button } from '@mantine/core';
-import { useRoute } from '@copilot-test/preact-router';
-import { getBlob } from '../api';
+import { Card, Text, Loader, Alert, Breadcrumbs, Anchor, Badge, Button, Group } from '@mantine/core';
+import { useRoute, useRouter } from '@copilot-test/preact-router';
+import { getBlob, deleteFile } from '../api';
 
 export function FilePage() {
   const route = useRoute();
+  const router = useRouter();
   const content = useSignal<string>('');
   const loading = useSignal(true);
+  const deleting = useSignal(false);
   const error = useSignal<string | null>(null);
 
   const params = route.value.params;
   const query = route.value.query as { ref?: string };
+  const orgName = params.org as string;
   const repoName = params.name as string;
   const filePath = params.path as string;
   const gitRef = (query.ref as string) || 'HEAD';
@@ -23,11 +26,27 @@ export function FilePage() {
     try {
       loading.value = true;
       error.value = null;
-      content.value = await getBlob(repoName, filePath, gitRef);
+      content.value = await getBlob(orgName, repoName, filePath, gitRef);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load file';
     } finally {
       loading.value = false;
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Are you sure you want to delete ${filePath}?`)) {
+      return;
+    }
+
+    try {
+      deleting.value = true;
+      error.value = null;
+      await deleteFile(orgName, repoName, filePath, `Delete ${filePath}`);
+      router.push(`/${orgName}/${repoName}`);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to delete file';
+      deleting.value = false;
     }
   }
 
@@ -52,7 +71,11 @@ export function FilePage() {
   const breadcrumbItems = [
     <Anchor
       key="root"
-      href={`/repos/${encodeURIComponent(repoName)}?ref=${encodeURIComponent(gitRef)}`}
+      href={`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}`}
+      onClick={(e: Event) => {
+        e.preventDefault();
+        router.push(`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}`);
+      }}
     >
       {repoName}
     </Anchor>,
@@ -64,9 +87,11 @@ export function FilePage() {
       return (
         <Anchor
           key={partPath}
-          href={`/repos/${encodeURIComponent(repoName)}?ref=${encodeURIComponent(
-            gitRef
-          )}&path=${encodeURIComponent(partPath)}`}
+          href={`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
+          onClick={(e: Event) => {
+            e.preventDefault();
+            router.push(`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
+          }}
         >
           {part}
         </Anchor>
@@ -77,30 +102,34 @@ export function FilePage() {
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
       <div class="border-b border-gray-200 pb-4 mb-4">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <Anchor href="/" c="blue">
-              Repositories
-            </Anchor>
-            <span class="text-gray-400">/</span>
+        <Group justify="space-between">
+          <Group gap="xs">
             <Breadcrumbs>{breadcrumbItems}</Breadcrumbs>
             {gitRef !== 'HEAD' && (
               <Badge color="blue" variant="light">
                 {gitRef.substring(0, 7)}
               </Badge>
             )}
-          </div>
-          <Button
-            variant="filled"
-            size="sm"
-            component="a"
-            href={`/repos/${encodeURIComponent(repoName)}/edit/${encodeURIComponent(
-              filePath
-            )}?ref=${encodeURIComponent(gitRef)}`}
-          >
-            Edit file
-          </Button>
-        </div>
+          </Group>
+          <Group gap="xs">
+            <Button
+              variant="filled"
+              size="sm"
+              onClick={() => router.push(`/${orgName}/${repoName}/edit/${filePath}?ref=${encodeURIComponent(gitRef)}`)}
+            >
+              ✏️ Edit
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              color="red"
+              onClick={handleDelete}
+              loading={deleting.value}
+            >
+              🗑️ Delete
+            </Button>
+          </Group>
+        </Group>
       </div>
 
       <pre class="bg-gray-100 p-4 overflow-x-auto font-mono text-sm leading-relaxed whitespace-pre-wrap rounded">

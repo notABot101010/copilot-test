@@ -1,5 +1,5 @@
 import { useSignal } from '@preact/signals';
-import { Card, Text, TextInput, Textarea, Button, Alert, Anchor } from '@mantine/core';
+import { Card, Text, TextInput, Textarea, Button, Alert, Group } from '@mantine/core';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
 import { createIssue } from '../api';
 
@@ -12,6 +12,7 @@ export function CreateIssuePage() {
   const error = useSignal<string | null>(null);
 
   const params = route.value.params;
+  const orgName = params.org as string;
   const repoName = params.name as string;
 
   async function handleSubmit(e: Event) {
@@ -25,8 +26,8 @@ export function CreateIssuePage() {
     try {
       loading.value = true;
       error.value = null;
-      const issue = await createIssue(repoName, title.value.trim(), body.value.trim());
-      router.push(`/repos/${encodeURIComponent(repoName)}/issues/${issue.number}`);
+      const issue = await createIssue(orgName, repoName, title.value.trim(), body.value.trim());
+      router.push(`/${orgName}/${repoName}/issues/${issue.number}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create issue';
       loading.value = false;
@@ -34,23 +35,10 @@ export function CreateIssuePage() {
   }
 
   return (
-    <Card shadow="sm" padding="lg" radius="md" withBorder class="max-w-2xl mx-auto">
-      <div class="border-b border-gray-200 pb-4 mb-4">
-        <div class="flex items-center gap-3 mb-2">
-          <Anchor href={`/repos/${encodeURIComponent(repoName)}`} c="blue">
-            {repoName}
-          </Anchor>
-          <span class="text-gray-400">/</span>
-          <Anchor href={`/repos/${encodeURIComponent(repoName)}/issues`} c="blue">
-            Issues
-          </Anchor>
-          <span class="text-gray-400">/</span>
-          <Text>New</Text>
-        </div>
-        <Text size="xl" fw={600}>
-          Create a new issue
-        </Text>
-      </div>
+    <Card shadow="sm" padding="lg" radius="md" withBorder>
+      <Text size="xl" fw={600} mb="lg">
+        🐛 Create a new issue
+      </Text>
 
       {error.value && (
         <Alert color="red" title="Error" mb="md">
@@ -69,7 +57,7 @@ export function CreateIssuePage() {
         />
 
         <Textarea
-          label="Description"
+          label="Description (Markdown supported)"
           placeholder="Describe the issue..."
           value={body.value}
           onChange={(e: Event) => (body.value = (e.target as HTMLTextAreaElement).value)}
@@ -77,18 +65,18 @@ export function CreateIssuePage() {
           mb="lg"
         />
 
-        <div class="flex gap-3">
+        <Group>
           <Button type="submit" loading={loading.value} color="green">
             Create issue
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/repos/${encodeURIComponent(repoName)}/issues`)}
+            onClick={() => router.push(`/${orgName}/${repoName}/issues`)}
             disabled={loading.value}
           >
             Cancel
           </Button>
-        </div>
+        </Group>
       </form>
     </Card>
   );

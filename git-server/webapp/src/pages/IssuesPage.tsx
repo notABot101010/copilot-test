@@ -1,15 +1,17 @@
 import { useSignal, useSignalEffect } from '@preact/signals';
-import { Card, Text, Loader, Alert, Badge, Button, Anchor } from '@mantine/core';
-import { useRoute } from '@copilot-test/preact-router';
+import { Card, Text, Loader, Alert, Badge, Button, Anchor, Group } from '@mantine/core';
+import { useRoute, useRouter } from '@copilot-test/preact-router';
 import { listIssues, type Issue, formatDate } from '../api';
 
 export function IssuesPage() {
   const route = useRoute();
+  const router = useRouter();
   const issues = useSignal<Issue[]>([]);
   const loading = useSignal(true);
   const error = useSignal<string | null>(null);
 
   const params = route.value.params;
+  const orgName = params.org as string;
   const repoName = params.name as string;
 
   useSignalEffect(() => {
@@ -20,7 +22,7 @@ export function IssuesPage() {
     try {
       loading.value = true;
       error.value = null;
-      const data = await listIssues(repoName);
+      const data = await listIssues(orgName, repoName);
       issues.value = data;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load issues';
@@ -47,24 +49,17 @@ export function IssuesPage() {
 
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
-      <div class="border-b border-gray-200 pb-4 mb-4 flex justify-between items-center">
-        <div class="flex items-center gap-3">
-          <Anchor href={`/repos/${encodeURIComponent(repoName)}`} c="blue">
-            {repoName}
-          </Anchor>
-          <span class="text-gray-400">/</span>
-          <Text size="xl" fw={600}>
-            Issues
-          </Text>
-        </div>
+      <Group justify="space-between" mb="lg" pb="md" style={{ borderBottom: '1px solid #e9ecef' }}>
+        <Text size="xl" fw={600}>
+          🐛 Issues
+        </Text>
         <Button
-          component="a"
-          href={`/repos/${encodeURIComponent(repoName)}/issues/new`}
+          onClick={() => router.push(`/${orgName}/${repoName}/issues/new`)}
           color="green"
         >
-          New Issue
+          + New Issue
         </Button>
-      </div>
+      </Group>
 
       {issues.value.length === 0 ? (
         <div class="text-center py-8 text-gray-500">
@@ -86,8 +81,12 @@ export function IssuesPage() {
                 </Badge>
                 <div class="flex-1">
                   <Anchor
-                    href={`/repos/${encodeURIComponent(repoName)}/issues/${issue.number}`}
+                    href={`/${orgName}/${repoName}/issues/${issue.number}`}
                     class="font-semibold text-lg hover:underline"
+                    onClick={(e: Event) => {
+                      e.preventDefault();
+                      router.push(`/${orgName}/${repoName}/issues/${issue.number}`);
+                    }}
                   >
                     {issue.title}
                   </Anchor>
