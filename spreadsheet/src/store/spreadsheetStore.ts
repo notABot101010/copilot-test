@@ -2,7 +2,7 @@ import { signal, computed } from '@preact/signals';
 import * as Automerge from '@automerge/automerge';
 import type { SpreadsheetData, SpreadsheetListItem } from '../types/spreadsheet';
 import { getCellKey } from '../types/spreadsheet';
-import { initSync, broadcastChanges } from './syncManager';
+import { initSync, broadcastChanges, startServerSync, stopServerSync } from './syncManager';
 
 // Automerge document type
 interface AutomergeSpreadsheet {
@@ -26,11 +26,22 @@ const MAX_HISTORY = 100;
 const undoStack: Automerge.Doc<AutomergeSpreadsheet>[] = [];
 const redoStack: Automerge.Doc<AutomergeSpreadsheet>[] = [];
 
-// Initialize sync manager for cross-tab communication
-initSync((spreadsheetId: string, changes: Uint8Array) => {
-  // Handle incoming sync from other tabs
-  handleRemoteSync(spreadsheetId, changes);
-});
+// Initialize sync manager for cross-tab and cross-browser communication
+initSync(
+  // Handle incoming sync from other tabs/browsers
+  (spreadsheetId: string, changes: Uint8Array) => {
+    handleRemoteSync(spreadsheetId, changes);
+  },
+  // Get current document for server sync
+  () => {
+    const doc = currentSpreadsheetDoc.value;
+    if (!doc) return null;
+    return {
+      id: doc.id,
+      binary: Automerge.save(doc),
+    };
+  }
+);
 
 // Handle remote sync updates from other tabs
 function handleRemoteSync(spreadsheetId: string, remoteBinary: Uint8Array): void {
@@ -168,6 +179,9 @@ export function createSpreadsheet(name: string): string {
 
 // Load a spreadsheet by ID
 export function loadSpreadsheet(id: string): boolean {
+  // Stop any existing server sync
+  stopServerSync();
+  
   const stored = localStorage.getItem(STORAGE_KEY_PREFIX + id);
   if (!stored) {
     currentSpreadsheetDoc.value = null;
@@ -178,6 +192,10 @@ export function loadSpreadsheet(id: string): boolean {
     const binary = base64ToUint8Array(stored);
     const doc = Automerge.load<AutomergeSpreadsheet>(binary);
     currentSpreadsheetDoc.value = doc;
+    
+    // Start server sync for this spreadsheet
+    startServerSync(id);
+    
     return true;
   } catch {
     currentSpreadsheetDoc.value = null;
