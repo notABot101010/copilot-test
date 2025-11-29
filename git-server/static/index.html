@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Git Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            color: #24292f;
+            background: #f6f8fa;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background: #24292f;
+            color: white;
+            padding: 16px 0;
+            margin-bottom: 24px;
+        }
+        header .container {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+        header nav a {
+            color: rgba(255,255,255,0.7);
+            text-decoration: none;
+            margin-right: 16px;
+        }
+        header nav a:hover,
+        header nav a.active {
+            color: white;
+        }
+        .card {
+            background: white;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+        .card-header {
+            padding: 16px;
+            border-bottom: 1px solid #d0d7de;
+            background: #f6f8fa;
+        }
+        .card-body {
+            padding: 16px;
+        }
+        .repo-list {
+            list-style: none;
+        }
+        .repo-list li {
+            padding: 16px;
+            border-bottom: 1px solid #d0d7de;
+        }
+        .repo-list li:last-child {
+            border-bottom: none;
+        }
+        .repo-list a {
+            color: #0969da;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .repo-list a:hover {
+            text-decoration: underline;
+        }
+        .file-list {
+            list-style: none;
+        }
+        .file-list li {
+            padding: 8px 16px;
+            border-bottom: 1px solid #d0d7de;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .file-list li:last-child {
+            border-bottom: none;
+        }
+        .file-list .icon {
+            width: 16px;
+            text-align: center;
+        }
+        .file-list a {
+            color: #0969da;
+            text-decoration: none;
+        }
+        .file-list a:hover {
+            text-decoration: underline;
+        }
+        .file-list .size {
+            margin-left: auto;
+            font-size: 12px;
+            color: #57606a;
+        }
+        .breadcrumb {
+            padding: 16px;
+            background: #f6f8fa;
+            border-bottom: 1px solid #d0d7de;
+        }
+        .breadcrumb a {
+            color: #0969da;
+            text-decoration: none;
+        }
+        .breadcrumb a:hover {
+            text-decoration: underline;
+        }
+        .commit-list {
+            list-style: none;
+        }
+        .commit-list li {
+            padding: 12px 16px;
+            border-bottom: 1px solid #d0d7de;
+        }
+        .commit-list li:last-child {
+            border-bottom: none;
+        }
+        .commit-hash {
+            font-family: monospace;
+            background: #f6f8fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #0969da;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .commit-hash:hover {
+            background: #ddf4ff;
+        }
+        .commit-message {
+            font-weight: 500;
+        }
+        .commit-meta {
+            font-size: 12px;
+            color: #57606a;
+            margin-top: 4px;
+        }
+        .blob-content {
+            background: #f6f8fa;
+            padding: 16px;
+            overflow-x: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.5;
+            margin: 0;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #d0d7de;
+            background: #f6f8fa;
+        }
+        .tabs button {
+            padding: 12px 16px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #57606a;
+            border-bottom: 2px solid transparent;
+            font-size: 14px;
+        }
+        .tabs button:hover {
+            color: #24292f;
+        }
+        .tabs button.active {
+            color: #24292f;
+            border-bottom-color: #fd8c73;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #57606a;
+        }
+        .error {
+            background: #ffebe9;
+            border: 1px solid #ffc0c0;
+            color: #cf222e;
+            padding: 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+        .empty {
+            text-align: center;
+            padding: 40px;
+            color: #57606a;
+        }
+        .ref-badge {
+            font-size: 12px;
+            background: #ddf4ff;
+            color: #0969da;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-left: 8px;
+        }
+        .path-separator {
+            color: #57606a;
+            margin: 0 4px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>📦 Git Server</h1>
+            <nav>
+                <a href="#/" class="nav-link active">Repositories</a>
+            </nav>
+        </div>
+    </header>
+    <div id="app" class="container">
+        <div class="loading">Loading...</div>
+    </div>
+    <script>
+        // Simple client-side router and app
+        const app = document.getElementById('app');
+        
+        // State
+        let currentView = 'home';
+        let repos = [];
+        let files = [];
+        let commits = [];
+        let blobContent = '';
+        let loading = true;
+        let error = null;
+        let activeTab = 'files';
+        
+        // API helper
+        async function api(endpoint) {
+            const response = await fetch('/api' + endpoint);
+            if (!response.ok) {
+                throw new Error('API error: ' + response.status);
+            }
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                return response.json();
+            }
+            return response.text();
+        }
+        
+        // Format file size
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+        
+        // Format date
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+        
+        // Parse hash route
+        function parseRoute() {
+            const hash = window.location.hash || '#/';
+            const url = new URL('http://localhost' + hash.slice(1));
+            const path = url.pathname;
+            const params = new URLSearchParams(url.search);
+            
+            if (path === '/') {
+                return { view: 'home' };
+            } else if (path.startsWith('/repos/') && path.includes('/blob/')) {
+                const match = path.match(/^\/repos\/([^\/]+)\/blob\/(.+)$/);
+                if (match) {
+                    return { 
+                        view: 'blob', 
+                        name: match[1], 
+                        filePath: match[2],
+                        ref: params.get('ref') || 'HEAD'
+                    };
+                }
+            } else if (path.startsWith('/repos/')) {
+                const name = path.split('/')[2];
+                return { 
+                    view: 'repo', 
+                    name,
+                    ref: params.get('ref') || 'HEAD',
+                    path: params.get('path') || ''
+                };
+            }
+            return { view: 'home' };
+        }
+        
+        // Navigate
+        function navigate(path) {
+            window.location.hash = path;
+        }
+        
+        // Render home page
+        async function renderHome() {
+            loading = true;
+            render();
+            
+            try {
+                repos = await api('/repos');
+                loading = false;
+                error = null;
+            } catch (e) {
+                loading = false;
+                error = e.message;
+            }
+            
+            render();
+        }
+        
+        // Render repository page
+        async function renderRepo(name, ref, path) {
+            loading = true;
+            render();
+            
+            try {
+                const queryParams = new URLSearchParams();
+                if (ref !== 'HEAD') queryParams.set('ref', ref);
+                if (path) queryParams.set('path', path);
+                const query = queryParams.toString() ? '?' + queryParams.toString() : '';
+                
+                const [filesData, commitsData] = await Promise.all([
+                    api('/repos/' + name + '/tree' + query),
+                    api('/repos/' + name + '/commits')
+                ]);
+                
+                files = filesData;
+                commits = commitsData;
+                loading = false;
+                error = null;
+            } catch (e) {
+                loading = false;
+                error = e.message;
+            }
+            
+            render();
+        }
+        
+        // Render blob page
+        async function renderBlob(name, filePath, ref) {
+            loading = true;
+            render();
+            
+            try {
+                const queryParams = new URLSearchParams();
+                if (ref !== 'HEAD') queryParams.set('ref', ref);
+                queryParams.set('path', filePath);
+                
+                blobContent = await api('/repos/' + name + '/blob?' + queryParams.toString());
+                loading = false;
+                error = null;
+            } catch (e) {
+                loading = false;
+                error = e.message;
+            }
+            
+            render();
+        }
+        
+        // Main render function
+        function render() {
+            const route = parseRoute();
+            
+            if (loading) {
+                app.innerHTML = '<div class="loading">Loading...</div>';
+                return;
+            }
+            
+            if (error) {
+                app.innerHTML = '<div class="error">' + escapeHtml(error) + '</div>';
+                return;
+            }
+            
+            if (route.view === 'home') {
+                renderHomeView();
+            } else if (route.view === 'repo') {
+                renderRepoView(route.name, route.ref, route.path);
+            } else if (route.view === 'blob') {
+                renderBlobView(route.name, route.filePath, route.ref);
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function renderHomeView() {
+            if (repos.length === 0) {
+                app.innerHTML = `
+                    <div class="card">
+                        <div class="card-header"><h2>Repositories</h2></div>
+                        <div class="empty">No repositories found</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            const repoItems = repos.map(repo => `
+                <li>
+                    <a href="#/repos/${escapeHtml(repo.name)}">${escapeHtml(repo.name)}</a>
+                    <div style="font-size: 12px; color: #57606a; margin-top: 4px;">
+                        ${escapeHtml(repo.path)}
+                    </div>
+                </li>
+            `).join('');
+            
+            app.innerHTML = `
+                <div class="card">
+                    <div class="card-header"><h2>Repositories</h2></div>
+                    <ul class="repo-list">${repoItems}</ul>
+                </div>
+            `;
+        }
+        
+        function renderRepoView(name, ref, path) {
+            const refBadge = ref !== 'HEAD' ? `<span class="ref-badge">${escapeHtml(ref.substring(0, 7))}</span>` : '';
+            
+            let breadcrumb = '';
+            if (path) {
+                const parts = path.split('/');
+                const baseUrl = '#/repos/' + escapeHtml(name) + '?ref=' + encodeURIComponent(ref);
+                breadcrumb = `
+                    <div class="breadcrumb">
+                        <a href="${baseUrl}">${escapeHtml(name)}</a>
+                        ${parts.map((part, i) => {
+                            const partPath = parts.slice(0, i + 1).join('/');
+                            return `<span class="path-separator">/</span><a href="${baseUrl}&path=${encodeURIComponent(partPath)}">${escapeHtml(part)}</a>`;
+                        }).join('')}
+                    </div>
+                `;
+            }
+            
+            let content = '';
+            if (activeTab === 'files') {
+                if (files.length === 0 && !path) {
+                    content = '<div class="empty">No files in this repository</div>';
+                } else {
+                    const parentLink = path ? `
+                        <li>
+                            <span class="icon">📁</span>
+                            <a href="#/repos/${escapeHtml(name)}?ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(path.split('/').slice(0, -1).join('/'))}">..</a>
+                        </li>
+                    ` : '';
+                    
+                    const fileItems = files.map(file => {
+                        const icon = file.type === 'dir' ? '📁' : '📄';
+                        const href = file.type === 'dir' 
+                            ? `#/repos/${escapeHtml(name)}?ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(file.path)}`
+                            : `#/repos/${escapeHtml(name)}/blob/${encodeURIComponent(file.path)}?ref=${encodeURIComponent(ref)}`;
+                        const size = file.size !== null && file.size !== undefined 
+                            ? `<span class="size">${formatSize(file.size)}</span>` 
+                            : '';
+                        return `
+                            <li>
+                                <span class="icon">${icon}</span>
+                                <a href="${href}">${escapeHtml(file.name)}</a>
+                                ${size}
+                            </li>
+                        `;
+                    }).join('');
+                    
+                    content = `<ul class="file-list">${parentLink}${fileItems}</ul>`;
+                }
+            } else {
+                if (commits.length === 0) {
+                    content = '<div class="empty">No commits yet</div>';
+                } else {
+                    const commitItems = commits.map(commit => `
+                        <li>
+                            <div>
+                                <a class="commit-hash" href="#/repos/${escapeHtml(name)}?ref=${encodeURIComponent(commit.hash)}">${escapeHtml(commit.short_hash)}</a>
+                                <span class="commit-message" style="margin-left: 8px;">${escapeHtml(commit.message)}</span>
+                            </div>
+                            <div class="commit-meta">
+                                ${escapeHtml(commit.author)} committed on ${formatDate(commit.date)}
+                            </div>
+                        </li>
+                    `).join('');
+                    
+                    content = `<ul class="commit-list">${commitItems}</ul>`;
+                }
+            }
+            
+            app.innerHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <h2>
+                            <a href="#/" style="color: #0969da;">Repositories</a>
+                            <span class="path-separator">/</span>
+                            <span>${escapeHtml(name)}</span>
+                            ${refBadge}
+                        </h2>
+                    </div>
+                    <div class="tabs">
+                        <button class="${activeTab === 'files' ? 'active' : ''}" onclick="setTab('files')">📁 Files</button>
+                        <button class="${activeTab === 'commits' ? 'active' : ''}" onclick="setTab('commits')">📝 Commits</button>
+                    </div>
+                    ${breadcrumb}
+                    ${content}
+                </div>
+            `;
+        }
+        
+        function renderBlobView(name, filePath, ref) {
+            const refBadge = ref !== 'HEAD' ? `<span class="ref-badge">${escapeHtml(ref.substring(0, 7))}</span>` : '';
+            const parts = filePath.split('/');
+            const baseUrl = '#/repos/' + escapeHtml(name) + '?ref=' + encodeURIComponent(ref);
+            
+            const pathParts = parts.map((part, i) => {
+                const isLast = i === parts.length - 1;
+                const partPath = parts.slice(0, i + 1).join('/');
+                if (isLast) {
+                    return `<span class="path-separator">/</span><span>${escapeHtml(part)}</span>`;
+                }
+                return `<span class="path-separator">/</span><a href="${baseUrl}&path=${encodeURIComponent(parts.slice(0, i + 1).join('/'))}">${escapeHtml(part)}</a>`;
+            }).join('');
+            
+            app.innerHTML = `
+                <div class="card">
+                    <div class="card-header">
+                        <h2>
+                            <a href="#/" style="color: #0969da;">Repositories</a>
+                            <span class="path-separator">/</span>
+                            <a href="${baseUrl}" style="color: #0969da;">${escapeHtml(name)}</a>
+                            ${pathParts}
+                            ${refBadge}
+                        </h2>
+                    </div>
+                    <pre class="blob-content">${escapeHtml(blobContent)}</pre>
+                </div>
+            `;
+        }
+        
+        // Tab switching
+        window.setTab = function(tab) {
+            activeTab = tab;
+            render();
+        };
+        
+        // Handle route changes
+        async function handleRoute() {
+            const route = parseRoute();
+            
+            if (route.view === 'home') {
+                await renderHome();
+            } else if (route.view === 'repo') {
+                await renderRepo(route.name, route.ref, route.path);
+            } else if (route.view === 'blob') {
+                await renderBlob(route.name, route.filePath, route.ref);
+            }
+        }
+        
+        // Initialize
+        window.addEventListener('hashchange', handleRoute);
+        handleRoute();
+    </script>
+</body>
+</html>

@@ -2,13 +2,32 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+/// Authentication credentials for HTTP basic auth
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthCredential {
+    /// Username
+    pub user: String,
+    /// SHA512 hash of the password (hex encoded)
+    pub password_hash: String,
+}
+
 /// Configuration for the git server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// SSH port to listen on
     pub ssh_port: u16,
+    /// HTTP port for REST API and UI
+    #[serde(default = "default_http_port")]
+    pub http_port: u16,
     /// Public keys authorized to access the server in OpenSSH format
     pub public_keys: Vec<String>,
+    /// Authentication credentials for HTTP basic auth
+    #[serde(default)]
+    pub auth: Vec<AuthCredential>,
+}
+
+fn default_http_port() -> u16 {
+    8080
 }
 
 impl Config {
@@ -24,7 +43,9 @@ impl Config {
     pub fn default_config() -> Self {
         Config {
             ssh_port: 2222,
+            http_port: 8080,
             public_keys: vec![],
+            auth: vec![],
         }
     }
 }
