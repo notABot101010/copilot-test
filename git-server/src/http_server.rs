@@ -13,6 +13,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
 use tokio::process::Command;
+use tokio::fs;
 use tower_http::services::ServeDir;
 
 use crate::config::Config;
@@ -61,12 +62,26 @@ pub struct TreeQuery {
     pub path: Option<String>,
 }
 
+/// Request body for creating a repository
+#[derive(Debug, Deserialize)]
+pub struct CreateRepoRequest {
+    pub name: String,
+}
+
+/// Request body for updating a file
+#[derive(Debug, Deserialize)]
+pub struct UpdateFileRequest {
+    pub path: String,
+    pub content: String,
+    pub message: String,
+}
+
 /// Create the HTTP router
 pub fn create_router(state: AppState) -> Router {
     let api_routes = Router::new()
-        .route("/repos", get(list_repos))
+        .route("/repos", get(list_repos).post(create_repo))
         .route("/repos/:name", get(get_repo))
-        .route("/repos/:name/files", get(list_files))
+        .route("/repos/:name/files", get(list_files).post(update_file))
         .route("/repos/:name/commits", get(list_commits))
         .route("/repos/:name/tree", get(get_tree))
         .route("/repos/:name/blob", get(get_blob_root))
@@ -85,8 +100,18 @@ pub fn create_router(state: AppState) -> Router {
 
 /// Find the static directory by checking multiple locations
 fn find_static_dir() -> PathBuf {
-    // Try current dir/static
+    // Try current dir/static/dist (Vite build output)
     if let Ok(cwd) = std::env::current_dir() {
+        let dir = cwd.join("static").join("dist");
+        if dir.exists() {
+            return dir;
+        }
+        // Try current dir/git-server/static/dist
+        let dir = cwd.join("git-server").join("static").join("dist");
+        if dir.exists() {
+            return dir;
+        }
+        // Fallback to static (for old structure)
         let dir = cwd.join("static");
         if dir.exists() {
             return dir;
@@ -101,6 +126,10 @@ fn find_static_dir() -> PathBuf {
     // Try relative to executable
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
+            let dir = exe_dir.join("static").join("dist");
+            if dir.exists() {
+                return dir;
+            }
             let dir = exe_dir.join("static");
             if dir.exists() {
                 return dir;
@@ -108,8 +137,8 @@ fn find_static_dir() -> PathBuf {
         }
     }
     
-    // Fall back to "static" relative path
-    PathBuf::from("static")
+    // Fall back to "static/dist" relative path
+    PathBuf::from("static/dist")
 }
 
 /// Basic auth middleware
@@ -166,7 +195,16 @@ async fn auth_middleware(
 
 /// Serve index.html for SPA routing
 async fn serve_index() -> impl IntoResponse {
-    Html(include_str!("../static/index.html"))
+    let static_dir = find_static_dir();
+    let index_path = static_dir.join("index.html");
+    
+    match fs::read_to_string(&index_path).await {
+        Ok(content) => Html(content).into_response(),
+        Err(_) => {
+            // Fallback to embedded old index.html
+            Html(include_str!("../static/index.html")).into_response()
+        }
+    }
 }
 
 /// List all repositories
@@ -186,6 +224,65 @@ async fn list_repos(State(state): State<AppState>) -> Result<Json<Vec<RepoInfo>>
         .collect();
 
     Ok(Json(repo_infos))
+}
+
+/// Create a new repository
+async fn create_repo(
+    State(state): State<AppState>,
+    Json(body): Json<CreateRepoRequest>,
+) -> Result<Json<RepoInfo>, (StatusCode, String)> {
+    // Validate name
+    let name = body.name.trim();
+    if name.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Repository name is required".to_string()));
+    }
+    
+    // Check for invalid characters in name
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
+        return Err((StatusCode::BAD_REQUEST, "Repository name contains invalid characters".to_string()));
+    }
+    
+    // Check if already exists
+    let existing = state.db
+        .get_repository(name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    if existing.is_some() {
+        return Err((StatusCode::CONFLICT, "Repository already exists".to_string()));
+    }
+    
+    // Create the bare repository directory
+    let repo_dir_name = if name.ends_with(".git") {
+        name.to_string()
+    } else {
+        format!("{}.git", name)
+    };
+    let repo_path = state.repos_path.join(&repo_dir_name);
+    
+    // Initialize bare git repository
+    let output = Command::new("git")
+        .args(["init", "--bare"])
+        .arg(&repo_path)
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to create repository: {}", stderr)));
+    }
+    
+    // Add to database
+    state.db
+        .create_repository(name, &repo_dir_name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    Ok(Json(RepoInfo {
+        name: name.to_string(),
+        path: repo_dir_name,
+    }))
 }
 
 /// Get a single repository
@@ -222,6 +319,173 @@ async fn list_files(
     let files = list_git_files(&repo_path, "HEAD", "").await?;
 
     Ok(Json(files))
+}
+
+/// Update a file in the repository and commit it
+async fn update_file(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(body): Json<UpdateFileRequest>,
+) -> Result<(), (StatusCode, String)> {
+    // Validate inputs
+    if body.path.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "File path is required".to_string()));
+    }
+    if body.message.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Commit message is required".to_string()));
+    }
+    if body.path.contains("..") {
+        return Err((StatusCode::BAD_REQUEST, "Invalid file path".to_string()));
+    }
+    
+    let repo = state
+        .db
+        .get_repository(&name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+
+    let repo_path = state.repos_path.join(&repo.path);
+    
+    // For a bare repository, we need to use a worktree to make changes
+    // We'll create a temporary worktree, make the change, commit, and clean up
+    let temp_dir = std::env::temp_dir().join(format!("git-server-{}-{}", name, std::process::id()));
+    
+    // Clone the bare repo to a temporary directory
+    let output = Command::new("git")
+        .args(["clone", "--local"])
+        .arg(&repo_path)
+        .arg(&temp_dir)
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    // If clone fails (empty repo), init a new repo
+    let is_empty_repo = !output.status.success();
+    if is_empty_repo {
+        fs::create_dir_all(&temp_dir)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        
+        let output = Command::new("git")
+            .args(["init"])
+            .current_dir(&temp_dir)
+            .output()
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        
+        if !output.status.success() {
+            let _ = fs::remove_dir_all(&temp_dir).await;
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to initialize temp repository".to_string()));
+        }
+        
+        // Set remote to push to
+        let output = Command::new("git")
+            .args(["remote", "add", "origin"])
+            .arg(&repo_path)
+            .current_dir(&temp_dir)
+            .output()
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        
+        if !output.status.success() {
+            let _ = fs::remove_dir_all(&temp_dir).await;
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to set remote".to_string()));
+        }
+    }
+    
+    // Write the file
+    let file_path = temp_dir.join(&body.path);
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+    fs::write(&file_path, &body.content)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    // Configure git user for this commit
+    let email_output = Command::new("git")
+        .args(["config", "user.email", "webapp@git-server.local"])
+        .current_dir(&temp_dir)
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    if !email_output.status.success() {
+        let _ = fs::remove_dir_all(&temp_dir).await;
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to configure git user email".to_string()));
+    }
+    
+    let name_output = Command::new("git")
+        .args(["config", "user.name", "Git Server Webapp"])
+        .current_dir(&temp_dir)
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    if !name_output.status.success() {
+        let _ = fs::remove_dir_all(&temp_dir).await;
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to configure git user name".to_string()));
+    }
+    
+    // Add the file
+    let output = Command::new("git")
+        .args(["add", &body.path])
+        .current_dir(&temp_dir)
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    if !output.status.success() {
+        let _ = fs::remove_dir_all(&temp_dir).await;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to add file: {}", stderr)));
+    }
+    
+    // Commit
+    let output = Command::new("git")
+        .args(["commit", "-m", &body.message])
+        .current_dir(&temp_dir)
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    if !output.status.success() {
+        let _ = fs::remove_dir_all(&temp_dir).await;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to commit: {}", stderr)));
+    }
+    
+    // Push to the bare repo
+    let output = Command::new("git")
+        .args(["push", "origin", "HEAD:main"])
+        .current_dir(&temp_dir)
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    // Try HEAD:master if main fails
+    if !output.status.success() {
+        let output = Command::new("git")
+            .args(["push", "origin", "HEAD:master"])
+            .current_dir(&temp_dir)
+            .output()
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        
+        if !output.status.success() {
+            let _ = fs::remove_dir_all(&temp_dir).await;
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to push: {}", stderr)));
+        }
+    }
+    
+    // Clean up temp directory
+    let _ = fs::remove_dir_all(&temp_dir).await;
+    
+    Ok(())
 }
 
 /// List commits in a repository

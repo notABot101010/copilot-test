@@ -5,6 +5,7 @@
     "preact-router",
     "router-test",
     "spreadsheet",
-    "team-chat"
+    "team-chat",
+    "git-server/webapp"
   ]
 }
