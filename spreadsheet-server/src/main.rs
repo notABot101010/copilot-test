@@ -152,9 +152,9 @@ async fn main() {
         .layer(cors)
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await.unwrap();
-    println!("Spreadsheet server listening on http://0.0.0.0:3001");
-    println!("WebSocket endpoint: ws://0.0.0.0:3001/ws/spreadsheets/:id");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:4001").await.unwrap();
+    println!("Spreadsheet server listening on http://0.0.0.0:4001");
+    println!("WebSocket endpoint: ws://0.0.0.0:4001/ws/spreadsheets/:id");
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -373,7 +373,7 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
     };
 
     let mut rx = rx;
-    
+
     // Shared client ID between send and receive tasks
     let client_id: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
 
@@ -387,7 +387,7 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
         .await
         .ok()
         .flatten();
-        
+
         if let Some((binary,)) = row {
             let msg = WsMessage::Connected {
                 document: BASE64.encode(&binary),
@@ -409,7 +409,7 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
                     .as_ref()
                     .map_or(true, |id| id != &update.sender_id)
             };
-            
+
             if should_send {
                 let msg = WsMessage::Sync {
                     document: update.document,
@@ -446,12 +446,12 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
                                         let client_id_guard = client_id_for_recv.read().await;
                                         client_id_guard.clone().unwrap_or_else(|| "unknown".to_string())
                                     };
-                                    
+
                                     let now = std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .unwrap()
                                         .as_millis() as i64;
-                                    
+
                                     // Fetch existing document from database
                                     let row: Option<(Vec<u8>,)> = sqlx::query_as(
                                         "SELECT document FROM spreadsheets WHERE id = ?"
@@ -461,7 +461,7 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
                                     .await
                                     .ok()
                                     .flatten();
-                                    
+
                                     // Merge with server document
                                     let merged_binary = if let Some((server_binary,)) = row {
                                         if let Ok(mut server_doc) = automerge::AutoCommit::load(&server_binary) {
@@ -477,7 +477,7 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
                                     } else {
                                         client_binary.clone()
                                     };
-                                    
+
                                     // Update name from the merged document
                                     let name = if let Ok(doc) = automerge::AutoCommit::load(&merged_binary) {
                                         doc.get(automerge::ROOT, "name")
@@ -488,7 +488,7 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
                                     } else {
                                         format!("Spreadsheet {}", &spreadsheet_id_clone2[..8.min(spreadsheet_id_clone2.len())])
                                     };
-                                    
+
                                     // Upsert the document to database
                                     let _ = sqlx::query(
                                         r#"
@@ -507,7 +507,7 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
                                     .bind(now)
                                     .execute(&state_clone.db)
                                     .await;
-                                    
+
                                     // Broadcast to other clients
                                     broadcast_update(&state_clone, &spreadsheet_id_clone2, &merged_binary, &sender_id).await;
                                 }

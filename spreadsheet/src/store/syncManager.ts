@@ -1,8 +1,8 @@
 import * as Automerge from '@automerge/automerge';
 
 // Server URLs for sync
-const HTTP_SERVER_URL = import.meta.env.VITE_SYNC_SERVER_URL || 'http://localhost:3001';
-const WS_SERVER_URL = (import.meta.env.VITE_SYNC_SERVER_URL || 'http://localhost:3001')
+const HTTP_SERVER_URL = import.meta.env.VITE_SYNC_SERVER_URL || 'http://localhost:4001';
+const WS_SERVER_URL = (import.meta.env.VITE_SYNC_SERVER_URL || 'http://localhost:4001')
   .replace(/^http/, 'ws');
 
 // Export getServerUrl for use in spreadsheetStore
@@ -101,7 +101,7 @@ export function initSync(onUpdate: UpdateCallback): void {
 
   updateCallback = onUpdate;
   clientId = generateClientId();
-  
+
   // Initialize BroadcastChannel for same-browser tab sync
   channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
 
@@ -119,10 +119,10 @@ export function initSync(onUpdate: UpdateCallback): void {
  */
 export function startServerSync(spreadsheetId: string): void {
   currentSpreadsheetId = spreadsheetId;
-  
+
   // Close any existing WebSocket connection
   closeWebSocket();
-  
+
   // Connect via WebSocket
   connectWebSocket(spreadsheetId);
 }
@@ -134,15 +134,15 @@ function connectWebSocket(spreadsheetId: string): void {
   if (!clientId) {
     clientId = generateClientId();
   }
-  
+
   const wsUrl = `${WS_SERVER_URL}/ws/spreadsheets/${spreadsheetId}`;
-  
+
   try {
     ws = new WebSocket(wsUrl);
-    
+
     ws.onopen = () => {
       console.debug('WebSocket connected for spreadsheet:', spreadsheetId);
-      
+
       // Identify ourselves to the server
       if (ws && clientId) {
         const identifyMsg: WsIdentifyMessage = {
@@ -152,7 +152,7 @@ function connectWebSocket(spreadsheetId: string): void {
         ws.send(JSON.stringify(identifyMsg));
       }
     };
-    
+
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data) as WsMessage;
@@ -161,17 +161,17 @@ function connectWebSocket(spreadsheetId: string): void {
         console.debug('Failed to parse WebSocket message:', error);
       }
     };
-    
+
     ws.onclose = () => {
       console.debug('WebSocket closed for spreadsheet:', spreadsheetId);
       ws = null;
-      
+
       // Reconnect if we still want to be connected to this spreadsheet
       if (currentSpreadsheetId === spreadsheetId) {
         scheduleReconnect(spreadsheetId);
       }
     };
-    
+
     ws.onerror = (error) => {
       console.debug('WebSocket error:', error);
     };
@@ -193,7 +193,7 @@ function handleWsMessage(msg: WsMessage): void {
         updateCallback(currentSpreadsheetId, binary);
       }
       break;
-      
+
     case 'sync':
       // Another client made changes
       if (msg.sender_id !== clientId && updateCallback && currentSpreadsheetId) {
@@ -201,7 +201,7 @@ function handleWsMessage(msg: WsMessage): void {
         updateCallback(currentSpreadsheetId, binary);
       }
       break;
-      
+
     case 'error':
       console.error('WebSocket error from server:', msg.message);
       break;
@@ -215,7 +215,7 @@ function scheduleReconnect(spreadsheetId: string): void {
   if (reconnectTimeoutId !== null) {
     clearTimeout(reconnectTimeoutId);
   }
-  
+
   reconnectTimeoutId = window.setTimeout(() => {
     reconnectTimeoutId = null;
     if (currentSpreadsheetId === spreadsheetId) {
@@ -232,7 +232,7 @@ function closeWebSocket(): void {
     clearTimeout(reconnectTimeoutId);
     reconnectTimeoutId = null;
   }
-  
+
   if (ws) {
     ws.close();
     ws = null;
@@ -260,7 +260,7 @@ export function broadcastChanges<T>(spreadsheetId: string, oldDoc: Automerge.Doc
   // Encode the new document as base64 for transmission
   const encoded = Automerge.save(newDoc);
   const encodedBase64 = uint8ArrayToBase64(encoded);
-  
+
   // Broadcast to other tabs in the same browser (faster)
   if (channel) {
     const message: BroadcastSyncMessage = {
@@ -270,7 +270,7 @@ export function broadcastChanges<T>(spreadsheetId: string, oldDoc: Automerge.Doc
     };
     channel.postMessage(message);
   }
-  
+
   // Send via WebSocket for real-time cross-browser sync
   sendViaWebSocket(encodedBase64);
 }
@@ -318,7 +318,7 @@ async function syncToServerHttp(spreadsheetId: string, binary: Uint8Array): Prom
  */
 export function closeSync(): void {
   stopServerSync();
-  
+
   if (channel) {
     channel.close();
     channel = null;
