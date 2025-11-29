@@ -140,23 +140,60 @@ pub struct MultipartParams {
 
 /// Create the router for S3 API
 pub fn create_router(state: AppState) -> Router {
+    // Create a nested router for object operations that catches all remaining path
+    let object_router = Router::new()
+        .fallback(handle_object_request);
+
     Router::new()
         // Service-level operations
         .route("/", get(list_buckets))
-        // Bucket operations (must be before the catch-all)
+        // Bucket operations
         .route("/{bucket}", head(head_bucket))
         .route("/{bucket}", get(get_bucket_or_list_objects))
         .route("/{bucket}", put(create_bucket))
         .route("/{bucket}", delete(delete_bucket))
-        // Object operations with path
-        .route("/{bucket}/{*key}", head(head_object))
-        .route("/{bucket}/{*key}", get(get_object))
-        .route("/{bucket}/{*key}", put(put_object))
-        .route("/{bucket}/{*key}", delete(delete_object))
-        .route("/{bucket}/{*key}", post(post_object))
+        // Object operations - use nest with a fallback
+        .nest("/{bucket}", object_router)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state)
+}
+
+use axum::extract::OriginalUri;
+use axum::http::Method;
+
+/// Handle all object requests by parsing the path
+async fn handle_object_request(
+    State(state): State<AppState>,
+    method: Method,
+    OriginalUri(uri): OriginalUri,
+    Query(params): Query<MultipartParams>,
+    headers: HeaderMap,
+    body: Body,
+) -> Result<Response<Body>> {
+    // Parse the path to extract bucket and key
+    let path = uri.path();
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+
+    if parts.is_empty() {
+        return Err(S3Error::BadRequest("Missing bucket".to_string()));
+    }
+
+    let bucket = parts[0];
+    let key = if parts.len() > 1 {
+        parts[1..].join("/")
+    } else {
+        return Err(S3Error::BadRequest("Missing key".to_string()));
+    };
+
+    match method {
+        Method::HEAD => head_object_impl(state, bucket, &key).await,
+        Method::GET => get_object_impl(state, bucket, &key, headers).await,
+        Method::PUT => put_object_impl(state, bucket, &key, params, headers, body).await,
+        Method::DELETE => delete_object_impl(state, bucket, &key, params).await,
+        Method::POST => post_object_impl(state, bucket, &key, params, body).await,
+        _ => Err(S3Error::BadRequest("Method not allowed".to_string())),
+    }
 }
 
 /// List all buckets
@@ -295,14 +332,15 @@ async fn delete_bucket(
         .unwrap())
 }
 
-/// Head object - get object metadata
-async fn head_object(
-    State(state): State<AppState>,
-    Path((bucket, key)): Path<(String, String)>,
-) -> Result<impl IntoResponse> {
+/// Implementation of head object
+async fn head_object_impl(
+    state: AppState,
+    bucket: &str,
+    key: &str,
+) -> Result<Response<Body>> {
     let obj = state
         .db
-        .get_object(&bucket, &key)
+        .get_object(bucket, key)
         .await?
         .ok_or_else(|| S3Error::NotFound(format!("Object not found: {}/{}", bucket, key)))?;
 
@@ -319,12 +357,13 @@ async fn head_object(
     Ok(response.body(Body::empty()).unwrap())
 }
 
-/// Get object - download object data
-async fn get_object(
-    State(state): State<AppState>,
-    Path((bucket, key)): Path<(String, String)>,
+/// Implementation of get object
+async fn get_object_impl(
+    state: AppState,
+    bucket: &str,
+    key: &str,
     headers: HeaderMap,
-) -> Result<impl IntoResponse> {
+) -> Result<Response<Body>> {
     let obj = state
         .db
         .get_object(&bucket, &key)
@@ -373,24 +412,25 @@ async fn get_object(
     Ok(response.body(body).unwrap())
 }
 
-/// Put object - upload object data
-async fn put_object(
-    State(state): State<AppState>,
-    Path((bucket, key)): Path<(String, String)>,
-    Query(params): Query<MultipartParams>,
+/// Implementation of put object
+async fn put_object_impl(
+    state: AppState,
+    bucket: &str,
+    key: &str,
+    params: MultipartParams,
     headers: HeaderMap,
     body: Body,
-) -> Result<impl IntoResponse> {
+) -> Result<Response<Body>> {
     // Check if this is an upload part request
     if let (Some(upload_id), Some(part_number)) = (&params.upload_id, params.part_number) {
-        return upload_part(state, &bucket, &key, upload_id, part_number, headers, body).await;
+        return upload_part(state, bucket, key, upload_id, part_number, headers, body).await;
     }
 
     // Check If-None-Match header for conditional write
     if let Some(if_none_match) = headers.get("if-none-match").and_then(|v| v.to_str().ok()) {
         if if_none_match == "*" {
             // Object must not exist
-            if state.db.object_exists(&bucket, &key).await? {
+            if state.db.object_exists(bucket, key).await? {
                 return Err(S3Error::PreconditionFailed(
                     "Object already exists".to_string(),
                 ));
@@ -405,7 +445,7 @@ async fn put_object(
         .map(|s| s.to_string());
 
     // Create storage path
-    let storage_path = state.storage.create_storage_path(&bucket, &key);
+    let storage_path = state.storage.create_storage_path(bucket, key);
 
     // Stream the body to storage
     let stream = body.into_data_stream().map(|result| {
@@ -417,7 +457,7 @@ async fn put_object(
     // Store metadata in database
     state
         .db
-        .create_object(&bucket, &key, size, &etag, content_type.as_deref(), &storage_path)
+        .create_object(bucket, key, size, &etag, content_type.as_deref(), &storage_path)
         .await?;
 
     Ok(Response::builder()
@@ -472,19 +512,20 @@ async fn upload_part(
         .unwrap())
 }
 
-/// Delete object
-async fn delete_object(
-    State(state): State<AppState>,
-    Path((bucket, key)): Path<(String, String)>,
-    Query(params): Query<MultipartParams>,
-) -> Result<impl IntoResponse> {
+/// Implementation of delete object
+async fn delete_object_impl(
+    state: AppState,
+    bucket: &str,
+    key: &str,
+    params: MultipartParams,
+) -> Result<Response<Body>> {
     // Check if this is an abort multipart upload request
     if let Some(upload_id) = &params.upload_id {
-        return abort_multipart_upload(state, &bucket, upload_id).await;
+        return abort_multipart_upload(state, bucket, upload_id).await;
     }
 
     // Delete object from database and get storage path
-    if let Some(storage_path) = state.db.delete_object(&bucket, &key).await? {
+    if let Some(storage_path) = state.db.delete_object(bucket, key).await? {
         // Delete from storage
         state.storage.delete(&storage_path).await?;
     }
@@ -519,22 +560,22 @@ async fn abort_multipart_upload(
         .unwrap())
 }
 
-/// POST operations (initiate/complete multipart upload, delete multiple objects)
-async fn post_object(
-    State(state): State<AppState>,
-    Path((bucket, key)): Path<(String, String)>,
-    Query(params): Query<MultipartParams>,
-    headers: HeaderMap,
+/// Implementation of post object
+async fn post_object_impl(
+    state: AppState,
+    bucket: &str,
+    key: &str,
+    params: MultipartParams,
     body: Body,
-) -> Result<impl IntoResponse> {
+) -> Result<Response<Body>> {
     // Check if this is an initiate multipart upload request
     if params.uploads.is_some() {
-        return initiate_multipart_upload(state, &bucket, &key).await;
+        return initiate_multipart_upload(state, bucket, key).await;
     }
 
     // Check if this is a complete multipart upload request
     if let Some(upload_id) = &params.upload_id {
-        return complete_multipart_upload(state, &bucket, &key, upload_id, body).await;
+        return complete_multipart_upload(state, bucket, key, upload_id, body).await;
     }
 
     Err(S3Error::BadRequest("Unknown POST operation".to_string()))
