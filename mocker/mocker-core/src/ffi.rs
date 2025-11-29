@@ -1,7 +1,8 @@
-//! FFI bindings for libkrun
+//! Wrapper module for krun-sys bindings
 //!
-//! This module provides Rust bindings for the libkrun C library.
-//! libkrun is a library that allows running processes inside lightweight VMs.
+//! This module provides a thin wrapper around the krun-sys crate for libkrun.
+//! krun-sys provides Rust bindings for the libkrun C library which allows
+//! running processes inside lightweight VMs.
 //!
 //! Note: This module requires the `libkrun` feature to be enabled and
 //! the libkrun library to be installed on the system.
@@ -10,135 +11,12 @@
 
 use std::ffi::c_char;
 
+/// Re-export krun-sys when the libkrun feature is enabled
 #[cfg(feature = "libkrun")]
-#[link(name = "krun")]
-extern "C" {
-    /// Sets the log level for the library.
-    ///
-    /// ## Arguments
-    /// * `level` - The log level (0=Off, 1=Error, 2=Warn, 3=Info, 4=Debug, 5=Trace)
-    ///
-    /// ## Returns
-    /// 0 on success, negative error code on failure.
-    pub fn krun_set_log_level(level: u32) -> i32;
-
-    /// Creates a configuration context.
-    ///
-    /// ## Returns
-    /// Context ID on success, negative error code on failure.
-    pub fn krun_create_ctx() -> i32;
-
-    /// Frees an existing configuration context.
-    ///
-    /// ## Arguments
-    /// * `ctx_id` - The configuration context ID to free.
-    ///
-    /// ## Returns
-    /// 0 on success, negative error code on failure.
-    pub fn krun_free_ctx(ctx_id: u32) -> i32;
-
-    /// Sets the basic configuration parameters for the MicroVm.
-    ///
-    /// ## Arguments
-    /// * `ctx_id` - The configuration context ID.
-    /// * `num_vcpus` - The number of vCPUs.
-    /// * `ram_mib` - The amount of RAM in MiB.
-    ///
-    /// ## Returns
-    /// 0 on success, negative error code on failure.
-    pub fn krun_set_vm_config(ctx_id: u32, num_vcpus: u8, ram_mib: u32) -> i32;
-
-    /// Sets the path to be used as root for the MicroVm.
-    ///
-    /// ## Arguments
-    /// * `ctx_id` - The configuration context ID.
-    /// * `root_path` - The path to be used as root.
-    ///
-    /// ## Returns
-    /// 0 on success, negative error code on failure.
-    pub fn krun_set_root(ctx_id: u32, root_path: *const c_char) -> i32;
-
-    /// Adds an independent virtio-fs device pointing to a host's directory with a tag.
-    ///
-    /// ## Arguments
-    /// * `ctx_id` - The configuration context ID.
-    /// * `tag` - The tag to identify the filesystem in the guest.
-    /// * `path` - The full path to the host's directory to be exposed to the guest.
-    ///
-    /// ## Returns
-    /// 0 on success, negative error code on failure.
-    pub fn krun_add_virtiofs(ctx_id: u32, tag: *const c_char, path: *const c_char) -> i32;
-
-    /// Configures a map of host to guest TCP ports for the MicroVm.
-    ///
-    /// ## Arguments
-    /// * `ctx_id` - The configuration context ID.
-    /// * `port_map` - A null-terminated array of string pointers with format "host_port:guest_port".
-    ///
-    /// ## Returns
-    /// 0 on success, negative error code on failure.
-    pub fn krun_set_port_map(ctx_id: u32, port_map: *const *const c_char) -> i32;
-
-    /// Configures a map of rlimits to be set in the guest.
-    ///
-    /// ## Arguments
-    /// * `ctx_id` - The configuration context ID.
-    /// * `rlimits` - A null-terminated array of string pointers with format "RESOURCE=SOFT:HARD".
-    ///
-    /// ## Returns
-    /// 0 on success, negative error code on failure.
-    pub fn krun_set_rlimits(ctx_id: u32, rlimits: *const *const c_char) -> i32;
-
-    /// Sets the working directory for the executable to be run inside the MicroVm.
-    ///
-    /// ## Arguments
-    /// * `ctx_id` - The configuration context ID.
-    /// * `workdir_path` - The path to the working directory, relative to the root.
-    ///
-    /// ## Returns
-    /// 0 on success, negative error code on failure.
-    pub fn krun_set_workdir(ctx_id: u32, workdir_path: *const c_char) -> i32;
-
-    /// Sets the path to the executable to be run inside the MicroVm, with arguments and environment.
-    ///
-    /// ## Arguments
-    /// * `ctx_id` - The configuration context ID.
-    /// * `exec_path` - The path to the executable, relative to the root.
-    /// * `argv` - A null-terminated array of string pointers to be passed as arguments.
-    /// * `envp` - A null-terminated array of string pointers for environment variables.
-    ///
-    /// ## Returns
-    /// 0 on success, negative error code on failure.
-    pub fn krun_set_exec(
-        ctx_id: u32,
-        exec_path: *const c_char,
-        argv: *const *const c_char,
-        envp: *const *const c_char,
-    ) -> i32;
-
-    /// Sets the path to the file to write the console output for the MicroVm.
-    ///
-    /// ## Arguments
-    /// * `ctx_id` - The configuration context ID.
-    /// * `filepath` - The path of the file to write the console output.
-    ///
-    /// ## Returns
-    /// 0 on success, negative error code on failure.
-    pub fn krun_set_console_output(ctx_id: u32, filepath: *const c_char) -> i32;
-
-    /// Starts and enters the MicroVm with the configured parameters.
-    ///
-    /// This function will attempt to take over stdin/stdout to manage them on behalf of the
-    /// process running inside the isolated environment.
-    ///
-    /// ## Arguments
-    /// * `ctx_id` - The configuration context ID.
-    ///
-    /// ## Returns
-    /// This function only returns if an error happens before starting the MicroVm.
-    /// Otherwise, the VMM assumes full control of the process and will call exit() once the MicroVm shuts down.
-    pub fn krun_start_enter(ctx_id: u32) -> i32;
-}
+pub use krun_sys::{
+    krun_add_virtiofs, krun_create_ctx, krun_free_ctx, krun_set_console_output, krun_set_exec,
+    krun_set_log_level, krun_set_root, krun_set_vm_config, krun_set_workdir, krun_start_enter,
+};
 
 /// Log level for libkrun
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -178,7 +56,8 @@ pub struct KrunContext {
 impl KrunContext {
     /// Create a new libkrun context
     pub fn new() -> Result<Self, i32> {
-        let ctx_id = unsafe { krun_create_ctx() };
+        // SAFETY: krun_create_ctx is a safe FFI call that creates a new context
+        let ctx_id = unsafe { krun_sys::krun_create_ctx() };
         if ctx_id < 0 {
             return Err(ctx_id);
         }
@@ -204,8 +83,9 @@ impl KrunContext {
 impl Drop for KrunContext {
     fn drop(&mut self) {
         if !self.consumed {
+            // SAFETY: krun_free_ctx is a safe FFI call that frees the context
             unsafe {
-                krun_free_ctx(self.ctx_id);
+                krun_sys::krun_free_ctx(self.ctx_id);
             }
         }
     }

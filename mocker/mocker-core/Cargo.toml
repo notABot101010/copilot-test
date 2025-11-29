@@ -13,8 +13,9 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 nix = { workspace = true }
 libc = "0.2"
+krun-sys = { version = "1.10.1", optional = true }
 
 [features]
 default = []
 # Enable libkrun integration (requires libkrun to be installed)
-libkrun = []
+libkrun = ["krun-sys"]

@@ -11,11 +11,11 @@ The project is split into two crates as requested:
 ### mocker-core
 
 The core library that handles:
-- **FFI Bindings**: Direct Rust FFI bindings for libkrun (no CLI shelling out)
+- **krun-sys Integration**: Uses the official `krun-sys` crate for libkrun Rust bindings
 - **VmConfig**: Configuration for microVMs (vCPUs, memory, volumes, environment variables)
 - **ImageManager**: OCI image pulling and management
 - **StateManager**: Persistence of VM state (running, stopped, failed)
-- **VmManager**: High-level VM lifecycle management using libkrun FFI
+- **VmManager**: High-level VM lifecycle management using krun-sys
 
 ### mocker (CLI)
 
@@ -30,20 +30,20 @@ The command-line interface using clap derive:
 
 ## Implementation Details
 
-### libkrun Integration (FFI)
+### libkrun Integration (krun-sys)
 
-The implementation uses direct FFI bindings to libkrun, similar to how [microsandbox](https://github.com/zerocore-ai/microsandbox) does it. The FFI module (`mocker-core/src/ffi.rs`) defines the following libkrun functions:
+The implementation uses the official `krun-sys` crate (v1.10.1) from crates.io for libkrun bindings. The crate provides auto-generated Rust bindings to the libkrun C library. Key functions used:
 
-- `krun_create_ctx()` - Create a VM context
-- `krun_set_vm_config()` - Configure vCPUs and RAM
-- `krun_set_root()` - Set the root filesystem
-- `krun_add_virtiofs()` - Add virtio-fs mounts for volumes
-- `krun_set_workdir()` - Set the working directory
-- `krun_set_exec()` - Set the executable, arguments, and environment
-- `krun_set_console_output()` - Configure console output
-- `krun_start_enter()` - Start the VM
+- `krun_sys::krun_create_ctx()` - Create a VM context
+- `krun_sys::krun_set_vm_config()` - Configure vCPUs and RAM
+- `krun_sys::krun_set_root()` - Set the root filesystem
+- `krun_sys::krun_add_virtiofs()` - Add virtio-fs mounts for volumes
+- `krun_sys::krun_set_workdir()` - Set the working directory
+- `krun_sys::krun_set_exec()` - Set the executable, arguments, and environment
+- `krun_sys::krun_set_console_output()` - Configure console output
+- `krun_sys::krun_start_enter()` - Start the VM
 
-The implementation uses `#[link(name = "krun")]` to link against the installed libkrun library. This is guarded by a `libkrun` feature flag - when the feature is not enabled, the code falls back to a simulation mode using `unshare`.
+The krun-sys dependency is optional and guarded by the `libkrun` feature flag. When the feature is not enabled, the code falls back to a simulation mode using `unshare`.
 
 ### Image Pulling
 

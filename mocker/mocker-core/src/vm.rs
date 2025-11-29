@@ -1,10 +1,10 @@
 //! VM Manager - handles launching and managing microVMs using libkrun
 //!
 //! This module provides the main interface for running microVMs using libkrun.
-//! It uses FFI to call libkrun directly for VM creation and management.
+//! It uses the krun-sys crate for libkrun bindings.
 
 #[cfg(feature = "libkrun")]
-use crate::ffi::{self, LogLevel};
+use crate::ffi::LogLevel;
 use crate::{Error, ImageManager, OciImage, Result, StateManager, VmConfig, VmState, VmStatus};
 #[cfg(feature = "libkrun")]
 use std::ffi::CString;
@@ -85,10 +85,10 @@ impl VmManager {
         }
     }
 
-    /// Launch a VM using libkrun directly via FFI
+    /// Launch a VM using libkrun via krun-sys
     ///
     /// This is the main entry point for running a microVM. It:
-    /// 1. Tries to use libkrun directly via FFI bindings
+    /// 1. Tries to use libkrun via krun-sys bindings
     /// 2. Falls back to simulated mode if libkrun is not available
     fn launch_vm(&self, image: &OciImage, config: &VmConfig, state: &mut VmState) -> Result<()> {
         // Build the command to run inside the VM
@@ -133,7 +133,7 @@ impl VmManager {
         }
     }
 
-    /// Try to run using libkrun directly via FFI
+    /// Try to run using libkrun via krun-sys crate
     #[cfg(feature = "libkrun")]
     fn try_libkrun(
         &self,
@@ -143,19 +143,22 @@ impl VmManager {
         exec_path: &str,
         args: &[String],
     ) -> Result<()> {
+        use crate::ffi::{to_null_terminated_c_array, KrunContext};
+
         // For detached mode, we need to fork first
         if config.detached {
             return self.run_libkrun_detached(image, config, state, exec_path, args);
         }
 
         // Create libkrun context with RAII wrapper for automatic cleanup
-        let ctx = ffi::KrunContext::new()
+        let ctx = KrunContext::new()
             .map_err(|e| Error::Libkrun(format!("Failed to create libkrun context: {}", e)))?;
         let ctx_id = ctx.id();
 
         // Set log level
+        // SAFETY: krun_set_log_level is a safe FFI call
         unsafe {
-            let status = ffi::krun_set_log_level(self.log_level as u32);
+            let status = krun_sys::krun_set_log_level(self.log_level as u32);
             if status < 0 {
                 return Err(Error::Libkrun(format!(
                     "Failed to set log level: {}",
@@ -165,8 +168,9 @@ impl VmManager {
         }
 
         // Set VM configuration (vCPUs and RAM)
+        // SAFETY: krun_set_vm_config is a safe FFI call
         unsafe {
-            let status = ffi::krun_set_vm_config(ctx_id, config.vcpus as u8, config.memory_mb);
+            let status = krun_sys::krun_set_vm_config(ctx_id, config.vcpus as u8, config.memory_mb);
             if status < 0 {
                 return Err(Error::Libkrun(format!(
                     "Failed to set VM config: {}",
@@ -178,8 +182,9 @@ impl VmManager {
         // Set root filesystem
         let c_root = CString::new(image.rootfs_path.to_string_lossy().as_bytes())
             .map_err(|e| Error::Libkrun(format!("Invalid root path: {}", e)))?;
+        // SAFETY: c_root is a valid CString pointer with sufficient lifetime
         unsafe {
-            let status = ffi::krun_set_root(ctx_id, c_root.as_ptr());
+            let status = krun_sys::krun_set_root(ctx_id, c_root.as_ptr());
             if status < 0 {
                 return Err(Error::Libkrun(format!("Failed to set root: {}", status)));
             }
@@ -192,8 +197,10 @@ impl VmManager {
             let host_path = CString::new(volume.host_path.as_bytes())
                 .map_err(|e| Error::Libkrun(format!("Invalid host path: {}", e)))?;
 
+            // SAFETY: tag and host_path are valid CString pointers with sufficient lifetime
             unsafe {
-                let status = ffi::krun_add_virtiofs(ctx_id, tag.as_ptr(), host_path.as_ptr());
+                let status =
+                    krun_sys::krun_add_virtiofs(ctx_id, tag.as_ptr(), host_path.as_ptr());
                 if status < 0 {
                     return Err(Error::Libkrun(format!(
                         "Failed to add virtiofs mount: {}",
@@ -206,8 +213,9 @@ impl VmManager {
         // Set working directory
         let c_workdir = CString::new(config.workdir.as_bytes())
             .map_err(|e| Error::Libkrun(format!("Invalid workdir: {}", e)))?;
+        // SAFETY: c_workdir is a valid CString pointer with sufficient lifetime
         unsafe {
-            let status = ffi::krun_set_workdir(ctx_id, c_workdir.as_ptr());
+            let status = krun_sys::krun_set_workdir(ctx_id, c_workdir.as_ptr());
             if status < 0 {
                 return Err(Error::Libkrun(format!(
                     "Failed to set workdir: {}",
@@ -237,17 +245,18 @@ impl VmManager {
             .map(|s| CString::new(s.as_bytes()))
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|e| Error::Libkrun(format!("Invalid argument: {}", e)))?;
-        let c_args_ptrs = ffi::to_null_terminated_c_array(&c_args);
+        let c_args_ptrs = to_null_terminated_c_array(&c_args);
 
         let c_env: Vec<CString> = env_vars
             .iter()
             .map(|s| CString::new(s.as_bytes()))
             .collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|e| Error::Libkrun(format!("Invalid env var: {}", e)))?;
-        let c_env_ptrs = ffi::to_null_terminated_c_array(&c_env);
+        let c_env_ptrs = to_null_terminated_c_array(&c_env);
 
+        // SAFETY: All CString pointers are valid with sufficient lifetime
         unsafe {
-            let status = ffi::krun_set_exec(
+            let status = krun_sys::krun_set_exec(
                 ctx_id,
                 c_exec.as_ptr(),
                 c_args_ptrs.as_ptr(),
@@ -262,8 +271,9 @@ impl VmManager {
         let console_path = state.runtime_dir.join("console.log");
         let c_console = CString::new(console_path.to_string_lossy().as_bytes())
             .map_err(|e| Error::Libkrun(format!("Invalid console path: {}", e)))?;
+        // SAFETY: c_console is a valid CString pointer with sufficient lifetime
         unsafe {
-            let status = ffi::krun_set_console_output(ctx_id, c_console.as_ptr());
+            let status = krun_sys::krun_set_console_output(ctx_id, c_console.as_ptr());
             if status < 0 {
                 // Non-fatal, just log it
                 eprintln!("Warning: Failed to set console output: {}", status);
@@ -274,8 +284,9 @@ impl VmManager {
         let ctx_id = ctx.consume();
 
         // Start the VM - this will take over the process
-        eprintln!("Starting microVM with libkrun...");
-        let status = unsafe { ffi::krun_start_enter(ctx_id) };
+        eprintln!("Starting microVM with libkrun (via krun-sys)...");
+        // SAFETY: krun_start_enter is a safe FFI call that takes ownership of the context
+        let status = unsafe { krun_sys::krun_start_enter(ctx_id) };
 
         // If we get here, something went wrong
         Err(Error::Libkrun(format!(
@@ -297,6 +308,7 @@ impl VmManager {
         use nix::unistd::{fork, ForkResult};
 
         // Fork the process
+        // SAFETY: fork() is safe to call
         match unsafe { fork() } {
             Ok(ForkResult::Parent { child }) => {
                 // Parent process - record the child PID and return
