@@ -1,4 +1,4 @@
-import { AppShell, Burger, Group, NavLink, Text, ScrollArea } from '@mantine/core';
+import { AppShell, Burger, Group, NavLink, Text, ScrollArea, Breadcrumbs, Anchor } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useRouter, useRoute } from '@copilot-test/preact-router';
 
@@ -13,7 +13,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const params = route.value.params;
   const org = params.org as string | undefined;
-  const repoName = params.name as string | undefined;
+  const project = params.project as string | undefined;
 
   // Determine active section from current path
   const path = route.value.path;
@@ -23,6 +23,37 @@ export function AppLayout({ children }: AppLayoutProps) {
     router.push(href);
     close();
   };
+
+  // Build breadcrumb items for navigation
+  const breadcrumbItems = [];
+  if (org) {
+    breadcrumbItems.push(
+      <Anchor
+        key="org"
+        href={`/${org}`}
+        onClick={(e: Event) => {
+          e.preventDefault();
+          handleNavClick(`/${org}`);
+        }}
+      >
+        {org}
+      </Anchor>
+    );
+  }
+  if (project) {
+    breadcrumbItems.push(
+      <Anchor
+        key="project"
+        href={`/${org}/${project}`}
+        onClick={(e: Event) => {
+          e.preventDefault();
+          handleNavClick(`/${org}/${project}`);
+        }}
+      >
+        {project}
+      </Anchor>
+    );
+  }
 
   return (
     <AppShell
@@ -52,10 +83,10 @@ export function AppLayout({ children }: AppLayoutProps) {
             </a>
           </Group>
           <Group>
-            {org && (
-              <Text size="sm" c="dimmed">
-                {org}{repoName && ` / ${repoName}`}
-              </Text>
+            {breadcrumbItems.length > 0 && (
+              <Breadcrumbs separator="/">
+                {breadcrumbItems}
+              </Breadcrumbs>
             )}
           </Group>
         </Group>
@@ -71,57 +102,68 @@ export function AppLayout({ children }: AppLayoutProps) {
           />
         </AppShell.Section>
 
-        {org && (
+        {org && !project && (
+          <AppShell.Section mt="md">
+            <Text size="xs" c="dimmed" mb="xs" tt="uppercase">
+              {org}
+            </Text>
+            <NavLink
+              label="Projects"
+              leftSection={<span>📁</span>}
+              active={path === `/${org}` || path === `/${org}/`}
+              onClick={() => handleNavClick(`/${org}`)}
+            />
+            <NavLink
+              label="Settings"
+              leftSection={<span>⚙️</span>}
+              active={path === `/${org}/settings`}
+              onClick={() => handleNavClick(`/${org}/settings`)}
+            />
+          </AppShell.Section>
+        )}
+
+        {org && project && (
           <>
             <AppShell.Section mt="md">
               <Text size="xs" c="dimmed" mb="xs" tt="uppercase">
                 {org}
               </Text>
               <NavLink
-                label="Repositories"
+                label="Projects"
                 leftSection={<span>📁</span>}
-                active={path === `/${org}` || path === `/${org}/`}
                 onClick={() => handleNavClick(`/${org}`)}
+              />
+            </AppShell.Section>
+
+            <AppShell.Section mt="md">
+              <Text size="xs" c="dimmed" mb="xs" tt="uppercase">
+                {project}
+              </Text>
+              <NavLink
+                label="Code"
+                leftSection={<span>📄</span>}
+                active={path === `/${org}/${project}` || path.includes('/blob/') || path.includes('/edit/') || path.includes('/files/new')}
+                onClick={() => handleNavClick(`/${org}/${project}`)}
+              />
+              <NavLink
+                label="Issues"
+                leftSection={<span>🐛</span>}
+                active={path.includes('/issues')}
+                onClick={() => handleNavClick(`/${org}/${project}/issues`)}
+              />
+              <NavLink
+                label="Pull Requests"
+                leftSection={<span>🔀</span>}
+                active={path.includes('/pulls')}
+                onClick={() => handleNavClick(`/${org}/${project}/pulls`)}
               />
               <NavLink
                 label="Settings"
                 leftSection={<span>⚙️</span>}
-                active={path === `/${org}/settings`}
-                onClick={() => handleNavClick(`/${org}/settings`)}
+                active={path === `/${org}/${project}/settings`}
+                onClick={() => handleNavClick(`/${org}/${project}/settings`)}
               />
             </AppShell.Section>
-
-            {repoName && (
-              <AppShell.Section mt="md">
-                <Text size="xs" c="dimmed" mb="xs" tt="uppercase">
-                  {repoName}
-                </Text>
-                <NavLink
-                  label="Code"
-                  leftSection={<span>📄</span>}
-                  active={path === `/${org}/${repoName}` || path.includes('/blob/') || path.includes('/tree')}
-                  onClick={() => handleNavClick(`/${org}/${repoName}`)}
-                />
-                <NavLink
-                  label="Branches"
-                  leftSection={<span>🌿</span>}
-                  active={path === `/${org}/${repoName}/branches`}
-                  onClick={() => handleNavClick(`/${org}/${repoName}/branches`)}
-                />
-                <NavLink
-                  label="Issues"
-                  leftSection={<span>🐛</span>}
-                  active={path.includes('/issues')}
-                  onClick={() => handleNavClick(`/${org}/${repoName}/issues`)}
-                />
-                <NavLink
-                  label="Pull Requests"
-                  leftSection={<span>🔀</span>}
-                  active={path.includes('/pulls')}
-                  onClick={() => handleNavClick(`/${org}/${repoName}/pulls`)}
-                />
-              </AppShell.Section>
-            )}
           </>
         )}
 
