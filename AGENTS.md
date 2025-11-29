@@ -6,6 +6,7 @@
 * Don't use emojis unless very necessary (e.g. to make a joke)
 * when you need to name an error variable (e.g. in a catch), name it `err`, instead of `e`
 & avoid single-letter variable names as much as possible (other than for numerical code).
+* use yaml if a project needs a configuration file
 
 ## Rust
 
