@@ -11,6 +11,7 @@
 * Use `aws-lc-rs` for crypto operations.
 * Use `reqwest` when you need an HTTP client and `axum` when you need an HTTP server.
 * Use `sqlx` when you need to interact with a database.
+* When working, always build the projects in debug mode to go faster.
 
 ## Web applications
 

@@ -1,5 +1,4 @@
 test-server-run/
-git-server.db
 *.db
 config.json
 static/dist/
