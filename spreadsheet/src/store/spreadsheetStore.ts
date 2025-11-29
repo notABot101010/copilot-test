@@ -2,6 +2,7 @@ import { signal, computed } from '@preact/signals';
 import * as Automerge from '@automerge/automerge';
 import type { SpreadsheetData, SpreadsheetListItem } from '../types/spreadsheet';
 import { getCellKey } from '../types/spreadsheet';
+import { initSync, broadcastChanges, startServerSync, stopServerSync } from './syncManager';
 
 // Automerge document type
 interface AutomergeSpreadsheet {
@@ -24,6 +25,50 @@ export const currentSpreadsheetDoc = signal<Automerge.Doc<AutomergeSpreadsheet> 
 const MAX_HISTORY = 100;
 const undoStack: Automerge.Doc<AutomergeSpreadsheet>[] = [];
 const redoStack: Automerge.Doc<AutomergeSpreadsheet>[] = [];
+
+// Initialize sync manager for cross-tab and cross-browser communication
+initSync(
+  // Handle incoming sync from other tabs/browsers
+  (spreadsheetId: string, changes: Uint8Array) => {
+    handleRemoteSync(spreadsheetId, changes);
+  },
+  // Get current document for server sync
+  () => {
+    const doc = currentSpreadsheetDoc.value;
+    if (!doc) return null;
+    return {
+      id: doc.id,
+      binary: Automerge.save(doc),
+    };
+  }
+);
+
+// Handle remote sync updates from other tabs
+function handleRemoteSync(spreadsheetId: string, remoteBinary: Uint8Array): void {
+  const doc = currentSpreadsheetDoc.value;
+  if (!doc || doc.id !== spreadsheetId) return;
+  
+  try {
+    const remoteDoc = Automerge.load<AutomergeSpreadsheet>(remoteBinary);
+    const mergedDoc = Automerge.merge(doc, remoteDoc);
+    
+    // Check if there are any changes by comparing the heads
+    const localHeads = Automerge.getHeads(doc);
+    const mergedHeads = Automerge.getHeads(mergedDoc);
+    
+    // If heads are different, we have new changes
+    const hasChanges = localHeads.length !== mergedHeads.length || 
+      localHeads.some((h, i) => h !== mergedHeads[i]);
+    
+    if (hasChanges) {
+      currentSpreadsheetDoc.value = mergedDoc;
+      saveCurrentSpreadsheetInternal();
+      updateSpreadsheetListItemInternal();
+    }
+  } catch {
+    // Ignore invalid remote data
+  }
+}
 
 function pushToUndoStack(doc: Automerge.Doc<AutomergeSpreadsheet>): void {
   undoStack.push(doc);
@@ -50,8 +95,7 @@ export function undo(): void {
   const previousDoc = undoStack.pop()!;
   redoStack.push(doc);
   currentSpreadsheetDoc.value = previousDoc;
-  saveCurrentSpreadsheet();
-  updateSpreadsheetListItem();
+  saveAndBroadcast(doc, previousDoc);
 }
 
 export function redo(): void {
@@ -62,8 +106,7 @@ export function redo(): void {
   const nextDoc = redoStack.pop()!;
   undoStack.push(doc);
   currentSpreadsheetDoc.value = nextDoc;
-  saveCurrentSpreadsheet();
-  updateSpreadsheetListItem();
+  saveAndBroadcast(doc, nextDoc);
 }
 
 // Derived computed value for current spreadsheet data
@@ -136,6 +179,9 @@ export function createSpreadsheet(name: string): string {
 
 // Load a spreadsheet by ID
 export function loadSpreadsheet(id: string): boolean {
+  // Stop any existing server sync
+  stopServerSync();
+  
   const stored = localStorage.getItem(STORAGE_KEY_PREFIX + id);
   if (!stored) {
     currentSpreadsheetDoc.value = null;
@@ -146,6 +192,10 @@ export function loadSpreadsheet(id: string): boolean {
     const binary = base64ToUint8Array(stored);
     const doc = Automerge.load<AutomergeSpreadsheet>(binary);
     currentSpreadsheetDoc.value = doc;
+    
+    // Start server sync for this spreadsheet
+    startServerSync(id);
+    
     return true;
   } catch {
     currentSpreadsheetDoc.value = null;
@@ -175,8 +225,7 @@ export function updateCell(row: number, col: number, value: string): void {
   });
   
   currentSpreadsheetDoc.value = newDoc;
-  saveCurrentSpreadsheet();
-  updateSpreadsheetListItem();
+  saveAndBroadcast(doc, newDoc);
 }
 
 // Update multiple cells at once
@@ -208,8 +257,7 @@ export function updateMultipleCells(updates: { row: number; col: number; value: 
   });
   
   currentSpreadsheetDoc.value = newDoc;
-  saveCurrentSpreadsheet();
-  updateSpreadsheetListItem();
+  saveAndBroadcast(doc, newDoc);
 }
 
 // Rename spreadsheet
@@ -223,12 +271,11 @@ export function renameSpreadsheet(name: string): void {
   });
   
   currentSpreadsheetDoc.value = newDoc;
-  saveCurrentSpreadsheet();
-  updateSpreadsheetListItem();
+  saveAndBroadcast(doc, newDoc);
 }
 
-// Save current spreadsheet to localStorage
-function saveCurrentSpreadsheet(): void {
+// Save current spreadsheet to localStorage (internal, no broadcast)
+function saveCurrentSpreadsheetInternal(): void {
   const doc = currentSpreadsheetDoc.value;
   if (!doc) return;
   
@@ -236,8 +283,8 @@ function saveCurrentSpreadsheet(): void {
   localStorage.setItem(STORAGE_KEY_PREFIX + doc.id, uint8ArrayToBase64(binary));
 }
 
-// Update the list item with current spreadsheet info
-function updateSpreadsheetListItem(): void {
+// Update the list item with current spreadsheet info (internal, no broadcast)
+function updateSpreadsheetListItemInternal(): void {
   const doc = currentSpreadsheetDoc.value;
   if (!doc) return;
   
@@ -247,6 +294,13 @@ function updateSpreadsheetListItem(): void {
       : item
   );
   saveSpreadsheetList();
+}
+
+// Save and broadcast changes to other tabs
+function saveAndBroadcast(oldDoc: Automerge.Doc<AutomergeSpreadsheet>, newDoc: Automerge.Doc<AutomergeSpreadsheet>): void {
+  saveCurrentSpreadsheetInternal();
+  updateSpreadsheetListItemInternal();
+  broadcastChanges(newDoc.id, oldDoc, newDoc);
 }
 
 // Delete a spreadsheet
@@ -276,8 +330,8 @@ export function mergeRemoteChanges(id: string, remoteBinary: Uint8Array): void {
   const mergedDoc = Automerge.merge(doc, remoteDoc);
   
   currentSpreadsheetDoc.value = mergedDoc;
-  saveCurrentSpreadsheet();
-  updateSpreadsheetListItem();
+  saveCurrentSpreadsheetInternal();
+  updateSpreadsheetListItemInternal();
 }
 
 // Helper functions for base64 encoding/decoding
