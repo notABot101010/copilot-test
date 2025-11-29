@@ -269,7 +269,16 @@ export function SpreadsheetPage() {
     const key = getCellKey(row, col);
     setEditValue(spreadsheet?.cells[key]?.value || '');
     setSelection({ start: { row, col }, end: { row, col } });
-    setTimeout(() => cellInputRef.current?.focus(), 0);
+    setTimeout(() => {
+      if (cellInputRef.current) {
+        cellInputRef.current.focus();
+        // Move cursor to end of input
+        cellInputRef.current.setSelectionRange(
+          cellInputRef.current.value.length,
+          cellInputRef.current.value.length
+        );
+      }
+    }, 0);
   }, [spreadsheet]);
 
   // Handle typing to start editing
@@ -372,9 +381,20 @@ export function SpreadsheetPage() {
     
     // Start typing to edit
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const key = getCellKey(selection.end.row, selection.end.col);
+      const existingValue = spreadsheet?.cells[key]?.value || '';
       setEditingCell({ row: selection.end.row, col: selection.end.col });
-      setEditValue(e.key);
-      setTimeout(() => cellInputRef.current?.focus(), 0);
+      setEditValue(existingValue + e.key);
+      setTimeout(() => {
+        if (cellInputRef.current) {
+          cellInputRef.current.focus();
+          // Move cursor to end of input
+          cellInputRef.current.setSelectionRange(
+            cellInputRef.current.value.length,
+            cellInputRef.current.value.length
+          );
+        }
+      }, 0);
     }
     
     // F2 to edit
@@ -383,7 +403,16 @@ export function SpreadsheetPage() {
       const key = getCellKey(selection.end.row, selection.end.col);
       setEditingCell({ row: selection.end.row, col: selection.end.col });
       setEditValue(spreadsheet?.cells[key]?.value || '');
-      setTimeout(() => cellInputRef.current?.focus(), 0);
+      setTimeout(() => {
+        if (cellInputRef.current) {
+          cellInputRef.current.focus();
+          // Move cursor to end of input
+          cellInputRef.current.setSelectionRange(
+            cellInputRef.current.value.length,
+            cellInputRef.current.value.length
+          );
+        }
+      }, 0);
     }
   }, [selection, editingCell, spreadsheet, scrollTop, scrollLeft, containerHeight, containerWidth, columnPositions]);
 
