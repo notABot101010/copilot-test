@@ -31,7 +31,7 @@ pub struct AppState {
 }
 
 /// Organization info for API responses
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct OrganizationInfo {
     pub id: i64,
     pub name: String,
@@ -51,7 +51,7 @@ pub struct RepoInfo {
 }
 
 /// Project info for API responses
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ProjectInfo {
     pub id: i64,
     pub name: String,
@@ -143,7 +143,7 @@ pub struct DeleteFileRequest {
 }
 
 /// Issue info for API responses
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct IssueInfo {
     pub id: i64,
     pub repo_name: String,
@@ -157,7 +157,7 @@ pub struct IssueInfo {
 }
 
 /// Issue comment for API responses
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct IssueCommentInfo {
     pub id: i64,
     pub issue_id: i64,
@@ -167,7 +167,7 @@ pub struct IssueCommentInfo {
 }
 
 /// Pull request info for API responses
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct PullRequestInfo {
     pub id: i64,
     pub repo_name: String,
@@ -184,7 +184,7 @@ pub struct PullRequestInfo {
 }
 
 /// Pull request comment for API responses
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct PullRequestCommentInfo {
     pub id: i64,
     pub pr_id: i64,
