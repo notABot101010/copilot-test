@@ -24,11 +24,11 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  
+
   useEffect(() => {
     loadMessages();
   }, [channel.id]);
-  
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -44,7 +44,7 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
       textareaRef.current.style.height = `${newHeight}px`;
     }
   }, [newMessage]);
-  
+
   async function loadMessages() {
     setLoading(true);
     try {
@@ -54,14 +54,14 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
       setLoading(false);
     }
   }
-  
+
   function scrollToBottom() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }
-  
+
   async function handleSendMessage() {
     if (!newMessage.trim() || sending) return;
-    
+
     setSending(true);
     try {
       const msg = await chatService.sendMessage(channel.id, newMessage.trim());
@@ -71,7 +71,7 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
       setSending(false);
     }
   }
-  
+
   function handleKeyDown(e: KeyboardEvent) {
     // Enter without Shift sends the message
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -80,18 +80,18 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
     }
     // Shift+Enter adds a new line (default behavior, no need to handle)
   }
-  
+
   function shouldShowHeader(index: number): boolean {
     if (index === 0) return true;
     const currentMsg = messages[index];
     const prevMsg = messages[index - 1];
-    
+
     // Show header if different author or more than 5 minutes apart
     if (currentMsg.author.id !== prevMsg.author.id) return true;
     const timeDiff = currentMsg.timestamp.getTime() - prevMsg.timestamp.getTime();
     return timeDiff > 5 * 60 * 1000;
   }
-  
+
   return (
     <div className="flex flex-col h-full bg-[#313338] flex-1 min-w-0">
       {/* Channel header */}
@@ -108,7 +108,7 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
             </Text>
           </>
         )}
-        
+
         <div className="flex items-center gap-4 ml-auto">
           <Tooltip label="Threads">
             <IconHash size={20} className="text-[#b5bac1] cursor-pointer hover:text-[#dbdee1]" />
@@ -124,7 +124,7 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
               <IconUsers size={20} className={`cursor-pointer ${showMembers ? 'text-white' : 'text-[#b5bac1] hover:text-[#dbdee1]'}`} />
             </ActionIcon>
           </Tooltip>
-          
+
           <div className="relative hidden md:block">
             <TextInput
               placeholder="Search"
@@ -143,7 +143,7 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
               }}
             />
           </div>
-          
+
           <Tooltip label="Inbox">
             <IconInbox size={20} className="text-[#b5bac1] cursor-pointer hover:text-[#dbdee1] hidden md:block" />
           </Tooltip>
@@ -152,7 +152,7 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
           </Tooltip>
         </div>
       </div>
-      
+
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-4">
         {loading ? (
@@ -186,14 +186,14 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
           </>
         )}
       </div>
-      
+
       {/* Message input */}
-      <div className="px-4 pb-6 shrink-0">
+      <div className="px-3 pb-3 shrink-0">
         <div className="flex items-start bg-[#383a40] rounded-lg px-4 py-2">
           <ActionIcon variant="transparent" className="text-[#b5bac1] hover:text-[#dbdee1] mt-1">
             <IconPlus size={20} />
           </ActionIcon>
-          
+
           <textarea
             ref={textareaRef}
             placeholder={`Message #${channel.name}`}
@@ -204,7 +204,7 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
             style={{ minHeight: '24px', maxHeight: `${MAX_LINES * LINE_HEIGHT}px` }}
             rows={1}
           />
-          
+
           <div className="flex items-center gap-2 mt-1">
             <ActionIcon variant="transparent" className="text-[#b5bac1] hover:text-[#dbdee1] hidden md:flex">
               <IconGift size={20} />
@@ -213,9 +213,9 @@ export function ChatArea({ channel, currentUser, chatService, onToggleMembers, s
               <IconMoodSmile size={20} />
             </ActionIcon>
             {newMessage.trim() && (
-              <ActionIcon 
-                variant="filled" 
-                color="indigo" 
+              <ActionIcon
+                variant="filled"
+                color="indigo"
                 onClick={handleSendMessage}
                 loading={sending}
               >
