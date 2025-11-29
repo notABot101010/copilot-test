@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@copilot-test/preact-router": "file:../preact-router",
+    "@copilot-test/preact-router": "*",
     "@mantine/core": "^8.3.9",
     "@mantine/hooks": "^8.3.9",
     "@preact/signals": "^2.5.1",

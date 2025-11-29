@@ -4,6 +4,7 @@
   "workspaces": [
     "preact-router",
     "router-test",
-    "spreadsheet"
+    "spreadsheet",
+    "team-chat"
   ]
 }
