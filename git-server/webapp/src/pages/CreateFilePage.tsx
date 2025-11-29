@@ -14,6 +14,7 @@ export function CreateFilePage() {
 
   const params = route.value.params;
   const orgName = params.org as string;
+  const projectName = params.project as string;
   const repoName = params.name as string;
 
   async function handleSubmit(e: Event) {
@@ -34,12 +35,13 @@ export function CreateFilePage() {
       error.value = null;
       await updateFile(
         orgName,
+        projectName,
         repoName,
         filePath.value.trim(),
         content.value,
         commitMessage.value.trim()
       );
-      router.push(`/${orgName}/${repoName}/blob/${filePath.value.trim()}`);
+      router.push(`/${orgName}/${projectName}/${repoName}/blob/${filePath.value.trim()}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create file';
       loading.value = false;
@@ -102,7 +104,7 @@ export function CreateFilePage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/${orgName}/${repoName}`)}
+            onClick={() => router.push(`/${orgName}/${projectName}/${repoName}`)}
             disabled={loading.value}
           >
             Cancel

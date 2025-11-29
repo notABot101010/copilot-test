@@ -12,6 +12,7 @@ export function CreateRepoPage() {
 
   const params = route.value.params;
   const orgName = params.org as string;
+  const projectName = params.project as string;
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
@@ -24,8 +25,8 @@ export function CreateRepoPage() {
     try {
       loading.value = true;
       error.value = null;
-      await createRepo(orgName, name.value.trim());
-      router.push(`/${orgName}/${encodeURIComponent(name.value.trim())}`);
+      await createRepo(orgName, projectName, name.value.trim());
+      router.push(`/${orgName}/${projectName}/${encodeURIComponent(name.value.trim())}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create repository';
       loading.value = false;
@@ -35,7 +36,7 @@ export function CreateRepoPage() {
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
       <Text size="xl" fw={600} mb="lg">
-        Create a new repository in {orgName}
+        Create a new repository in {orgName}/{projectName}
       </Text>
 
       {error.value && (
@@ -61,7 +62,7 @@ export function CreateRepoPage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/${orgName}`)}
+            onClick={() => router.push(`/${orgName}/${projectName}`)}
             disabled={loading.value}
           >
             Cancel

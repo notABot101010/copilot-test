@@ -14,6 +14,7 @@ export function FilePage() {
   const params = route.value.params;
   const query = route.value.query as { ref?: string };
   const orgName = params.org as string;
+  const projectName = params.project as string;
   const repoName = params.name as string;
   const filePath = params.path as string;
   const gitRef = (query.ref as string) || 'HEAD';
@@ -26,7 +27,7 @@ export function FilePage() {
     try {
       loading.value = true;
       error.value = null;
-      content.value = await getBlob(orgName, repoName, filePath, gitRef);
+      content.value = await getBlob(orgName, projectName, repoName, filePath, gitRef);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load file';
     } finally {
@@ -42,8 +43,8 @@ export function FilePage() {
     try {
       deleting.value = true;
       error.value = null;
-      await deleteFile(orgName, repoName, filePath, `Delete ${filePath}`);
-      router.push(`/${orgName}/${repoName}`);
+      await deleteFile(orgName, projectName, repoName, filePath, `Delete ${filePath}`);
+      router.push(`/${orgName}/${projectName}/${repoName}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to delete file';
       deleting.value = false;
@@ -71,10 +72,10 @@ export function FilePage() {
   const breadcrumbItems = [
     <Anchor
       key="root"
-      href={`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}`}
+      href={`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}`}
       onClick={(e: Event) => {
         e.preventDefault();
-        router.push(`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}`);
+        router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}`);
       }}
     >
       {repoName}
@@ -87,10 +88,10 @@ export function FilePage() {
       return (
         <Anchor
           key={partPath}
-          href={`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
+          href={`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
           onClick={(e: Event) => {
             e.preventDefault();
-            router.push(`/${orgName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
+            router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
           }}
         >
           {part}
@@ -115,7 +116,7 @@ export function FilePage() {
             <Button
               variant="filled"
               size="sm"
-              onClick={() => router.push(`/${orgName}/${repoName}/edit/${filePath}?ref=${encodeURIComponent(gitRef)}`)}
+              onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/edit/${filePath}?ref=${encodeURIComponent(gitRef)}`)}
             >
               ✏️ Edit
             </Button>

@@ -39,6 +39,7 @@ export function PullRequestPage() {
 
   const params = route.value.params;
   const orgName = params.org as string;
+  const projectName = params.project as string;
   const repoName = params.name as string;
   const prNumber = parseInt(params.number as string, 10);
 
@@ -51,10 +52,10 @@ export function PullRequestPage() {
       loading.value = true;
       error.value = null;
       const [prData, commentsData, commitsData, filesData] = await Promise.all([
-        getPullRequest(orgName, repoName, prNumber),
-        getPullRequestComments(orgName, repoName, prNumber),
-        getPullRequestCommits(orgName, repoName, prNumber),
-        getPullRequestFiles(orgName, repoName, prNumber),
+        getPullRequest(orgName, projectName, repoName, prNumber),
+        getPullRequestComments(orgName, projectName, repoName, prNumber),
+        getPullRequestCommits(orgName, projectName, repoName, prNumber),
+        getPullRequestFiles(orgName, projectName, repoName, prNumber),
       ]);
       pr.value = prData;
       comments.value = commentsData;
@@ -73,7 +74,7 @@ export function PullRequestPage() {
 
     try {
       submitting.value = true;
-      const comment = await createPullRequestComment(orgName, repoName, prNumber, newComment.value);
+      const comment = await createPullRequestComment(orgName, projectName, repoName, prNumber, newComment.value);
       comments.value = [...comments.value, comment];
       newComment.value = '';
     } catch (e) {
@@ -87,7 +88,7 @@ export function PullRequestPage() {
     if (!pr.value) return;
 
     try {
-      const updated = await updatePullRequest(orgName, repoName, prNumber, { state: newState });
+      const updated = await updatePullRequest(orgName, projectName, repoName, prNumber, { state: newState });
       pr.value = updated;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to update pull request';

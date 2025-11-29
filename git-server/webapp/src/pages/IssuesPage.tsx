@@ -12,6 +12,7 @@ export function IssuesPage() {
 
   const params = route.value.params;
   const orgName = params.org as string;
+  const projectName = params.project as string;
   const repoName = params.name as string;
 
   useSignalEffect(() => {
@@ -22,7 +23,7 @@ export function IssuesPage() {
     try {
       loading.value = true;
       error.value = null;
-      const data = await listIssues(orgName, repoName);
+      const data = await listIssues(orgName, projectName, repoName);
       issues.value = data;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load issues';
@@ -54,7 +55,7 @@ export function IssuesPage() {
           🐛 Issues
         </Text>
         <Button
-          onClick={() => router.push(`/${orgName}/${repoName}/issues/new`)}
+          onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/issues/new`)}
           color="green"
         >
           + New Issue
@@ -81,11 +82,11 @@ export function IssuesPage() {
                 </Badge>
                 <div class="flex-1">
                   <Anchor
-                    href={`/${orgName}/${repoName}/issues/${issue.number}`}
+                    href={`/${orgName}/${projectName}/${repoName}/issues/${issue.number}`}
                     class="font-semibold text-lg hover:underline"
                     onClick={(e: Event) => {
                       e.preventDefault();
-                      router.push(`/${orgName}/${repoName}/issues/${issue.number}`);
+                      router.push(`/${orgName}/${projectName}/${repoName}/issues/${issue.number}`);
                     }}
                   >
                     {issue.title}

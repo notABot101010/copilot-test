@@ -30,6 +30,7 @@ export function CreatePullRequestPage() {
 
   const params = route.value.params;
   const orgName = params.org as string;
+  const projectName = params.project as string;
   const repoName = params.name as string;
 
   useSignalEffect(() => {
@@ -40,13 +41,13 @@ export function CreatePullRequestPage() {
     try {
       loadingData.value = true;
       const [reposData, branchesData] = await Promise.all([
-        listRepos(orgName),
-        getRepoBranches(orgName, repoName),
+        listRepos(orgName, projectName),
+        getRepoBranches(orgName, projectName, repoName),
       ]);
       repos.value = reposData;
       branches.value = branchesData;
       sourceBranches.value = branchesData;
-      sourceRepo.value = `${orgName}/${repoName}`;
+      sourceRepo.value = `${orgName}/${projectName}/${repoName}`;
       if (branchesData.length > 0) {
         targetBranch.value = branchesData.includes('main') ? 'main' : branchesData[0];
         sourceBranch.value = branchesData.length > 1 ? branchesData[1] : branchesData[0];
@@ -62,10 +63,10 @@ export function CreatePullRequestPage() {
     if (!value) return;
     sourceRepo.value = value;
     try {
-      // Parse org/name from the value
+      // Parse org/project/name from the value
       const parts = value.split('/');
-      if (parts.length === 2) {
-        const branchesData = await getRepoBranches(parts[0], parts[1]);
+      if (parts.length === 3) {
+        const branchesData = await getRepoBranches(parts[0], parts[1], parts[2]);
         sourceBranches.value = branchesData;
         if (branchesData.length > 0) {
           sourceBranch.value = branchesData[0];
@@ -94,6 +95,7 @@ export function CreatePullRequestPage() {
       error.value = null;
       const pr = await createPullRequest(
         orgName,
+        projectName,
         repoName,
         title.value.trim(),
         body.value.trim(),
@@ -101,7 +103,7 @@ export function CreatePullRequestPage() {
         sourceBranch.value,
         targetBranch.value
       );
-      router.push(`/${orgName}/${repoName}/pulls/${pr.number}`);
+      router.push(`/${orgName}/${projectName}/${repoName}/pulls/${pr.number}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create pull request';
       loading.value = false;
@@ -133,7 +135,7 @@ export function CreatePullRequestPage() {
           <Select
             label="Source repository"
             placeholder="Select repository"
-            data={repos.value.map((r) => ({ value: `${r.org_name}/${r.name}`, label: `${r.org_name}/${r.name}` }))}
+            data={repos.value.map((r) => ({ value: `${r.org_name}/${r.project_name}/${r.name}`, label: `${r.org_name}/${r.project_name}/${r.name}` }))}
             value={sourceRepo.value}
             onChange={handleSourceRepoChange}
           />
@@ -180,7 +182,7 @@ export function CreatePullRequestPage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/${orgName}/${repoName}/pulls`)}
+            onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/pulls`)}
             disabled={loading.value}
           >
             Cancel

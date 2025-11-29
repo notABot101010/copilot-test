@@ -13,6 +13,7 @@ export function CreateIssuePage() {
 
   const params = route.value.params;
   const orgName = params.org as string;
+  const projectName = params.project as string;
   const repoName = params.name as string;
 
   async function handleSubmit(e: Event) {
@@ -26,8 +27,8 @@ export function CreateIssuePage() {
     try {
       loading.value = true;
       error.value = null;
-      const issue = await createIssue(orgName, repoName, title.value.trim(), body.value.trim());
-      router.push(`/${orgName}/${repoName}/issues/${issue.number}`);
+      const issue = await createIssue(orgName, projectName, repoName, title.value.trim(), body.value.trim());
+      router.push(`/${orgName}/${projectName}/${repoName}/issues/${issue.number}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create issue';
       loading.value = false;
@@ -71,7 +72,7 @@ export function CreateIssuePage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/${orgName}/${repoName}/issues`)}
+            onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/issues`)}
             disabled={loading.value}
           >
             Cancel
