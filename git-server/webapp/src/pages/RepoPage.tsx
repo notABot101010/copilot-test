@@ -32,9 +32,11 @@ export function RepoPage() {
   const gitRef = (query.ref as string) || 'HEAD';
   const currentPath = (query.path as string) || '';
 
-  // Clone URLs
+  // Clone URLs - use current host for HTTP URL
   const sshCloneUrl = `git@localhost:${orgName}/${repoName}.git`;
-  const httpCloneUrl = `http://localhost:3000/${orgName}/${repoName}.git`;
+  const httpCloneUrl = typeof window !== 'undefined' 
+    ? `${window.location.origin}/${orgName}/${repoName}.git`
+    : `http://localhost:8080/${orgName}/${repoName}.git`;
 
   useSignalEffect(() => {
     loadData();
