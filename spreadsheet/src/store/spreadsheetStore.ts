@@ -18,6 +18,52 @@ export const spreadsheetList = signal<SpreadsheetListItem[]>([]);
 // Current active spreadsheet document
 export const currentSpreadsheetDoc = signal<Automerge.Doc<AutomergeSpreadsheet> | null>(null);
 
+// Undo/Redo history
+const MAX_HISTORY = 100;
+const undoStack: Automerge.Doc<AutomergeSpreadsheet>[] = [];
+const redoStack: Automerge.Doc<AutomergeSpreadsheet>[] = [];
+
+function pushToUndoStack(doc: Automerge.Doc<AutomergeSpreadsheet>): void {
+  undoStack.push(doc);
+  if (undoStack.length > MAX_HISTORY) {
+    undoStack.shift();
+  }
+  // Clear redo stack on new action
+  redoStack.length = 0;
+}
+
+export function canUndo(): boolean {
+  return undoStack.length > 0;
+}
+
+export function canRedo(): boolean {
+  return redoStack.length > 0;
+}
+
+export function undo(): void {
+  if (undoStack.length === 0) return;
+  const doc = currentSpreadsheetDoc.value;
+  if (!doc) return;
+  
+  const previousDoc = undoStack.pop()!;
+  redoStack.push(doc);
+  currentSpreadsheetDoc.value = previousDoc;
+  saveCurrentSpreadsheet();
+  updateSpreadsheetListItem();
+}
+
+export function redo(): void {
+  if (redoStack.length === 0) return;
+  const doc = currentSpreadsheetDoc.value;
+  if (!doc) return;
+  
+  const nextDoc = redoStack.pop()!;
+  undoStack.push(doc);
+  currentSpreadsheetDoc.value = nextDoc;
+  saveCurrentSpreadsheet();
+  updateSpreadsheetListItem();
+}
+
 // Derived computed value for current spreadsheet data
 export const currentSpreadsheet = computed<SpreadsheetData | null>(() => {
   const doc = currentSpreadsheetDoc.value;
@@ -110,12 +156,52 @@ export function updateCell(row: number, col: number, value: string): void {
   const doc = currentSpreadsheetDoc.value;
   if (!doc) return;
   
+  // Check if value actually changed
+  const key = getCellKey(row, col);
+  const currentValue = doc.cells[key]?.value || '';
+  if (currentValue === value) return;
+  
+  // Save to undo stack before making changes
+  pushToUndoStack(doc);
+  
   const newDoc = Automerge.change(doc, `Update cell ${row}:${col}`, (d) => {
-    const key = getCellKey(row, col);
     if (!d.cells[key]) {
       d.cells[key] = { value: '' };
     }
     d.cells[key].value = value;
+    d.updatedAt = Date.now();
+  });
+  
+  currentSpreadsheetDoc.value = newDoc;
+  saveCurrentSpreadsheet();
+  updateSpreadsheetListItem();
+}
+
+// Update multiple cells at once
+export function updateMultipleCells(updates: { row: number; col: number; value: string }[]): void {
+  const doc = currentSpreadsheetDoc.value;
+  if (!doc || updates.length === 0) return;
+  
+  // Check if any values actually changed
+  const changedUpdates = updates.filter(({ row, col, value }) => {
+    const key = getCellKey(row, col);
+    const currentValue = doc.cells[key]?.value || '';
+    return currentValue !== value;
+  });
+  
+  if (changedUpdates.length === 0) return;
+  
+  // Save to undo stack before making changes
+  pushToUndoStack(doc);
+  
+  const newDoc = Automerge.change(doc, `Update ${changedUpdates.length} cells`, (d) => {
+    for (const { row, col, value } of changedUpdates) {
+      const key = getCellKey(row, col);
+      if (!d.cells[key]) {
+        d.cells[key] = { value: '' };
+      }
+      d.cells[key].value = value;
+    }
     d.updatedAt = Date.now();
   });
   
