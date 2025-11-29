@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::{
     body::Body,
     extract::{Path, Query, State},
-    http::{header, StatusCode, Request},
+    http::{header, Method, StatusCode, Request},
     middleware::{self, Next},
     response::{Html, IntoResponse, Json, Response},
     routing::get,
@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
 use tokio::process::Command;
 use tokio::fs;
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 
 use crate::config::Config;
@@ -32,6 +33,7 @@ pub struct AppState {
 pub struct RepoInfo {
     pub name: String,
     pub path: String,
+    pub forked_from: Option<String>,
 }
 
 /// Commit info for API responses
@@ -76,8 +78,114 @@ pub struct UpdateFileRequest {
     pub message: String,
 }
 
+/// Issue info for API responses
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IssueInfo {
+    pub id: i64,
+    pub repo_name: String,
+    pub number: i64,
+    pub title: String,
+    pub body: String,
+    pub state: String,
+    pub author: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Issue comment for API responses
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IssueCommentInfo {
+    pub id: i64,
+    pub issue_id: i64,
+    pub body: String,
+    pub author: String,
+    pub created_at: String,
+}
+
+/// Pull request info for API responses
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PullRequestInfo {
+    pub id: i64,
+    pub repo_name: String,
+    pub number: i64,
+    pub title: String,
+    pub body: String,
+    pub state: String,
+    pub source_repo: String,
+    pub source_branch: String,
+    pub target_branch: String,
+    pub author: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Pull request comment for API responses
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PullRequestCommentInfo {
+    pub id: i64,
+    pub pr_id: i64,
+    pub body: String,
+    pub author: String,
+    pub created_at: String,
+}
+
+/// File diff for pull request files
+#[derive(Debug, Serialize)]
+pub struct FileDiff {
+    pub path: String,
+    pub status: String,
+    pub additions: i32,
+    pub deletions: i32,
+    pub diff: String,
+}
+
+/// Request body for creating an issue
+#[derive(Debug, Deserialize)]
+pub struct CreateIssueRequest {
+    pub title: String,
+    pub body: String,
+}
+
+/// Request body for updating an issue
+#[derive(Debug, Deserialize)]
+pub struct UpdateIssueRequest {
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub state: Option<String>,
+}
+
+/// Request body for creating a comment
+#[derive(Debug, Deserialize)]
+pub struct CreateCommentRequest {
+    pub body: String,
+}
+
+/// Request body for creating a pull request
+#[derive(Debug, Deserialize)]
+pub struct CreatePullRequestRequest {
+    pub title: String,
+    pub body: String,
+    pub source_repo: String,
+    pub source_branch: String,
+    pub target_branch: String,
+}
+
+/// Request body for updating a pull request
+#[derive(Debug, Deserialize)]
+pub struct UpdatePullRequestRequest {
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub state: Option<String>,
+}
+
 /// Create the HTTP router
 pub fn create_router(state: AppState) -> Router {
+    // Configure CORS
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE, Method::OPTIONS])
+        .allow_headers(Any);
+
     let api_routes = Router::new()
         .route("/repos", get(list_repos).post(create_repo))
         .route("/repos/:name", get(get_repo))
@@ -85,6 +193,18 @@ pub fn create_router(state: AppState) -> Router {
         .route("/repos/:name/commits", get(list_commits))
         .route("/repos/:name/tree", get(get_tree))
         .route("/repos/:name/blob", get(get_blob_root))
+        .route("/repos/:name/branches", get(list_branches))
+        .route("/repos/:name/fork", axum::routing::post(fork_repo))
+        // Issue routes
+        .route("/repos/:name/issues", get(list_issues).post(create_issue))
+        .route("/repos/:name/issues/:number", get(get_issue).patch(update_issue))
+        .route("/repos/:name/issues/:number/comments", get(list_issue_comments).post(create_issue_comment))
+        // Pull request routes
+        .route("/repos/:name/pulls", get(list_pull_requests).post(create_pull_request))
+        .route("/repos/:name/pulls/:number", get(get_pull_request).patch(update_pull_request))
+        .route("/repos/:name/pulls/:number/comments", get(list_pr_comments).post(create_pr_comment))
+        .route("/repos/:name/pulls/:number/commits", get(get_pr_commits))
+        .route("/repos/:name/pulls/:number/files", get(get_pr_files))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
     // Try to find static directory - check multiple locations
@@ -93,6 +213,7 @@ pub fn create_router(state: AppState) -> Router {
     let app = Router::new()
         .nest("/api", api_routes)
         .fallback_service(ServeDir::new(static_dir).fallback(get(serve_index)))
+        .layer(cors)
         .with_state(state);
 
     app
@@ -220,6 +341,7 @@ async fn list_repos(State(state): State<AppState>) -> Result<Json<Vec<RepoInfo>>
         .map(|r| RepoInfo {
             name: r.name,
             path: r.path,
+            forked_from: r.forked_from,
         })
         .collect();
 
@@ -282,6 +404,7 @@ async fn create_repo(
     Ok(Json(RepoInfo {
         name: name.to_string(),
         path: repo_dir_name,
+        forked_from: None,
     }))
 }
 
@@ -300,6 +423,7 @@ async fn get_repo(
     Ok(Json(RepoInfo {
         name: repo.name,
         path: repo.path,
+        forked_from: repo.forked_from,
     }))
 }
 
@@ -735,6 +859,544 @@ fn is_safe_git_ref(git_ref: &str) -> bool {
     }
     
     true
+}
+
+/// List branches in a repository
+async fn list_branches(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Json<Vec<String>>, (StatusCode, String)> {
+    let repo = state
+        .db
+        .get_repository(&name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+
+    let repo_path = state.repos_path.join(&repo.path);
+    
+    let output = Command::new("git")
+        .args(["branch", "--list", "--format=%(refname:short)"])
+        .current_dir(&repo_path)
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if !output.status.success() {
+        return Ok(Json(vec![]));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let branches: Vec<String> = stdout.lines().map(|s| s.to_string()).collect();
+    
+    Ok(Json(branches))
+}
+
+/// Fork a repository
+async fn fork_repo(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(body): Json<CreateRepoRequest>,
+) -> Result<Json<RepoInfo>, (StatusCode, String)> {
+    // Get the source repository
+    let source_repo = state
+        .db
+        .get_repository(&name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Source repository not found".to_string()))?;
+
+    let new_name = body.name.trim();
+    if new_name.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "New repository name is required".to_string()));
+    }
+    
+    if !new_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
+        return Err((StatusCode::BAD_REQUEST, "Repository name contains invalid characters".to_string()));
+    }
+    
+    // Check if already exists
+    let existing = state.db
+        .get_repository(new_name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    if existing.is_some() {
+        return Err((StatusCode::CONFLICT, "Repository already exists".to_string()));
+    }
+    
+    // Create the new repository directory
+    let new_repo_dir_name = if new_name.ends_with(".git") {
+        new_name.to_string()
+    } else {
+        format!("{}.git", new_name)
+    };
+    let new_repo_path = state.repos_path.join(&new_repo_dir_name);
+    let source_repo_path = state.repos_path.join(&source_repo.path);
+    
+    // Clone the repository
+    let output = Command::new("git")
+        .args(["clone", "--bare"])
+        .arg(&source_repo_path)
+        .arg(&new_repo_path)
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to fork repository: {}", stderr)));
+    }
+    
+    // Add to database with fork info
+    state.db
+        .create_repository_with_fork(new_name, &new_repo_dir_name, &name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    Ok(Json(RepoInfo {
+        name: new_name.to_string(),
+        path: new_repo_dir_name,
+        forked_from: Some(name),
+    }))
+}
+
+// ============ Issue Handlers ============
+
+/// List issues for a repository
+async fn list_issues(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Json<Vec<IssueInfo>>, (StatusCode, String)> {
+    let _repo = state
+        .db
+        .get_repository(&name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+
+    let issues = state.db
+        .list_issues(&name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(issues))
+}
+
+/// Get a single issue
+async fn get_issue(
+    State(state): State<AppState>,
+    Path((name, number)): Path<(String, i64)>,
+) -> Result<Json<IssueInfo>, (StatusCode, String)> {
+    let issue = state.db
+        .get_issue(&name, number)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+
+    Ok(Json(issue))
+}
+
+/// Create a new issue
+async fn create_issue(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(body): Json<CreateIssueRequest>,
+) -> Result<Json<IssueInfo>, (StatusCode, String)> {
+    let _repo = state
+        .db
+        .get_repository(&name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+
+    if body.title.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Issue title is required".to_string()));
+    }
+
+    let issue = state.db
+        .create_issue(&name, &body.title, &body.body, "anonymous")
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(issue))
+}
+
+/// Update an issue
+async fn update_issue(
+    State(state): State<AppState>,
+    Path((name, number)): Path<(String, i64)>,
+    Json(body): Json<UpdateIssueRequest>,
+) -> Result<Json<IssueInfo>, (StatusCode, String)> {
+    let issue = state.db
+        .update_issue(&name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+
+    Ok(Json(issue))
+}
+
+/// List comments for an issue
+async fn list_issue_comments(
+    State(state): State<AppState>,
+    Path((name, number)): Path<(String, i64)>,
+) -> Result<Json<Vec<IssueCommentInfo>>, (StatusCode, String)> {
+    let issue = state.db
+        .get_issue(&name, number)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+
+    let comments = state.db
+        .list_issue_comments(issue.id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(comments))
+}
+
+/// Create a comment on an issue
+async fn create_issue_comment(
+    State(state): State<AppState>,
+    Path((name, number)): Path<(String, i64)>,
+    Json(body): Json<CreateCommentRequest>,
+) -> Result<Json<IssueCommentInfo>, (StatusCode, String)> {
+    let issue = state.db
+        .get_issue(&name, number)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+
+    if body.body.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Comment body is required".to_string()));
+    }
+
+    let comment = state.db
+        .create_issue_comment(issue.id, &body.body, "anonymous")
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(comment))
+}
+
+// ============ Pull Request Handlers ============
+
+/// List pull requests for a repository
+async fn list_pull_requests(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Json<Vec<PullRequestInfo>>, (StatusCode, String)> {
+    let _repo = state
+        .db
+        .get_repository(&name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+
+    let prs = state.db
+        .list_pull_requests(&name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(prs))
+}
+
+/// Get a single pull request
+async fn get_pull_request(
+    State(state): State<AppState>,
+    Path((name, number)): Path<(String, i64)>,
+) -> Result<Json<PullRequestInfo>, (StatusCode, String)> {
+    let pr = state.db
+        .get_pull_request(&name, number)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+
+    Ok(Json(pr))
+}
+
+/// Create a new pull request
+async fn create_pull_request(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(body): Json<CreatePullRequestRequest>,
+) -> Result<Json<PullRequestInfo>, (StatusCode, String)> {
+    let _repo = state
+        .db
+        .get_repository(&name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+
+    if body.title.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Pull request title is required".to_string()));
+    }
+
+    let pr = state.db
+        .create_pull_request(
+            &name,
+            &body.title,
+            &body.body,
+            &body.source_repo,
+            &body.source_branch,
+            &body.target_branch,
+            "anonymous",
+        )
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(pr))
+}
+
+/// Update a pull request
+async fn update_pull_request(
+    State(state): State<AppState>,
+    Path((name, number)): Path<(String, i64)>,
+    Json(body): Json<UpdatePullRequestRequest>,
+) -> Result<Json<PullRequestInfo>, (StatusCode, String)> {
+    let pr = state.db
+        .update_pull_request(&name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+
+    Ok(Json(pr))
+}
+
+/// List comments for a pull request
+async fn list_pr_comments(
+    State(state): State<AppState>,
+    Path((name, number)): Path<(String, i64)>,
+) -> Result<Json<Vec<PullRequestCommentInfo>>, (StatusCode, String)> {
+    let pr = state.db
+        .get_pull_request(&name, number)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+
+    let comments = state.db
+        .list_pr_comments(pr.id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(comments))
+}
+
+/// Create a comment on a pull request
+async fn create_pr_comment(
+    State(state): State<AppState>,
+    Path((name, number)): Path<(String, i64)>,
+    Json(body): Json<CreateCommentRequest>,
+) -> Result<Json<PullRequestCommentInfo>, (StatusCode, String)> {
+    let pr = state.db
+        .get_pull_request(&name, number)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+
+    if body.body.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Comment body is required".to_string()));
+    }
+
+    let comment = state.db
+        .create_pr_comment(pr.id, &body.body, "anonymous")
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(comment))
+}
+
+/// Get commits for a pull request
+async fn get_pr_commits(
+    State(state): State<AppState>,
+    Path((name, number)): Path<(String, i64)>,
+) -> Result<Json<Vec<CommitInfo>>, (StatusCode, String)> {
+    let pr = state.db
+        .get_pull_request(&name, number)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+
+    // Get source repo
+    let source_repo = state.db
+        .get_repository(&pr.source_repo)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Source repository not found".to_string()))?;
+
+    let repo_path = state.repos_path.join(&source_repo.path);
+    
+    // Get commits on the source branch that aren't in the target branch
+    let output = Command::new("git")
+        .args([
+            "log",
+            "--format=%H%n%h%n%an%n%ai%n%s%n---",
+            &format!("{}..{}", pr.target_branch, pr.source_branch),
+        ])
+        .current_dir(&repo_path)
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if !output.status.success() {
+        // If the comparison fails, just get commits from source branch
+        let output = Command::new("git")
+            .args([
+                "log",
+                "--format=%H%n%h%n%an%n%ai%n%s%n---",
+                "-n",
+                "50",
+                &pr.source_branch,
+            ])
+            .current_dir(&repo_path)
+            .output()
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        if !output.status.success() {
+            return Ok(Json(vec![]));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let commits = parse_commits(&stdout);
+        return Ok(Json(commits));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let commits = parse_commits(&stdout);
+    
+    Ok(Json(commits))
+}
+
+/// Parse commits from git log output
+fn parse_commits(stdout: &str) -> Vec<CommitInfo> {
+    let mut commits = Vec::new();
+    for commit_block in stdout.split("---\n") {
+        let lines: Vec<&str> = commit_block.lines().collect();
+        if lines.len() >= 5 {
+            commits.push(CommitInfo {
+                hash: lines[0].to_string(),
+                short_hash: lines[1].to_string(),
+                author: lines[2].to_string(),
+                date: lines[3].to_string(),
+                message: lines[4].to_string(),
+            });
+        }
+    }
+    commits
+}
+
+/// Get files changed in a pull request
+async fn get_pr_files(
+    State(state): State<AppState>,
+    Path((name, number)): Path<(String, i64)>,
+) -> Result<Json<Vec<FileDiff>>, (StatusCode, String)> {
+    let pr = state.db
+        .get_pull_request(&name, number)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+
+    // Get target repo
+    let target_repo = state.db
+        .get_repository(&name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Target repository not found".to_string()))?;
+
+    // Get source repo
+    let source_repo = state.db
+        .get_repository(&pr.source_repo)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Source repository not found".to_string()))?;
+
+    let source_repo_path = state.repos_path.join(&source_repo.path);
+    let target_repo_path = state.repos_path.join(&target_repo.path);
+
+    // If same repo, do a simple diff
+    if source_repo.name == target_repo.name {
+        return get_branch_diff(&source_repo_path, &pr.target_branch, &pr.source_branch).await;
+    }
+
+    // For cross-repo PRs, we need to fetch the target and compare
+    // First, add the target as a remote if not already done
+    let _ = Command::new("git")
+        .args(["remote", "add", "target-for-pr"])
+        .arg(&target_repo_path)
+        .current_dir(&source_repo_path)
+        .output()
+        .await;
+
+    // Fetch from target
+    let _ = Command::new("git")
+        .args(["fetch", "target-for-pr", &pr.target_branch])
+        .current_dir(&source_repo_path)
+        .output()
+        .await;
+
+    let target_ref = format!("target-for-pr/{}", pr.target_branch);
+    get_branch_diff(&source_repo_path, &target_ref, &pr.source_branch).await
+}
+
+/// Get diff between two branches
+async fn get_branch_diff(
+    repo_path: &PathBuf,
+    base: &str,
+    head: &str,
+) -> Result<Json<Vec<FileDiff>>, (StatusCode, String)> {
+    // Get list of changed files with stats
+    let output = Command::new("git")
+        .args(["diff", "--numstat", base, head])
+        .current_dir(repo_path)
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if !output.status.success() {
+        return Ok(Json(vec![]));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut files = Vec::new();
+
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() >= 3 {
+            let additions: i32 = parts[0].parse().unwrap_or(0);
+            let deletions: i32 = parts[1].parse().unwrap_or(0);
+            let path = parts[2].to_string();
+
+            // Get the actual diff for this file
+            let diff_output = Command::new("git")
+                .args(["diff", base, head, "--", &path])
+                .current_dir(repo_path)
+                .output()
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+            let diff = String::from_utf8_lossy(&diff_output.stdout).to_string();
+
+            let status = if additions > 0 && deletions == 0 {
+                "added"
+            } else if additions == 0 && deletions > 0 {
+                "deleted"
+            } else {
+                "modified"
+            };
+
+            files.push(FileDiff {
+                path,
+                status: status.to_string(),
+                additions,
+                deletions,
+                diff,
+            });
+        }
+    }
+
+    Ok(Json(files))
 }
 
 /// Run the HTTP server

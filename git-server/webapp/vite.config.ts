@@ -9,4 +9,12 @@ export default defineConfig({
     outDir: path.resolve(__dirname, '../static/dist'),
     emptyOutDir: true,
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_BASE_URL || 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
+  },
 })
