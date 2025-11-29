@@ -264,7 +264,9 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
     };
 
     let mut rx = rx;
-    let client_id: Option<String> = None;
+    
+    // Shared client ID between send and receive tasks
+    let client_id: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
 
     // Send current document state on connection
     {
@@ -284,10 +286,14 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
     let mut send_task = tokio::spawn(async move {
         while let Ok(update) = rx.recv().await {
             // Don't echo back to the sender
-            if client_id_for_broadcast
-                .as_ref()
-                .map_or(true, |id| id != &update.sender_id)
-            {
+            let should_send = {
+                let client_id_guard = client_id_for_broadcast.read().await;
+                client_id_guard
+                    .as_ref()
+                    .map_or(true, |id| id != &update.sender_id)
+            };
+            
+            if should_send {
                 let msg = WsMessage::Sync {
                     document: update.document,
                     sender_id: update.sender_id,
@@ -304,22 +310,25 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
     // Handle incoming messages
     let state_clone = state.clone();
     let spreadsheet_id_clone2 = spreadsheet_id.clone();
+    let client_id_for_recv = client_id.clone();
     let mut recv_task = tokio::spawn(async move {
-        let mut current_client_id: Option<String> = None;
-
         while let Some(Ok(msg)) = receiver.next().await {
             match msg {
                 Message::Text(text) => {
                     if let Ok(ws_msg) = serde_json::from_str::<WsMessage>(&text) {
                         match ws_msg {
                             WsMessage::Identify { client_id: cid } => {
-                                current_client_id = Some(cid);
+                                // Update the shared client ID
+                                let mut client_id_guard = client_id_for_recv.write().await;
+                                *client_id_guard = Some(cid);
                             }
                             WsMessage::Update { document } => {
                                 // Decode and merge the document
                                 if let Ok(client_binary) = BASE64.decode(&document) {
-                                    let sender_id =
-                                        current_client_id.clone().unwrap_or_else(|| "unknown".to_string());
+                                    let sender_id = {
+                                        let client_id_guard = client_id_for_recv.read().await;
+                                        client_id_guard.clone().unwrap_or_else(|| "unknown".to_string())
+                                    };
                                     
                                     // Merge with server document
                                     let merged_binary = {

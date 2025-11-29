@@ -57,8 +57,12 @@ let ws: WebSocket | null = null;
 let reconnectTimeoutId: number | null = null;
 let clientId: string | null = null;
 
-// Generate a unique client ID
+// Generate a unique client ID using crypto.randomUUID if available
 function generateClientId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for older browsers
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 }
 
