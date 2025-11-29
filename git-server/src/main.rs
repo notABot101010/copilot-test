@@ -3,9 +3,11 @@ use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 use russh::keys::ssh_key::PublicKey;
+use tracing::{error, info, warn};
 
 mod config;
 mod database;
+mod error;
 mod http_server;
 mod ssh_server;
 
@@ -72,14 +74,22 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize tracing subscriber
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
+        .init();
+
     let cli = Cli::parse();
 
     // Load configuration
     let config = if cli.config.exists() {
         Config::load(&cli.config)?
     } else {
-        eprintln!(
-            "Warning: Config file not found at {:?}, using defaults",
+        warn!(
+            "Config file not found at {:?}, using defaults",
             cli.config
         );
         Config::default_config()
@@ -132,7 +142,7 @@ async fn create_organization(
     let dn = display_name.unwrap_or(name);
     db.create_organization(name, dn, "").await?;
 
-    println!("Created organization '{}' at {:?}", name, org_path);
+    info!("Created organization '{}' at {:?}", name, org_path);
 
     Ok(())
 }
@@ -162,7 +172,7 @@ async fn create_project(
     let dn = display_name.unwrap_or(name);
     db.create_project(org, name, dn, "").await?;
 
-    println!("Created project '{}/{}' at {:?}", org, name, project_path);
+    info!("Created project '{}/{}' at {:?}", org, name, project_path);
 
     Ok(())
 }
@@ -205,7 +215,7 @@ async fn create_repository(
     let relative_path = format!("{}/{}/{}.git", org, project, name);
     db.create_repository(org, project, name, &relative_path).await?;
 
-    println!("Created repository '{}/{}/{}' at {:?}", org, project, name, repo_path);
+    info!("Created repository '{}/{}/{}' at {:?}", org, project, name, repo_path);
 
     Ok(())
 }
@@ -221,7 +231,7 @@ async fn serve(
         match key_str.parse::<PublicKey>() {
             Ok(key) => authorized_keys.push(key),
             Err(e) => {
-                eprintln!("Warning: Failed to parse public key: {} - {}", key_str, e);
+                warn!("Failed to parse public key: {} - {}", key_str, e);
             }
         }
     }
@@ -231,9 +241,9 @@ async fn serve(
     }
 
     if authorized_keys.is_empty() {
-        eprintln!("Warning: No authorized keys configured, authentication will fail for all users");
+        warn!("No authorized keys configured, authentication will fail for all users");
     } else {
-        println!("Loaded {} authorized public key(s)", authorized_keys.len());
+        info!("Loaded {} authorized public key(s)", authorized_keys.len());
     }
 
     let config = Arc::new(config.clone());
@@ -253,7 +263,7 @@ async fn serve(
     let http_repos_path = repos_path.clone();
     let http_handle = tokio::spawn(async move {
         if let Err(e) = run_http_server(http_config, http_db, http_repos_path).await {
-            eprintln!("HTTP server error: {}", e);
+            error!("HTTP server error: {}", e);
         }
     });
 

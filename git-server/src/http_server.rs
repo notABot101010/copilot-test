@@ -16,9 +16,11 @@ use tokio::process::Command;
 use tokio::fs;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
+use tracing::info;
 
 use crate::config::Config;
 use crate::database::Database;
+use crate::error::AppError;
 
 /// Shared state for the HTTP server
 #[derive(Clone)]
@@ -427,13 +429,8 @@ async fn serve_index() -> impl IntoResponse {
 // ============ Organization Handlers ============
 
 /// List all organizations
-async fn list_orgs(State(state): State<AppState>) -> Result<Json<Vec<OrganizationInfo>>, (StatusCode, String)> {
-    let orgs = state
-        .db
-        .list_organizations()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
+async fn list_orgs(State(state): State<AppState>) -> Result<Json<Vec<OrganizationInfo>>, AppError> {
+    let orgs = state.db.list_organizations().await?;
     Ok(Json(orgs))
 }
 
@@ -441,31 +438,26 @@ async fn list_orgs(State(state): State<AppState>) -> Result<Json<Vec<Organizatio
 async fn create_org(
     State(state): State<AppState>,
     Json(body): Json<CreateOrgRequest>,
-) -> Result<Json<OrganizationInfo>, (StatusCode, String)> {
+) -> Result<Json<OrganizationInfo>, AppError> {
     let name = body.name.trim();
     if name.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Organization name is required".to_string()));
+        return Err(AppError::bad_request("Organization name is required"));
     }
     
     if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        return Err((StatusCode::BAD_REQUEST, "Organization name contains invalid characters".to_string()));
+        return Err(AppError::bad_request("Organization name contains invalid characters"));
     }
 
     // Check if already exists
-    let existing = state.db
-        .get_organization(name)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let existing = state.db.get_organization(name).await?;
     
     if existing.is_some() {
-        return Err((StatusCode::CONFLICT, "Organization already exists".to_string()));
+        return Err(AppError::conflict("Organization already exists"));
     }
 
     // Create organization directory
     let org_path = state.repos_path.join(name);
-    fs::create_dir_all(&org_path)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    fs::create_dir_all(&org_path).await?;
 
     let display_name = if body.display_name.trim().is_empty() {
         name.to_string()
@@ -475,8 +467,7 @@ async fn create_org(
 
     let org = state.db
         .create_organization(name, &display_name, &body.description)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .await?;
 
     Ok(Json(org))
 }
@@ -485,13 +476,12 @@ async fn create_org(
 async fn get_org(
     State(state): State<AppState>,
     Path(org): Path<String>,
-) -> Result<Json<OrganizationInfo>, (StatusCode, String)> {
+) -> Result<Json<OrganizationInfo>, AppError> {
     let org = state
         .db
         .get_organization(&org)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Organization not found".to_string()))?;
+        .await?
+        .ok_or_else(|| AppError::not_found("Organization not found"))?;
 
     Ok(Json(org))
 }
@@ -501,12 +491,11 @@ async fn update_org(
     State(state): State<AppState>,
     Path(org_name): Path<String>,
     Json(body): Json<UpdateOrgRequest>,
-) -> Result<Json<OrganizationInfo>, (StatusCode, String)> {
+) -> Result<Json<OrganizationInfo>, AppError> {
     let org = state.db
         .update_organization(&org_name, body.display_name.as_deref(), body.description.as_deref())
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Organization not found".to_string()))?;
+        .await?
+        .ok_or_else(|| AppError::not_found("Organization not found"))?;
 
     Ok(Json(org))
 }
@@ -517,19 +506,14 @@ async fn update_org(
 async fn list_projects(
     State(state): State<AppState>,
     Path(org): Path<String>,
-) -> Result<Json<Vec<ProjectInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<ProjectInfo>>, AppError> {
     // Verify org exists
     state.db
         .get_organization(&org)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Organization not found".to_string()))?;
+        .await?
+        .ok_or_else(|| AppError::not_found("Organization not found"))?;
 
-    let projects = state
-        .db
-        .list_projects(&org)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let projects = state.db.list_projects(&org).await?;
 
     Ok(Json(projects))
 }
@@ -539,38 +523,32 @@ async fn create_project(
     State(state): State<AppState>,
     Path(org): Path<String>,
     Json(body): Json<CreateProjectRequest>,
-) -> Result<Json<ProjectInfo>, (StatusCode, String)> {
+) -> Result<Json<ProjectInfo>, AppError> {
     // Verify org exists
     state.db
         .get_organization(&org)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Organization not found".to_string()))?;
+        .await?
+        .ok_or_else(|| AppError::not_found("Organization not found"))?;
 
     let name = body.name.trim();
     if name.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Project name is required".to_string()));
+        return Err(AppError::bad_request("Project name is required"));
     }
     
     if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        return Err((StatusCode::BAD_REQUEST, "Project name contains invalid characters".to_string()));
+        return Err(AppError::bad_request("Project name contains invalid characters"));
     }
 
     // Check if already exists
-    let existing = state.db
-        .get_project(&org, name)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let existing = state.db.get_project(&org, name).await?;
     
     if existing.is_some() {
-        return Err((StatusCode::CONFLICT, "Project already exists".to_string()));
+        return Err(AppError::conflict("Project already exists"));
     }
 
     // Create project directory
     let project_path = state.repos_path.join(&org).join(name);
-    fs::create_dir_all(&project_path)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    fs::create_dir_all(&project_path).await?;
 
     let display_name = if body.display_name.trim().is_empty() {
         name.to_string()
@@ -580,8 +558,7 @@ async fn create_project(
 
     let project = state.db
         .create_project(&org, name, &display_name, &body.description)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .await?;
 
     // Create the git repository for this project (project = 1 repo)
     // The repo name is the same as the project name
@@ -593,20 +570,18 @@ async fn create_project(
         .args(["init", "--bare", "--initial-branch=main"])
         .arg(&repo_path)
         .output()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .await?;
     
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to create repository: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to create repository: {}", stderr)));
     }
     
     // Add to database - store relative path from repos root
     let relative_path = format!("{}/{}/{}", org, name, repo_dir_name);
     state.db
         .create_repository(&org, name, name, &relative_path)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .await?;
 
     Ok(Json(project))
 }
@@ -615,13 +590,12 @@ async fn create_project(
 async fn get_project(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
-) -> Result<Json<ProjectInfo>, (StatusCode, String)> {
+) -> Result<Json<ProjectInfo>, AppError> {
     let project = state
         .db
         .get_project(&org, &project)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Project not found".to_string()))?;
+        .await?
+        .ok_or_else(|| AppError::not_found("Project not found"))?;
 
     Ok(Json(project))
 }
@@ -631,12 +605,12 @@ async fn update_project(
     State(state): State<AppState>,
     Path((org, project_name)): Path<(String, String)>,
     Json(body): Json<UpdateProjectRequest>,
-) -> Result<Json<ProjectInfo>, (StatusCode, String)> {
+) -> Result<Json<ProjectInfo>, AppError> {
     let project = state.db
         .update_project(&org, &project_name, body.display_name.as_deref(), body.description.as_deref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Project not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     Ok(Json(project))
 }
@@ -647,19 +621,19 @@ async fn update_project(
 async fn list_repos(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
-) -> Result<Json<Vec<RepoInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<RepoInfo>>, AppError> {
     // Verify project exists
     state.db
         .get_project(&org, &project)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Project not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repos = state
         .db
         .list_repositories(&org, &project)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     let repo_infos: Vec<RepoInfo> = repos
         .into_iter()
@@ -680,33 +654,33 @@ async fn create_repo(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
     Json(body): Json<CreateRepoRequest>,
-) -> Result<Json<RepoInfo>, (StatusCode, String)> {
+) -> Result<Json<RepoInfo>, AppError> {
     // Verify project exists
     state.db
         .get_project(&org, &project)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Project not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Validate name
     let name = body.name.trim();
     if name.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Repository name is required".to_string()));
+        return Err(AppError::bad_request("Repository name is required"));
     }
     
     // Check for invalid characters in name
     if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
-        return Err((StatusCode::BAD_REQUEST, "Repository name contains invalid characters".to_string()));
+        return Err(AppError::bad_request("Repository name contains invalid characters"));
     }
     
     // Check if already exists
     let existing = state.db
         .get_repository(&org, &project, name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if existing.is_some() {
-        return Err((StatusCode::CONFLICT, "Repository already exists".to_string()));
+        return Err(AppError::conflict("Repository already exists"));
     }
     
     // Create the bare repository directory under org/project folder
@@ -720,7 +694,7 @@ async fn create_repo(
     // Ensure project directory exists
     fs::create_dir_all(state.repos_path.join(&org).join(&project))
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     // Initialize bare git repository with main as default branch
     let output = Command::new("git")
@@ -728,11 +702,11 @@ async fn create_repo(
         .arg(&repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to create repository: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to create repository: {}", stderr)));
     }
     
     // Add to database - store relative path from repos root
@@ -740,7 +714,7 @@ async fn create_repo(
     state.db
         .create_repository(&org, &project, name, &relative_path)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     Ok(Json(RepoInfo {
         name: name.to_string(),
@@ -755,13 +729,13 @@ async fn create_repo(
 async fn get_repo(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
-) -> Result<Json<RepoInfo>, (StatusCode, String)> {
+) -> Result<Json<RepoInfo>, AppError> {
     let repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     Ok(Json(RepoInfo {
         name: repo.name,
@@ -776,13 +750,13 @@ async fn get_repo(
 async fn list_files(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
-) -> Result<Json<Vec<FileEntry>>, (StatusCode, String)> {
+) -> Result<Json<Vec<FileEntry>>, AppError> {
     let repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
     let files = list_git_files(&repo_path, "HEAD", "").await?;
@@ -795,24 +769,24 @@ async fn update_file(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
     Json(body): Json<UpdateFileRequest>,
-) -> Result<(), (StatusCode, String)> {
+) -> Result<(), AppError> {
     // Validate inputs
     if body.path.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "File path is required".to_string()));
+        return Err(AppError::bad_request("File path is required"));
     }
     if body.message.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Commit message is required".to_string()));
+        return Err(AppError::bad_request("Commit message is required"));
     }
     if body.path.contains("..") {
-        return Err((StatusCode::BAD_REQUEST, "Invalid file path".to_string()));
+        return Err(AppError::bad_request("Invalid file path"));
     }
     
     let repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
     
@@ -827,25 +801,25 @@ async fn update_file(
         .arg(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     // If clone fails (empty repo), init a new repo
     let is_empty_repo = !output.status.success();
     if is_empty_repo {
         fs::create_dir_all(&temp_dir)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
         
         let output = Command::new("git")
             .args(["init"])
             .current_dir(&temp_dir)
             .output()
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
         
         if !output.status.success() {
             let _ = fs::remove_dir_all(&temp_dir).await;
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to initialize temp repository".to_string()));
+            return Err(AppError::internal("Failed to initialize temp repository"));
         }
         
         // Set remote to push to
@@ -855,11 +829,11 @@ async fn update_file(
             .current_dir(&temp_dir)
             .output()
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
         
         if !output.status.success() {
             let _ = fs::remove_dir_all(&temp_dir).await;
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to set remote".to_string()));
+            return Err(AppError::internal("Failed to set remote"));
         }
     }
     
@@ -868,11 +842,11 @@ async fn update_file(
     if let Some(parent) = file_path.parent() {
         fs::create_dir_all(parent)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
     }
     fs::write(&file_path, &body.content)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     // Configure git user for this commit
     let email_output = Command::new("git")
@@ -880,11 +854,11 @@ async fn update_file(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !email_output.status.success() {
         let _ = fs::remove_dir_all(&temp_dir).await;
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to configure git user email".to_string()));
+        return Err(AppError::internal("Failed to configure git user email"));
     }
     
     let name_output = Command::new("git")
@@ -892,11 +866,11 @@ async fn update_file(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !name_output.status.success() {
         let _ = fs::remove_dir_all(&temp_dir).await;
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to configure git user name".to_string()));
+        return Err(AppError::internal("Failed to configure git user name"));
     }
     
     // Add the file
@@ -905,12 +879,12 @@ async fn update_file(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let _ = fs::remove_dir_all(&temp_dir).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to add file: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to add file: {}", stderr)));
     }
     
     // Commit
@@ -919,12 +893,12 @@ async fn update_file(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let _ = fs::remove_dir_all(&temp_dir).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to commit: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to commit: {}", stderr)));
     }
     
     // Push to the bare repo
@@ -933,7 +907,7 @@ async fn update_file(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     // Try HEAD:master if main fails
     if !output.status.success() {
@@ -942,12 +916,12 @@ async fn update_file(
             .current_dir(&temp_dir)
             .output()
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
         
         if !output.status.success() {
             let _ = fs::remove_dir_all(&temp_dir).await;
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to push: {}", stderr)));
+            return Err(AppError::internal(format!("Failed to push: {}", stderr)));
         }
     }
     
@@ -962,24 +936,24 @@ async fn delete_file(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
     Json(body): Json<DeleteFileRequest>,
-) -> Result<(), (StatusCode, String)> {
+) -> Result<(), AppError> {
     // Validate inputs
     if body.path.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "File path is required".to_string()));
+        return Err(AppError::bad_request("File path is required"));
     }
     if body.message.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Commit message is required".to_string()));
+        return Err(AppError::bad_request("Commit message is required"));
     }
     if body.path.contains("..") {
-        return Err((StatusCode::BAD_REQUEST, "Invalid file path".to_string()));
+        return Err(AppError::bad_request("Invalid file path"));
     }
     
     let repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
     
@@ -993,12 +967,12 @@ async fn delete_file(
         .arg(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let _ = fs::remove_dir_all(&temp_dir).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to clone: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to clone: {}", stderr)));
     }
     
     // Configure git user for this commit
@@ -1020,12 +994,12 @@ async fn delete_file(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let _ = fs::remove_dir_all(&temp_dir).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to remove file: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to remove file: {}", stderr)));
     }
     
     // Commit
@@ -1034,12 +1008,12 @@ async fn delete_file(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let _ = fs::remove_dir_all(&temp_dir).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to commit: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to commit: {}", stderr)));
     }
     
     // Push to the bare repo
@@ -1048,7 +1022,7 @@ async fn delete_file(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     // Try HEAD:master if main fails
     if !output.status.success() {
@@ -1057,12 +1031,12 @@ async fn delete_file(
             .current_dir(&temp_dir)
             .output()
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
         
         if !output.status.success() {
             let _ = fs::remove_dir_all(&temp_dir).await;
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to push: {}", stderr)));
+            return Err(AppError::internal(format!("Failed to push: {}", stderr)));
         }
     }
     
@@ -1076,13 +1050,13 @@ async fn delete_file(
 async fn list_commits(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
-) -> Result<Json<Vec<CommitInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<CommitInfo>>, AppError> {
     let repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
     let commits = list_git_commits(&repo_path).await?;
@@ -1095,13 +1069,13 @@ async fn get_tree(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
     Query(query): Query<TreeQuery>,
-) -> Result<Json<Vec<FileEntry>>, (StatusCode, String)> {
+) -> Result<Json<Vec<FileEntry>>, AppError> {
     let repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
     let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
@@ -1116,17 +1090,17 @@ async fn get_blob_root(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
     Query(query): Query<TreeQuery>,
-) -> Result<String, (StatusCode, String)> {
+) -> Result<String, AppError> {
     let repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
     let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
-    let path = query.path.as_deref().ok_or((StatusCode::BAD_REQUEST, "path query parameter required".to_string()))?;
+    let path = query.path.as_deref().ok_or_else(|| AppError::bad_request("path query parameter required"))?;
     let content = get_git_blob(&repo_path, git_ref, path).await?;
 
     Ok(content)
@@ -1137,15 +1111,15 @@ async fn list_git_files(
     repo_path: &PathBuf,
     git_ref: &str,
     path: &str,
-) -> Result<Vec<FileEntry>, (StatusCode, String)> {
+) -> Result<Vec<FileEntry>, AppError> {
     // Validate ref to prevent command injection
     if !is_safe_git_ref(git_ref) {
-        return Err((StatusCode::BAD_REQUEST, "Invalid git ref".to_string()));
+        return Err(AppError::bad_request("Invalid git ref"));
     }
     
     // Validate path to prevent path traversal
     if path.contains("..") {
-        return Err((StatusCode::BAD_REQUEST, "Invalid path".to_string()));
+        return Err(AppError::bad_request("Invalid path"));
     }
 
     let tree_path = if path.is_empty() {
@@ -1159,14 +1133,14 @@ async fn list_git_files(
         .current_dir(repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("Not a valid object") || stderr.contains("fatal:") {
             return Ok(vec![]);
         }
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, stderr.to_string()));
+        return Err(AppError::internal(stderr.to_string()));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1207,7 +1181,7 @@ async fn list_git_files(
 }
 
 /// List commits in a git repository
-async fn list_git_commits(repo_path: &PathBuf) -> Result<Vec<CommitInfo>, (StatusCode, String)> {
+async fn list_git_commits(repo_path: &PathBuf) -> Result<Vec<CommitInfo>, AppError> {
     let output = Command::new("git")
         .args([
             "log",
@@ -1218,14 +1192,14 @@ async fn list_git_commits(repo_path: &PathBuf) -> Result<Vec<CommitInfo>, (Statu
         .current_dir(repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("does not have any commits") {
             return Ok(vec![]);
         }
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, stderr.to_string()));
+        return Err(AppError::internal(stderr.to_string()));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1252,15 +1226,15 @@ async fn get_git_blob(
     repo_path: &PathBuf,
     git_ref: &str,
     path: &str,
-) -> Result<String, (StatusCode, String)> {
+) -> Result<String, AppError> {
     // Validate ref to prevent command injection
     if !is_safe_git_ref(git_ref) {
-        return Err((StatusCode::BAD_REQUEST, "Invalid git ref".to_string()));
+        return Err(AppError::bad_request("Invalid git ref"));
     }
     
     // Validate path to prevent path traversal
     if path.contains("..") {
-        return Err((StatusCode::BAD_REQUEST, "Invalid path".to_string()));
+        return Err(AppError::bad_request("Invalid path"));
     }
 
     let blob_path = format!("{}:{}", git_ref, path);
@@ -1270,11 +1244,11 @@ async fn get_git_blob(
         .current_dir(repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::NOT_FOUND, stderr.to_string()));
+        return Err(AppError::not_found(stderr.to_string()));
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -1325,13 +1299,13 @@ fn is_safe_git_ref(git_ref: &str) -> bool {
 async fn list_branches(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
-) -> Result<Json<Vec<String>>, (StatusCode, String)> {
+) -> Result<Json<Vec<String>>, AppError> {
     let repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
     
@@ -1340,7 +1314,7 @@ async fn list_branches(
         .current_dir(&repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         return Ok(Json(vec![]));
@@ -1365,22 +1339,22 @@ async fn fork_repo(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
     Json(body): Json<ForkRepoRequest>,
-) -> Result<Json<RepoInfo>, (StatusCode, String)> {
+) -> Result<Json<RepoInfo>, AppError> {
     // Get the source repository
     let source_repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Source repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let new_name = body.name.trim();
     if new_name.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "New repository name is required".to_string()));
+        return Err(AppError::bad_request("New repository name is required"));
     }
     
     if !new_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
-        return Err((StatusCode::BAD_REQUEST, "Repository name contains invalid characters".to_string()));
+        return Err(AppError::bad_request("Repository name contains invalid characters"));
     }
     
     // Determine target org and project (default to source org and project)
@@ -1391,17 +1365,17 @@ async fn fork_repo(
     state.db
         .get_project(target_org, target_project)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Target project not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
     
     // Check if already exists
     let existing = state.db
         .get_repository(target_org, target_project, new_name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if existing.is_some() {
-        return Err((StatusCode::CONFLICT, "Repository already exists".to_string()));
+        return Err(AppError::conflict("Repository already exists"));
     }
     
     // Create the new repository directory
@@ -1416,7 +1390,7 @@ async fn fork_repo(
     // Ensure target project directory exists
     fs::create_dir_all(state.repos_path.join(target_org).join(target_project))
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     // Clone the repository
     let output = Command::new("git")
@@ -1425,11 +1399,11 @@ async fn fork_repo(
         .arg(&new_repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to fork repository: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to fork repository: {}", stderr)));
     }
     
     // Add to database with fork info
@@ -1438,7 +1412,7 @@ async fn fork_repo(
     state.db
         .create_repository_with_fork(target_org, target_project, new_name, &relative_path, &forked_from)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     Ok(Json(RepoInfo {
         name: new_name.to_string(),
@@ -1455,19 +1429,19 @@ async fn fork_repo(
 async fn list_issues(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
-) -> Result<Json<Vec<IssueInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<IssueInfo>>, AppError> {
     let _repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let full_name = format!("{}/{}/{}", org, project, name);
     let issues = state.db
         .list_issues(&full_name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     Ok(Json(issues))
 }
@@ -1476,13 +1450,13 @@ async fn list_issues(
 async fn get_issue(
     State(state): State<AppState>,
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
-) -> Result<Json<IssueInfo>, (StatusCode, String)> {
+) -> Result<Json<IssueInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
     let issue = state.db
         .get_issue(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     Ok(Json(issue))
 }
@@ -1492,23 +1466,23 @@ async fn create_issue(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
     Json(body): Json<CreateIssueRequest>,
-) -> Result<Json<IssueInfo>, (StatusCode, String)> {
+) -> Result<Json<IssueInfo>, AppError> {
     let _repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     if body.title.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Issue title is required".to_string()));
+        return Err(AppError::bad_request("Issue title is required"));
     }
 
     let full_name = format!("{}/{}/{}", org, project, name);
     let issue = state.db
         .create_issue(&full_name, &body.title, &body.body, "anonymous")
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     Ok(Json(issue))
 }
@@ -1518,13 +1492,13 @@ async fn update_issue(
     State(state): State<AppState>,
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
     Json(body): Json<UpdateIssueRequest>,
-) -> Result<Json<IssueInfo>, (StatusCode, String)> {
+) -> Result<Json<IssueInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
     let issue = state.db
         .update_issue(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     Ok(Json(issue))
 }
@@ -1533,18 +1507,18 @@ async fn update_issue(
 async fn list_issue_comments(
     State(state): State<AppState>,
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
-) -> Result<Json<Vec<IssueCommentInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<IssueCommentInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
     let issue = state.db
         .get_issue(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let comments = state.db
         .list_issue_comments(issue.id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     Ok(Json(comments))
 }
@@ -1554,22 +1528,22 @@ async fn create_issue_comment(
     State(state): State<AppState>,
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
     Json(body): Json<CreateCommentRequest>,
-) -> Result<Json<IssueCommentInfo>, (StatusCode, String)> {
+) -> Result<Json<IssueCommentInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
     let issue = state.db
         .get_issue(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     if body.body.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Comment body is required".to_string()));
+        return Err(AppError::bad_request("Comment body is required"));
     }
 
     let comment = state.db
         .create_issue_comment(issue.id, &body.body, "anonymous")
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     Ok(Json(comment))
 }
@@ -1580,19 +1554,19 @@ async fn create_issue_comment(
 async fn list_pull_requests(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
-) -> Result<Json<Vec<PullRequestInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<PullRequestInfo>>, AppError> {
     let _repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let full_name = format!("{}/{}/{}", org, project, name);
     let prs = state.db
         .list_pull_requests(&full_name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     Ok(Json(prs))
 }
@@ -1601,13 +1575,13 @@ async fn list_pull_requests(
 async fn get_pull_request(
     State(state): State<AppState>,
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
-) -> Result<Json<PullRequestInfo>, (StatusCode, String)> {
+) -> Result<Json<PullRequestInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
     let pr = state.db
         .get_pull_request(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     Ok(Json(pr))
 }
@@ -1617,16 +1591,16 @@ async fn create_pull_request(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
     Json(body): Json<CreatePullRequestRequest>,
-) -> Result<Json<PullRequestInfo>, (StatusCode, String)> {
+) -> Result<Json<PullRequestInfo>, AppError> {
     let _repo = state
         .db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     if body.title.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Pull request title is required".to_string()));
+        return Err(AppError::bad_request("Pull request title is required"));
     }
 
     let full_name = format!("{}/{}/{}", org, project, name);
@@ -1641,7 +1615,7 @@ async fn create_pull_request(
             "anonymous",
         )
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     Ok(Json(pr))
 }
@@ -1651,13 +1625,13 @@ async fn update_pull_request(
     State(state): State<AppState>,
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
     Json(body): Json<UpdatePullRequestRequest>,
-) -> Result<Json<PullRequestInfo>, (StatusCode, String)> {
+) -> Result<Json<PullRequestInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
     let pr = state.db
         .update_pull_request(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     Ok(Json(pr))
 }
@@ -1666,18 +1640,18 @@ async fn update_pull_request(
 async fn list_pr_comments(
     State(state): State<AppState>,
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
-) -> Result<Json<Vec<PullRequestCommentInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<PullRequestCommentInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
     let pr = state.db
         .get_pull_request(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let comments = state.db
         .list_pr_comments(pr.id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     Ok(Json(comments))
 }
@@ -1687,22 +1661,22 @@ async fn create_pr_comment(
     State(state): State<AppState>,
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
     Json(body): Json<CreateCommentRequest>,
-) -> Result<Json<PullRequestCommentInfo>, (StatusCode, String)> {
+) -> Result<Json<PullRequestCommentInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
     let pr = state.db
         .get_pull_request(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     if body.body.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Comment body is required".to_string()));
+        return Err(AppError::bad_request("Comment body is required"));
     }
 
     let comment = state.db
         .create_pr_comment(pr.id, &body.body, "anonymous")
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     Ok(Json(comment))
 }
@@ -1711,27 +1685,27 @@ async fn create_pr_comment(
 async fn get_pr_commits(
     State(state): State<AppState>,
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
-) -> Result<Json<Vec<CommitInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<CommitInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
     let pr = state.db
         .get_pull_request(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Get source repo - source_repo is in org/project/name format
     let source_parts: Vec<&str> = pr.source_repo.split('/').collect();
     let (source_org, source_project, source_name) = if source_parts.len() == 3 {
         (source_parts[0], source_parts[1], source_parts[2])
     } else {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, "Invalid source repo format".to_string()));
+        return Err(AppError::internal("Invalid source repo format"));
     };
     
     let source_repo = state.db
         .get_repository(source_org, source_project, source_name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Source repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&source_repo.path);
     
@@ -1745,7 +1719,7 @@ async fn get_pr_commits(
         .current_dir(&repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         // If the comparison fails, just get commits from source branch
@@ -1760,7 +1734,7 @@ async fn get_pr_commits(
             .current_dir(&repo_path)
             .output()
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
 
         if !output.status.success() {
             return Ok(Json(vec![]));
@@ -1799,34 +1773,34 @@ fn parse_commits(stdout: &str) -> Vec<CommitInfo> {
 async fn get_pr_files(
     State(state): State<AppState>,
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
-) -> Result<Json<Vec<FileDiff>>, (StatusCode, String)> {
+) -> Result<Json<Vec<FileDiff>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
     let pr = state.db
         .get_pull_request(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Get target repo
     let target_repo = state.db
         .get_repository(&org, &project, &name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Target repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Get source repo - source_repo is in org/project/name format
     let source_parts: Vec<&str> = pr.source_repo.split('/').collect();
     let (source_org, source_project, source_name) = if source_parts.len() == 3 {
         (source_parts[0], source_parts[1], source_parts[2])
     } else {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, "Invalid source repo format".to_string()));
+        return Err(AppError::internal("Invalid source repo format"));
     };
     
     let source_repo = state.db
         .get_repository(source_org, source_project, source_name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Source repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let source_repo_path = state.repos_path.join(&source_repo.path);
     let target_repo_path = state.repos_path.join(&target_repo.path);
@@ -1861,14 +1835,14 @@ async fn get_branch_diff(
     repo_path: &PathBuf,
     base: &str,
     head: &str,
-) -> Result<Json<Vec<FileDiff>>, (StatusCode, String)> {
+) -> Result<Json<Vec<FileDiff>>, AppError> {
     // Get list of changed files with stats
     let output = Command::new("git")
         .args(["diff", "--numstat", base, head])
         .current_dir(repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         return Ok(Json(vec![]));
@@ -1890,7 +1864,7 @@ async fn get_branch_diff(
                 .current_dir(repo_path)
                 .output()
                 .await
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                ?;
 
             let diff = String::from_utf8_lossy(&diff_output.stdout).to_string();
 
@@ -1926,7 +1900,7 @@ async fn git_info_refs(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
     Query(query): Query<GitInfoRefsQuery>,
-) -> Result<Response, (StatusCode, String)> {
+) -> Result<Response, AppError> {
     let service = query.service.as_deref().unwrap_or("git-upload-pack");
     
     // Remove .git suffix if present
@@ -1936,8 +1910,8 @@ async fn git_info_refs(
     let repo = state.db
         .get_repository(&org, &project, repo_name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
 
@@ -1950,11 +1924,11 @@ async fn git_info_refs(
         .current_dir(&repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, stderr.to_string()));
+        return Err(AppError::internal(stderr.to_string()));
     }
 
     // Build response with proper git smart protocol format
@@ -1982,7 +1956,7 @@ async fn git_upload_pack(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
     body: axum::body::Bytes,
-) -> Result<Response, (StatusCode, String)> {
+) -> Result<Response, AppError> {
     // Remove .git suffix if present
     let repo_name = name.strip_suffix(".git").unwrap_or(&name);
     
@@ -1990,8 +1964,8 @@ async fn git_upload_pack(
     let repo = state.db
         .get_repository(&org, &project, repo_name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
 
@@ -2002,21 +1976,21 @@ async fn git_upload_pack(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     // Write request body to stdin
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
-        stdin.write_all(&body).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        stdin.write_all(&body).await?;
     }
 
     // Read output
     let output = child.wait_with_output().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, stderr.to_string()));
+        return Err(AppError::internal(stderr.to_string()));
     }
 
     Ok(Response::builder()
@@ -2032,7 +2006,7 @@ async fn git_receive_pack(
     State(state): State<AppState>,
     Path((org, project, name)): Path<(String, String, String)>,
     body: axum::body::Bytes,
-) -> Result<Response, (StatusCode, String)> {
+) -> Result<Response, AppError> {
     // Remove .git suffix if present
     let repo_name = name.strip_suffix(".git").unwrap_or(&name);
     
@@ -2040,8 +2014,8 @@ async fn git_receive_pack(
     let repo = state.db
         .get_repository(&org, &project, repo_name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
 
@@ -2052,21 +2026,21 @@ async fn git_receive_pack(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     // Write request body to stdin
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
-        stdin.write_all(&body).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        stdin.write_all(&body).await?;
     }
 
     // Read output
     let output = child.wait_with_output().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, stderr.to_string()));
+        return Err(AppError::internal(stderr.to_string()));
     }
 
     Ok(Response::builder()
@@ -2084,20 +2058,20 @@ async fn get_project_repo(
     state: &AppState,
     org: &str,
     project: &str,
-) -> Result<crate::database::Repository, (StatusCode, String)> {
+) -> Result<crate::database::Repository, AppError> {
     // In the new model, project name = repo name
     state.db
         .get_repository(org, project, project)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Project repository not found".to_string()))
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))
 }
 
 /// List files in a project's repository
 async fn project_list_files(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
-) -> Result<Json<Vec<FileEntry>>, (StatusCode, String)> {
+) -> Result<Json<Vec<FileEntry>>, AppError> {
     let repo = get_project_repo(&state, &org, &project).await?;
     let repo_path = state.repos_path.join(&repo.path);
     let files = list_git_files(&repo_path, "HEAD", "").await?;
@@ -2109,7 +2083,7 @@ async fn project_update_file(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
     Json(body): Json<UpdateFileRequest>,
-) -> Result<(), (StatusCode, String)> {
+) -> Result<(), AppError> {
     // Call the existing update_file logic
     let repo = get_project_repo(&state, &org, &project).await?;
     update_file_impl(&state, &repo, body).await
@@ -2120,7 +2094,7 @@ async fn project_delete_file(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
     Json(body): Json<DeleteFileRequest>,
-) -> Result<(), (StatusCode, String)> {
+) -> Result<(), AppError> {
     let repo = get_project_repo(&state, &org, &project).await?;
     delete_file_impl(&state, &repo, body).await
 }
@@ -2129,7 +2103,7 @@ async fn project_delete_file(
 async fn project_list_commits(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
-) -> Result<Json<Vec<CommitInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<CommitInfo>>, AppError> {
     let repo = get_project_repo(&state, &org, &project).await?;
     let repo_path = state.repos_path.join(&repo.path);
     let commits = list_git_commits(&repo_path).await?;
@@ -2141,7 +2115,7 @@ async fn project_get_tree(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
     Query(query): Query<TreeQuery>,
-) -> Result<Json<Vec<FileEntry>>, (StatusCode, String)> {
+) -> Result<Json<Vec<FileEntry>>, AppError> {
     let repo = get_project_repo(&state, &org, &project).await?;
     let repo_path = state.repos_path.join(&repo.path);
     let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
@@ -2155,11 +2129,11 @@ async fn project_get_blob(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
     Query(query): Query<TreeQuery>,
-) -> Result<String, (StatusCode, String)> {
+) -> Result<String, AppError> {
     let repo = get_project_repo(&state, &org, &project).await?;
     let repo_path = state.repos_path.join(&repo.path);
     let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
-    let path = query.path.as_deref().ok_or((StatusCode::BAD_REQUEST, "path query parameter required".to_string()))?;
+    let path = query.path.as_deref().ok_or_else(|| AppError::bad_request("path query parameter required"))?;
     let content = get_git_blob(&repo_path, git_ref, path).await?;
     Ok(content)
 }
@@ -2168,7 +2142,7 @@ async fn project_get_blob(
 async fn project_list_branches(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
-) -> Result<Json<Vec<String>>, (StatusCode, String)> {
+) -> Result<Json<Vec<String>>, AppError> {
     let repo = get_project_repo(&state, &org, &project).await?;
     let repo_path = state.repos_path.join(&repo.path);
     
@@ -2177,7 +2151,7 @@ async fn project_list_branches(
         .current_dir(&repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         return Ok(Json(vec![]));
@@ -2194,17 +2168,17 @@ async fn project_fork(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
     Json(body): Json<ForkRepoRequest>,
-) -> Result<Json<RepoInfo>, (StatusCode, String)> {
+) -> Result<Json<RepoInfo>, AppError> {
     // Get the source project's repository
     let source_repo = get_project_repo(&state, &org, &project).await?;
 
     let new_name = body.name.trim();
     if new_name.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "New project name is required".to_string()));
+        return Err(AppError::bad_request("New project name is required"));
     }
     
     if !new_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
-        return Err((StatusCode::BAD_REQUEST, "Project name contains invalid characters".to_string()));
+        return Err(AppError::bad_request("Project name contains invalid characters"));
     }
     
     // Determine target org (default to source org)
@@ -2220,23 +2194,23 @@ async fn project_fork(
     let existing = state.db
         .get_project(target_org, target_project)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if existing.is_some() {
-        return Err((StatusCode::CONFLICT, "Project already exists".to_string()));
+        return Err(AppError::conflict("Project already exists"));
     }
     
     // Create project directory
     let project_path = state.repos_path.join(target_org).join(target_project);
     fs::create_dir_all(&project_path)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     // Create the project in database
     state.db
         .create_project(target_org, target_project, &display_name, &description)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     // Create the new repository directory
     let new_repo_dir_name = format!("{}.git", target_project);
@@ -2250,11 +2224,11 @@ async fn project_fork(
         .arg(&new_repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to fork repository: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to fork repository: {}", stderr)));
     }
     
     // Add to database with fork info
@@ -2263,7 +2237,7 @@ async fn project_fork(
     state.db
         .create_repository_with_fork(target_org, target_project, target_project, &relative_path, &forked_from)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     Ok(Json(RepoInfo {
         name: target_project.to_string(),
@@ -2280,13 +2254,13 @@ async fn project_fork(
 async fn project_list_issues(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
-) -> Result<Json<Vec<IssueInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<IssueInfo>>, AppError> {
     let _repo = get_project_repo(&state, &org, &project).await?;
     let full_name = format!("{}/{}/{}", org, project, project);
     let issues = state.db
         .list_issues(&full_name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     Ok(Json(issues))
 }
 
@@ -2294,13 +2268,13 @@ async fn project_list_issues(
 async fn project_get_issue(
     State(state): State<AppState>,
     Path((org, project, number)): Path<(String, String, i64)>,
-) -> Result<Json<IssueInfo>, (StatusCode, String)> {
+) -> Result<Json<IssueInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
     let issue = state.db
         .get_issue(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
     Ok(Json(issue))
 }
 
@@ -2309,18 +2283,18 @@ async fn project_create_issue(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
     Json(body): Json<CreateIssueRequest>,
-) -> Result<Json<IssueInfo>, (StatusCode, String)> {
+) -> Result<Json<IssueInfo>, AppError> {
     let _repo = get_project_repo(&state, &org, &project).await?;
 
     if body.title.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Issue title is required".to_string()));
+        return Err(AppError::bad_request("Issue title is required"));
     }
 
     let full_name = format!("{}/{}/{}", org, project, project);
     let issue = state.db
         .create_issue(&full_name, &body.title, &body.body, "anonymous")
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     Ok(Json(issue))
 }
 
@@ -2329,13 +2303,13 @@ async fn project_update_issue(
     State(state): State<AppState>,
     Path((org, project, number)): Path<(String, String, i64)>,
     Json(body): Json<UpdateIssueRequest>,
-) -> Result<Json<IssueInfo>, (StatusCode, String)> {
+) -> Result<Json<IssueInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
     let issue = state.db
         .update_issue(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
     Ok(Json(issue))
 }
 
@@ -2343,18 +2317,18 @@ async fn project_update_issue(
 async fn project_list_issue_comments(
     State(state): State<AppState>,
     Path((org, project, number)): Path<(String, String, i64)>,
-) -> Result<Json<Vec<IssueCommentInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<IssueCommentInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
     let issue = state.db
         .get_issue(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let comments = state.db
         .list_issue_comments(issue.id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     Ok(Json(comments))
 }
 
@@ -2363,22 +2337,22 @@ async fn project_create_issue_comment(
     State(state): State<AppState>,
     Path((org, project, number)): Path<(String, String, i64)>,
     Json(body): Json<CreateCommentRequest>,
-) -> Result<Json<IssueCommentInfo>, (StatusCode, String)> {
+) -> Result<Json<IssueCommentInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
     let issue = state.db
         .get_issue(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Issue not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     if body.body.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Comment body is required".to_string()));
+        return Err(AppError::bad_request("Comment body is required"));
     }
 
     let comment = state.db
         .create_issue_comment(issue.id, &body.body, "anonymous")
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     Ok(Json(comment))
 }
 
@@ -2388,13 +2362,13 @@ async fn project_create_issue_comment(
 async fn project_list_pull_requests(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
-) -> Result<Json<Vec<PullRequestInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<PullRequestInfo>>, AppError> {
     let _repo = get_project_repo(&state, &org, &project).await?;
     let full_name = format!("{}/{}/{}", org, project, project);
     let prs = state.db
         .list_pull_requests(&full_name)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     Ok(Json(prs))
 }
 
@@ -2402,13 +2376,13 @@ async fn project_list_pull_requests(
 async fn project_get_pull_request(
     State(state): State<AppState>,
     Path((org, project, number)): Path<(String, String, i64)>,
-) -> Result<Json<PullRequestInfo>, (StatusCode, String)> {
+) -> Result<Json<PullRequestInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
     let pr = state.db
         .get_pull_request(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
     Ok(Json(pr))
 }
 
@@ -2417,11 +2391,11 @@ async fn project_create_pull_request(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
     Json(body): Json<CreatePullRequestRequest>,
-) -> Result<Json<PullRequestInfo>, (StatusCode, String)> {
+) -> Result<Json<PullRequestInfo>, AppError> {
     let _repo = get_project_repo(&state, &org, &project).await?;
 
     if body.title.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Pull request title is required".to_string()));
+        return Err(AppError::bad_request("Pull request title is required"));
     }
 
     let full_name = format!("{}/{}/{}", org, project, project);
@@ -2436,7 +2410,7 @@ async fn project_create_pull_request(
             "anonymous",
         )
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     Ok(Json(pr))
 }
 
@@ -2445,13 +2419,13 @@ async fn project_update_pull_request(
     State(state): State<AppState>,
     Path((org, project, number)): Path<(String, String, i64)>,
     Json(body): Json<UpdatePullRequestRequest>,
-) -> Result<Json<PullRequestInfo>, (StatusCode, String)> {
+) -> Result<Json<PullRequestInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
     let pr = state.db
         .update_pull_request(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref())
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
     Ok(Json(pr))
 }
 
@@ -2459,18 +2433,18 @@ async fn project_update_pull_request(
 async fn project_list_pr_comments(
     State(state): State<AppState>,
     Path((org, project, number)): Path<(String, String, i64)>,
-) -> Result<Json<Vec<PullRequestCommentInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<PullRequestCommentInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
     let pr = state.db
         .get_pull_request(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let comments = state.db
         .list_pr_comments(pr.id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     Ok(Json(comments))
 }
 
@@ -2479,22 +2453,22 @@ async fn project_create_pr_comment(
     State(state): State<AppState>,
     Path((org, project, number)): Path<(String, String, i64)>,
     Json(body): Json<CreateCommentRequest>,
-) -> Result<Json<PullRequestCommentInfo>, (StatusCode, String)> {
+) -> Result<Json<PullRequestCommentInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
     let pr = state.db
         .get_pull_request(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     if body.body.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Comment body is required".to_string()));
+        return Err(AppError::bad_request("Comment body is required"));
     }
 
     let comment = state.db
         .create_pr_comment(pr.id, &body.body, "anonymous")
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     Ok(Json(comment))
 }
 
@@ -2502,20 +2476,20 @@ async fn project_create_pr_comment(
 async fn project_get_pr_commits(
     State(state): State<AppState>,
     Path((org, project, number)): Path<(String, String, i64)>,
-) -> Result<Json<Vec<CommitInfo>>, (StatusCode, String)> {
+) -> Result<Json<Vec<CommitInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
     let pr = state.db
         .get_pull_request(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Get source repo
     let source_parts: Vec<&str> = pr.source_repo.split('/').collect();
     let (source_org, source_project) = if source_parts.len() >= 2 {
         (source_parts[0], source_parts[1])
     } else {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, "Invalid source repo format".to_string()));
+        return Err(AppError::internal("Invalid source repo format"));
     };
     
     let source_repo = get_project_repo(&state, source_org, source_project).await?;
@@ -2533,7 +2507,7 @@ async fn project_get_pr_commits(
         .current_dir(&repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         return Ok(Json(vec![]));
@@ -2548,13 +2522,13 @@ async fn project_get_pr_commits(
 async fn project_get_pr_files(
     State(state): State<AppState>,
     Path((org, project, number)): Path<(String, String, i64)>,
-) -> Result<Json<Vec<FileDiff>>, (StatusCode, String)> {
+) -> Result<Json<Vec<FileDiff>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
     let pr = state.db
         .get_pull_request(&full_name, number)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Pull request not found".to_string()))?;
+        ?
+        .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Get target repo
     let target_repo = get_project_repo(&state, &org, &project).await?;
@@ -2564,7 +2538,7 @@ async fn project_get_pr_files(
     let (source_org, source_project) = if source_parts.len() >= 2 {
         (source_parts[0], source_parts[1])
     } else {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, "Invalid source repo format".to_string()));
+        return Err(AppError::internal("Invalid source repo format"));
     };
     
     let source_repo = get_project_repo(&state, source_org, source_project).await?;
@@ -2602,7 +2576,7 @@ async fn project_git_info_refs(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
     Query(query): Query<GitInfoRefsQuery>,
-) -> Result<Response, (StatusCode, String)> {
+) -> Result<Response, AppError> {
     let service = query.service.as_deref().unwrap_or("git-upload-pack");
     
     // Remove .git suffix if present
@@ -2619,11 +2593,11 @@ async fn project_git_info_refs(
         .current_dir(&repo_path)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, stderr.to_string()));
+        return Err(AppError::internal(stderr.to_string()));
     }
 
     let pkt_line = format!("# service={}\n", service);
@@ -2650,7 +2624,7 @@ async fn project_git_upload_pack(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
     body: axum::body::Bytes,
-) -> Result<Response, (StatusCode, String)> {
+) -> Result<Response, AppError> {
     let project_name = project.strip_suffix(".git").unwrap_or(&project);
     let repo = get_project_repo(&state, &org, project_name).await?;
     let repo_path = state.repos_path.join(&repo.path);
@@ -2661,19 +2635,19 @@ async fn project_git_upload_pack(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
-        stdin.write_all(&body).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        stdin.write_all(&body).await?;
     }
 
     let output = child.wait_with_output().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, stderr.to_string()));
+        return Err(AppError::internal(stderr.to_string()));
     }
 
     Ok(Response::builder()
@@ -2689,7 +2663,7 @@ async fn project_git_receive_pack(
     State(state): State<AppState>,
     Path((org, project)): Path<(String, String)>,
     body: axum::body::Bytes,
-) -> Result<Response, (StatusCode, String)> {
+) -> Result<Response, AppError> {
     let project_name = project.strip_suffix(".git").unwrap_or(&project);
     let repo = get_project_repo(&state, &org, project_name).await?;
     let repo_path = state.repos_path.join(&repo.path);
@@ -2700,19 +2674,19 @@ async fn project_git_receive_pack(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
-        stdin.write_all(&body).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        stdin.write_all(&body).await?;
     }
 
     let output = child.wait_with_output().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, stderr.to_string()));
+        return Err(AppError::internal(stderr.to_string()));
     }
 
     Ok(Response::builder()
@@ -2730,16 +2704,16 @@ async fn update_file_impl(
     state: &AppState,
     repo: &crate::database::Repository,
     body: UpdateFileRequest,
-) -> Result<(), (StatusCode, String)> {
+) -> Result<(), AppError> {
     // Validate inputs
     if body.path.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "File path is required".to_string()));
+        return Err(AppError::bad_request("File path is required"));
     }
     if body.message.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Commit message is required".to_string()));
+        return Err(AppError::bad_request("Commit message is required"));
     }
     if body.path.contains("..") {
-        return Err((StatusCode::BAD_REQUEST, "Invalid file path".to_string()));
+        return Err(AppError::bad_request("Invalid file path"));
     }
 
     let repo_path = state.repos_path.join(&repo.path);
@@ -2754,25 +2728,25 @@ async fn update_file_impl(
         .arg(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     // If clone fails (empty repo), init a new repo
     let is_empty_repo = !output.status.success();
     if is_empty_repo {
         fs::create_dir_all(&temp_dir)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
         
         let output = Command::new("git")
             .args(["init"])
             .current_dir(&temp_dir)
             .output()
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
         
         if !output.status.success() {
             let _ = fs::remove_dir_all(&temp_dir).await;
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to initialize temp repository".to_string()));
+            return Err(AppError::internal("Failed to initialize temp repository"));
         }
         
         let output = Command::new("git")
@@ -2781,11 +2755,11 @@ async fn update_file_impl(
             .current_dir(&temp_dir)
             .output()
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
         
         if !output.status.success() {
             let _ = fs::remove_dir_all(&temp_dir).await;
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Failed to set remote".to_string()));
+            return Err(AppError::internal("Failed to set remote"));
         }
     }
     
@@ -2794,11 +2768,11 @@ async fn update_file_impl(
     if let Some(parent) = file_path.parent() {
         fs::create_dir_all(parent)
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
     }
     fs::write(&file_path, &body.content)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     // Configure git user
     let _ = Command::new("git")
@@ -2819,12 +2793,12 @@ async fn update_file_impl(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let _ = fs::remove_dir_all(&temp_dir).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to add file: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to add file: {}", stderr)));
     }
     
     // Commit
@@ -2833,12 +2807,12 @@ async fn update_file_impl(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let _ = fs::remove_dir_all(&temp_dir).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to commit: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to commit: {}", stderr)));
     }
     
     // Push to the bare repo
@@ -2847,7 +2821,7 @@ async fn update_file_impl(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let output = Command::new("git")
@@ -2855,12 +2829,12 @@ async fn update_file_impl(
             .current_dir(&temp_dir)
             .output()
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
         
         if !output.status.success() {
             let _ = fs::remove_dir_all(&temp_dir).await;
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to push: {}", stderr)));
+            return Err(AppError::internal(format!("Failed to push: {}", stderr)));
         }
     }
     
@@ -2873,16 +2847,16 @@ async fn delete_file_impl(
     state: &AppState,
     repo: &crate::database::Repository,
     body: DeleteFileRequest,
-) -> Result<(), (StatusCode, String)> {
+) -> Result<(), AppError> {
     // Validate inputs
     if body.path.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "File path is required".to_string()));
+        return Err(AppError::bad_request("File path is required"));
     }
     if body.message.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Commit message is required".to_string()));
+        return Err(AppError::bad_request("Commit message is required"));
     }
     if body.path.contains("..") {
-        return Err((StatusCode::BAD_REQUEST, "Invalid file path".to_string()));
+        return Err(AppError::bad_request("Invalid file path"));
     }
 
     let repo_path = state.repos_path.join(&repo.path);
@@ -2895,12 +2869,12 @@ async fn delete_file_impl(
         .arg(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let _ = fs::remove_dir_all(&temp_dir).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to clone: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to clone: {}", stderr)));
     }
     
     let _ = Command::new("git")
@@ -2920,12 +2894,12 @@ async fn delete_file_impl(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let _ = fs::remove_dir_all(&temp_dir).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to remove file: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to remove file: {}", stderr)));
     }
     
     let output = Command::new("git")
@@ -2933,12 +2907,12 @@ async fn delete_file_impl(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let _ = fs::remove_dir_all(&temp_dir).await;
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to commit: {}", stderr)));
+        return Err(AppError::internal(format!("Failed to commit: {}", stderr)));
     }
     
     let output = Command::new("git")
@@ -2946,7 +2920,7 @@ async fn delete_file_impl(
         .current_dir(&temp_dir)
         .output()
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        ?;
     
     if !output.status.success() {
         let output = Command::new("git")
@@ -2954,12 +2928,12 @@ async fn delete_file_impl(
             .current_dir(&temp_dir)
             .output()
             .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            ?;
         
         if !output.status.success() {
             let _ = fs::remove_dir_all(&temp_dir).await;
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to push: {}", stderr)));
+            return Err(AppError::internal(format!("Failed to push: {}", stderr)));
         }
     }
     
@@ -2982,7 +2956,7 @@ pub async fn run_http_server(
     let app = create_router(state);
     let addr = format!("0.0.0.0:{}", config.http_port);
 
-    println!("HTTP server listening on {}", addr);
+    info!("HTTP server listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;

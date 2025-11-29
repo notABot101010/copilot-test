@@ -10,6 +10,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
+use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
 use crate::database::Database;
@@ -51,7 +52,7 @@ impl GitServer {
         let config = Arc::new(config);
         let addr = format!("0.0.0.0:{}", self.config.ssh_port);
 
-        println!("Git server listening on {}", addr);
+        info!("Git server listening on {}", addr);
 
         let mut server = GitServerInstance {
             db: self.db.clone(),
@@ -136,7 +137,7 @@ impl russh::server::Handler for GitSessionHandler {
         session: &mut Session,
     ) -> Result<(), Self::Error> {
         let command = String::from_utf8_lossy(data);
-        println!("Received command: {}", command);
+        debug!("Received command: {}", command);
 
         // Parse git command (git-upload-pack 'org/project/repo' or git-receive-pack 'org/project/repo')
         let parts: Vec<&str> = command.split_whitespace().collect();
@@ -157,7 +158,7 @@ impl russh::server::Handler for GitSessionHandler {
         // Parse org/project/repo format
         let repo_parts: Vec<&str> = repo_path_str.split('/').collect();
         if repo_parts.len() != 3 {
-            eprintln!("Invalid repository path format (expected org/project/repo): {}", repo_path_str);
+            warn!("Invalid repository path format (expected org/project/repo): {}", repo_path_str);
             session.channel_failure(channel)?;
             return Ok(());
         }
@@ -170,7 +171,7 @@ impl russh::server::Handler for GitSessionHandler {
         if org_name.contains("..") || org_name.starts_with('/') || org_name.contains('\0') ||
            project_name.contains("..") || project_name.starts_with('/') || project_name.contains('\0') ||
            repo_name.contains("..") || repo_name.starts_with('/') || repo_name.contains('\0') {
-            eprintln!("Invalid repository name (potential path traversal): {}", repo_path_str);
+            warn!("Invalid repository name (potential path traversal): {}", repo_path_str);
             session.channel_failure(channel)?;
             return Ok(());
         }
@@ -179,12 +180,12 @@ impl russh::server::Handler for GitSessionHandler {
         let repo = match self.db.get_repository(org_name, project_name, repo_name).await {
             Ok(Some(repo)) => repo,
             Ok(None) => {
-                eprintln!("Repository not found: {}/{}/{}", org_name, project_name, repo_name);
+                warn!("Repository not found: {}/{}/{}", org_name, project_name, repo_name);
                 session.channel_failure(channel)?;
                 return Ok(());
             }
             Err(e) => {
-                eprintln!("Database error: {}", e);
+                error!("Database error: {}", e);
                 session.channel_failure(channel)?;
                 return Ok(());
             }
@@ -192,7 +193,7 @@ impl russh::server::Handler for GitSessionHandler {
 
         // Validate that the repository path doesn't contain path traversal
         if repo.path.contains("..") || repo.path.starts_with('/') {
-            eprintln!("Invalid repository path in database: {}", repo.path);
+            warn!("Invalid repository path in database: {}", repo.path);
             session.channel_failure(channel)?;
             return Ok(());
         }
@@ -203,7 +204,7 @@ impl russh::server::Handler for GitSessionHandler {
         let canonical_repos = match self.repos_path.canonicalize() {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("Failed to canonicalize repos path: {}", e);
+                error!("Failed to canonicalize repos path: {}", e);
                 session.channel_failure(channel)?;
                 return Ok(());
             }
@@ -211,13 +212,13 @@ impl russh::server::Handler for GitSessionHandler {
         let canonical_repo = match repo_path.canonicalize() {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("Failed to canonicalize repository path: {}", e);
+                error!("Failed to canonicalize repository path: {}", e);
                 session.channel_failure(channel)?;
                 return Ok(());
             }
         };
         if !canonical_repo.starts_with(&canonical_repos) {
-            eprintln!("Repository path escape attempt: {:?}", canonical_repo);
+            warn!("Repository path escape attempt: {:?}", canonical_repo);
             session.channel_failure(channel)?;
             return Ok(());
         }
@@ -236,7 +237,7 @@ impl russh::server::Handler for GitSessionHandler {
                 session.channel_success(channel)?;
             }
             Err(e) => {
-                eprintln!("Failed to spawn git process: {}", e);
+                error!("Failed to spawn git process: {}", e);
                 session.channel_failure(channel)?;
             }
         }
@@ -255,7 +256,7 @@ impl russh::server::Handler for GitSessionHandler {
         if let Some(child) = processes.get_mut(&channel) {
             if let Some(stdin) = child.stdin.as_mut() {
                 if let Err(e) = stdin.write_all(data).await {
-                    eprintln!("Failed to write to git process stdin: {}", e);
+                    error!("Failed to write to git process stdin: {}", e);
                     session.channel_failure(channel)?;
                 }
             }
@@ -286,7 +287,7 @@ impl russh::server::Handler for GitSessionHandler {
                             session.data(channel, CryptoVec::from(&buffer[..n]))?;
                         }
                         Err(e) => {
-                            eprintln!("Failed to read git process stdout: {}", e);
+                            error!("Failed to read git process stdout: {}", e);
                             break;
                         }
                     }
@@ -301,7 +302,7 @@ impl russh::server::Handler for GitSessionHandler {
                     if s.success() { 0 } else { 1 }
                 }) as u32,
                 Err(e) => {
-                    eprintln!("Failed to wait for git process: {}", e);
+                    error!("Failed to wait for git process: {}", e);
                     1
                 }
             };
