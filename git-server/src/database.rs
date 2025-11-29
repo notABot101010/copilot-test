@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 
 use crate::http_server::{IssueInfo, IssueCommentInfo, PullRequestInfo, PullRequestCommentInfo, OrganizationInfo, ProjectInfo};
 
@@ -187,36 +187,17 @@ impl Database {
 
     /// Get organization by name
     pub async fn get_organization(&self, name: &str) -> Result<Option<OrganizationInfo>, sqlx::Error> {
-        let row = sqlx::query("SELECT id, name, display_name, description, created_at FROM organizations WHERE name = ?")
+        sqlx::query_as::<_, OrganizationInfo>("SELECT id, name, display_name, description, created_at FROM organizations WHERE name = ?")
             .bind(name)
             .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(row.map(|r| OrganizationInfo {
-            id: r.get("id"),
-            name: r.get("name"),
-            display_name: r.get("display_name"),
-            description: r.get("description"),
-            created_at: r.get("created_at"),
-        }))
+            .await
     }
 
     /// List all organizations
     pub async fn list_organizations(&self) -> Result<Vec<OrganizationInfo>, sqlx::Error> {
-        let rows = sqlx::query("SELECT id, name, display_name, description, created_at FROM organizations ORDER BY name")
+        sqlx::query_as::<_, OrganizationInfo>("SELECT id, name, display_name, description, created_at FROM organizations ORDER BY name")
             .fetch_all(&self.pool)
-            .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| OrganizationInfo {
-                id: r.get("id"),
-                name: r.get("name"),
-                display_name: r.get("display_name"),
-                description: r.get("description"),
-                created_at: r.get("created_at"),
-            })
-            .collect())
+            .await
     }
 
     /// Update an organization
@@ -280,40 +261,19 @@ impl Database {
 
     /// Get project by org and name
     pub async fn get_project(&self, org_name: &str, name: &str) -> Result<Option<ProjectInfo>, sqlx::Error> {
-        let row = sqlx::query("SELECT id, name, org_name, display_name, description, created_at FROM projects WHERE org_name = ? AND name = ?")
+        sqlx::query_as::<_, ProjectInfo>("SELECT id, name, org_name, display_name, description, created_at FROM projects WHERE org_name = ? AND name = ?")
             .bind(org_name)
             .bind(name)
             .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(row.map(|r| ProjectInfo {
-            id: r.get("id"),
-            name: r.get("name"),
-            org_name: r.get("org_name"),
-            display_name: r.get("display_name"),
-            description: r.get("description"),
-            created_at: r.get("created_at"),
-        }))
+            .await
     }
 
     /// List all projects for an organization
     pub async fn list_projects(&self, org_name: &str) -> Result<Vec<ProjectInfo>, sqlx::Error> {
-        let rows = sqlx::query("SELECT id, name, org_name, display_name, description, created_at FROM projects WHERE org_name = ? ORDER BY name")
+        sqlx::query_as::<_, ProjectInfo>("SELECT id, name, org_name, display_name, description, created_at FROM projects WHERE org_name = ? ORDER BY name")
             .bind(org_name)
             .fetch_all(&self.pool)
-            .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| ProjectInfo {
-                id: r.get("id"),
-                name: r.get("name"),
-                org_name: r.get("org_name"),
-                display_name: r.get("display_name"),
-                description: r.get("description"),
-                created_at: r.get("created_at"),
-            })
-            .collect())
+            .await
     }
 
     /// Update a project
@@ -383,73 +343,40 @@ impl Database {
 
     /// Get repository by org, project and name
     pub async fn get_repository(&self, org_name: &str, project_name: &str, name: &str) -> Result<Option<Repository>, sqlx::Error> {
-        let row = sqlx::query("SELECT id, org_name, project_name, name, path, forked_from FROM repositories WHERE org_name = ? AND project_name = ? AND name = ?")
+        sqlx::query_as::<_, Repository>("SELECT id, org_name, project_name, name, path, forked_from FROM repositories WHERE org_name = ? AND project_name = ? AND name = ?")
             .bind(org_name)
             .bind(project_name)
             .bind(name)
             .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(row.map(|r| Repository {
-            id: r.get("id"),
-            org_name: r.get("org_name"),
-            project_name: r.get("project_name"),
-            name: r.get("name"),
-            path: r.get("path"),
-            forked_from: r.get("forked_from"),
-        }))
+            .await
     }
 
     /// List all repositories for a project
     pub async fn list_repositories(&self, org_name: &str, project_name: &str) -> Result<Vec<Repository>, sqlx::Error> {
-        let rows = sqlx::query("SELECT id, org_name, project_name, name, path, forked_from FROM repositories WHERE org_name = ? AND project_name = ? ORDER BY name")
+        sqlx::query_as::<_, Repository>("SELECT id, org_name, project_name, name, path, forked_from FROM repositories WHERE org_name = ? AND project_name = ? ORDER BY name")
             .bind(org_name)
             .bind(project_name)
             .fetch_all(&self.pool)
-            .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| Repository {
-                id: r.get("id"),
-                org_name: r.get("org_name"),
-                project_name: r.get("project_name"),
-                name: r.get("name"),
-                path: r.get("path"),
-                forked_from: r.get("forked_from"),
-            })
-            .collect())
+            .await
     }
 
     /// List all repositories across all organizations and projects
     #[allow(dead_code)]
     pub async fn list_all_repositories(&self) -> Result<Vec<Repository>, sqlx::Error> {
-        let rows = sqlx::query("SELECT id, org_name, project_name, name, path, forked_from FROM repositories ORDER BY org_name, project_name, name")
+        sqlx::query_as::<_, Repository>("SELECT id, org_name, project_name, name, path, forked_from FROM repositories ORDER BY org_name, project_name, name")
             .fetch_all(&self.pool)
-            .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| Repository {
-                id: r.get("id"),
-                org_name: r.get("org_name"),
-                project_name: r.get("project_name"),
-                name: r.get("name"),
-                path: r.get("path"),
-                forked_from: r.get("forked_from"),
-            })
-            .collect())
+            .await
     }
 
     // ============ Issue Methods ============
 
     /// Get next issue number for a repository
     async fn next_issue_number(&self, repo_name: &str) -> Result<i64, sqlx::Error> {
-        let row = sqlx::query("SELECT COALESCE(MAX(number), 0) + 1 as next FROM issues WHERE repo_name = ?")
+        let result = sqlx::query_as::<_, NextNumber>("SELECT COALESCE(MAX(number), 0) + 1 as next FROM issues WHERE repo_name = ?")
             .bind(repo_name)
             .fetch_one(&self.pool)
             .await?;
-        Ok(row.get("next"))
+        Ok(result.next)
     }
 
     /// Create a new issue
@@ -484,50 +411,23 @@ impl Database {
 
     /// Get issue by repo and number
     pub async fn get_issue(&self, repo_name: &str, number: i64) -> Result<Option<IssueInfo>, sqlx::Error> {
-        let row = sqlx::query(
+        sqlx::query_as::<_, IssueInfo>(
             "SELECT id, repo_name, number, title, body, state, author, created_at, updated_at FROM issues WHERE repo_name = ? AND number = ?"
         )
         .bind(repo_name)
         .bind(number)
         .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.map(|r| IssueInfo {
-            id: r.get("id"),
-            repo_name: r.get("repo_name"),
-            number: r.get("number"),
-            title: r.get("title"),
-            body: r.get("body"),
-            state: r.get("state"),
-            author: r.get("author"),
-            created_at: r.get("created_at"),
-            updated_at: r.get("updated_at"),
-        }))
+        .await
     }
 
     /// List issues for a repository
     pub async fn list_issues(&self, repo_name: &str) -> Result<Vec<IssueInfo>, sqlx::Error> {
-        let rows = sqlx::query(
+        sqlx::query_as::<_, IssueInfo>(
             "SELECT id, repo_name, number, title, body, state, author, created_at, updated_at FROM issues WHERE repo_name = ? ORDER BY number DESC"
         )
         .bind(repo_name)
         .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| IssueInfo {
-                id: r.get("id"),
-                repo_name: r.get("repo_name"),
-                number: r.get("number"),
-                title: r.get("title"),
-                body: r.get("body"),
-                state: r.get("state"),
-                author: r.get("author"),
-                created_at: r.get("created_at"),
-                updated_at: r.get("updated_at"),
-            })
-            .collect())
+        .await
     }
 
     /// Update an issue
@@ -579,23 +479,12 @@ impl Database {
 
     /// List comments for an issue
     pub async fn list_issue_comments(&self, issue_id: i64) -> Result<Vec<IssueCommentInfo>, sqlx::Error> {
-        let rows = sqlx::query(
+        sqlx::query_as::<_, IssueCommentInfo>(
             "SELECT id, issue_id, body, author, created_at FROM issue_comments WHERE issue_id = ? ORDER BY created_at ASC"
         )
         .bind(issue_id)
         .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| IssueCommentInfo {
-                id: r.get("id"),
-                issue_id: r.get("issue_id"),
-                body: r.get("body"),
-                author: r.get("author"),
-                created_at: r.get("created_at"),
-            })
-            .collect())
+        .await
     }
 
     /// Create a comment on an issue
@@ -624,11 +513,11 @@ impl Database {
 
     /// Get next PR number for a repository
     async fn next_pr_number(&self, repo_name: &str) -> Result<i64, sqlx::Error> {
-        let row = sqlx::query("SELECT COALESCE(MAX(number), 0) + 1 as next FROM pull_requests WHERE repo_name = ?")
+        let result = sqlx::query_as::<_, NextNumber>("SELECT COALESCE(MAX(number), 0) + 1 as next FROM pull_requests WHERE repo_name = ?")
             .bind(repo_name)
             .fetch_one(&self.pool)
             .await?;
-        Ok(row.get("next"))
+        Ok(result.next)
     }
 
     /// Create a new pull request
@@ -678,56 +567,23 @@ impl Database {
 
     /// Get pull request by repo and number
     pub async fn get_pull_request(&self, repo_name: &str, number: i64) -> Result<Option<PullRequestInfo>, sqlx::Error> {
-        let row = sqlx::query(
+        sqlx::query_as::<_, PullRequestInfo>(
             "SELECT id, repo_name, number, title, body, state, source_repo, source_branch, target_branch, author, created_at, updated_at FROM pull_requests WHERE repo_name = ? AND number = ?"
         )
         .bind(repo_name)
         .bind(number)
         .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(row.map(|r| PullRequestInfo {
-            id: r.get("id"),
-            repo_name: r.get("repo_name"),
-            number: r.get("number"),
-            title: r.get("title"),
-            body: r.get("body"),
-            state: r.get("state"),
-            source_repo: r.get("source_repo"),
-            source_branch: r.get("source_branch"),
-            target_branch: r.get("target_branch"),
-            author: r.get("author"),
-            created_at: r.get("created_at"),
-            updated_at: r.get("updated_at"),
-        }))
+        .await
     }
 
     /// List pull requests for a repository
     pub async fn list_pull_requests(&self, repo_name: &str) -> Result<Vec<PullRequestInfo>, sqlx::Error> {
-        let rows = sqlx::query(
+        sqlx::query_as::<_, PullRequestInfo>(
             "SELECT id, repo_name, number, title, body, state, source_repo, source_branch, target_branch, author, created_at, updated_at FROM pull_requests WHERE repo_name = ? ORDER BY number DESC"
         )
         .bind(repo_name)
         .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| PullRequestInfo {
-                id: r.get("id"),
-                repo_name: r.get("repo_name"),
-                number: r.get("number"),
-                title: r.get("title"),
-                body: r.get("body"),
-                state: r.get("state"),
-                source_repo: r.get("source_repo"),
-                source_branch: r.get("source_branch"),
-                target_branch: r.get("target_branch"),
-                author: r.get("author"),
-                created_at: r.get("created_at"),
-                updated_at: r.get("updated_at"),
-            })
-            .collect())
+        .await
     }
 
     /// Update a pull request
@@ -778,23 +634,12 @@ impl Database {
 
     /// List comments for a pull request
     pub async fn list_pr_comments(&self, pr_id: i64) -> Result<Vec<PullRequestCommentInfo>, sqlx::Error> {
-        let rows = sqlx::query(
+        sqlx::query_as::<_, PullRequestCommentInfo>(
             "SELECT id, pr_id, body, author, created_at FROM pr_comments WHERE pr_id = ? ORDER BY created_at ASC"
         )
         .bind(pr_id)
         .fetch_all(&self.pool)
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| PullRequestCommentInfo {
-                id: r.get("id"),
-                pr_id: r.get("pr_id"),
-                body: r.get("body"),
-                author: r.get("author"),
-                created_at: r.get("created_at"),
-            })
-            .collect())
+        .await
     }
 
     /// Create a comment on a pull request
@@ -830,7 +675,7 @@ fn chrono_now() -> String {
 }
 
 /// Repository model
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, sqlx::FromRow)]
 #[allow(dead_code)]
 pub struct Repository {
     pub id: i64,
@@ -839,6 +684,12 @@ pub struct Repository {
     pub name: String,
     pub path: String,
     pub forked_from: Option<String>,
+}
+
+/// Helper struct for next number queries
+#[derive(sqlx::FromRow)]
+struct NextNumber {
+    next: i64,
 }
 
 /// Initialize a bare git repository on disk
