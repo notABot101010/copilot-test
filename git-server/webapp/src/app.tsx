@@ -9,6 +9,7 @@ import { CreateOrgPage } from './pages/CreateOrgPage';
 import { OrgPage } from './pages/OrgPage';
 import { OrgSettingsPage } from './pages/OrgSettingsPage';
 import { ProjectPage } from './pages/ProjectPage';
+import { ProjectSettingsPage } from './pages/ProjectSettingsPage';
 import { CreateProjectPage } from './pages/CreateProjectPage';
 import { BranchesPage } from './pages/BranchesPage';
 import { FilePage } from './pages/FilePage';
@@ -35,6 +36,7 @@ const router = createRouter({
     
     // Project (project = repository, project homepage shows code)
     { path: '/:org/:project', name: 'project', component: ProjectPage },
+    { path: '/:org/:project/settings', name: 'project-settings', component: ProjectSettingsPage },
     { path: '/:org/:project/branches', name: 'branches', component: BranchesPage },
     { path: '/:org/:project/blob/:path+', name: 'file', component: FilePage },
     { path: '/:org/:project/edit/:path+', name: 'edit-file', component: EditFilePage },
