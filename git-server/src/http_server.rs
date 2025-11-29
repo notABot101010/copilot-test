@@ -421,7 +421,7 @@ async fn serve_index() -> impl IntoResponse {
         Ok(content) => Html(content).into_response(),
         Err(_) => {
             // Fallback to embedded old index.html
-            Html(include_str!("../static/index.html")).into_response()
+            AppError::NotFound("route not found".to_string()).into_response()
         }
     }
 }

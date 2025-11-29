@@ -28,12 +28,12 @@ const router = createRouter({
     // Organizations
     { path: '/', name: 'home', component: OrganizationsPage },
     { path: '/organizations/new', name: 'new-org', component: CreateOrgPage },
-    
+
     // Organization
     { path: '/:org', name: 'org', component: OrgPage },
     { path: '/:org/settings', name: 'org-settings', component: OrgSettingsPage },
     { path: '/:org/projects/new', name: 'new-project', component: CreateProjectPage },
-    
+
     // Project (project = repository, project homepage shows code)
     { path: '/:org/:project', name: 'project', component: ProjectPage },
     { path: '/:org/:project/settings', name: 'project-settings', component: ProjectSettingsPage },
@@ -42,12 +42,12 @@ const router = createRouter({
     { path: '/:org/:project/edit/:path+', name: 'edit-file', component: EditFilePage },
     { path: '/:org/:project/files/new', name: 'new-file', component: CreateFilePage },
     { path: '/:org/:project/fork', name: 'fork-repo', component: ForkRepoPage },
-    
+
     // Issues
     { path: '/:org/:project/issues', name: 'issues', component: IssuesPage },
     { path: '/:org/:project/issues/new', name: 'new-issue', component: CreateIssuePage },
     { path: '/:org/:project/issues/:number', name: 'issue', component: IssuePage },
-    
+
     // Pull Requests
     { path: '/:org/:project/pulls', name: 'pulls', component: PullRequestsPage },
     { path: '/:org/:project/pulls/new', name: 'new-pull', component: CreatePullRequestPage },
