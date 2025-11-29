@@ -2,7 +2,7 @@ use std::path::Path;
 
 use sqlx::{Row, SqlitePool};
 
-use crate::http_server::{IssueInfo, IssueCommentInfo, PullRequestInfo, PullRequestCommentInfo};
+use crate::http_server::{IssueInfo, IssueCommentInfo, PullRequestInfo, PullRequestCommentInfo, OrganizationInfo};
 
 /// Database manager for git repositories
 #[derive(Clone)]
@@ -19,15 +19,33 @@ impl Database {
 
     /// Initialize the database schema
     pub async fn init(&self) -> Result<(), sqlx::Error> {
-        // Repositories table with forked_from
+        // Organizations table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS organizations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Repositories table with forked_from and org_name
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS repositories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                org_name TEXT NOT NULL,
                 path TEXT NOT NULL,
                 forked_from TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(org_name, name),
+                FOREIGN KEY (org_name) REFERENCES organizations(name)
             )
             "#,
         )
@@ -36,6 +54,11 @@ impl Database {
 
         // Add forked_from column if it doesn't exist (migration)
         let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN forked_from TEXT")
+            .execute(&self.pool)
+            .await;
+
+        // Add org_name column if it doesn't exist (migration)
+        let _ = sqlx::query("ALTER TABLE repositories ADD COLUMN org_name TEXT")
             .execute(&self.pool)
             .await;
 
@@ -117,11 +140,103 @@ impl Database {
         Ok(())
     }
 
+    // ============ Organization Methods ============
+
+    /// Create a new organization
+    pub async fn create_organization(&self, name: &str, display_name: &str, description: &str) -> Result<OrganizationInfo, sqlx::Error> {
+        let result = sqlx::query("INSERT INTO organizations (name, display_name, description) VALUES (?, ?, ?)")
+            .bind(name)
+            .bind(display_name)
+            .bind(description)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(OrganizationInfo {
+            id: result.last_insert_rowid(),
+            name: name.to_string(),
+            display_name: display_name.to_string(),
+            description: description.to_string(),
+            created_at: chrono_now(),
+        })
+    }
+
+    /// Get organization by name
+    pub async fn get_organization(&self, name: &str) -> Result<Option<OrganizationInfo>, sqlx::Error> {
+        let row = sqlx::query("SELECT id, name, display_name, description, created_at FROM organizations WHERE name = ?")
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(row.map(|r| OrganizationInfo {
+            id: r.get("id"),
+            name: r.get("name"),
+            display_name: r.get("display_name"),
+            description: r.get("description"),
+            created_at: r.get("created_at"),
+        }))
+    }
+
+    /// List all organizations
+    pub async fn list_organizations(&self) -> Result<Vec<OrganizationInfo>, sqlx::Error> {
+        let rows = sqlx::query("SELECT id, name, display_name, description, created_at FROM organizations ORDER BY name")
+            .fetch_all(&self.pool)
+            .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| OrganizationInfo {
+                id: r.get("id"),
+                name: r.get("name"),
+                display_name: r.get("display_name"),
+                description: r.get("description"),
+                created_at: r.get("created_at"),
+            })
+            .collect())
+    }
+
+    /// Update an organization
+    pub async fn update_organization(
+        &self,
+        name: &str,
+        display_name: Option<&str>,
+        description: Option<&str>,
+    ) -> Result<Option<OrganizationInfo>, sqlx::Error> {
+        let mut updates = Vec::new();
+        if display_name.is_some() {
+            updates.push("display_name = ?");
+        }
+        if description.is_some() {
+            updates.push("description = ?");
+        }
+        
+        if updates.is_empty() {
+            return self.get_organization(name).await;
+        }
+
+        let query = format!(
+            "UPDATE organizations SET {} WHERE name = ?",
+            updates.join(", ")
+        );
+
+        let mut q = sqlx::query(&query);
+        if let Some(dn) = display_name {
+            q = q.bind(dn);
+        }
+        if let Some(d) = description {
+            q = q.bind(d);
+        }
+        q = q.bind(name);
+        q.execute(&self.pool).await?;
+
+        self.get_organization(name).await
+    }
+
     // ============ Repository Methods ============
 
     /// Create a new repository entry
-    pub async fn create_repository(&self, name: &str, path: &str) -> Result<i64, sqlx::Error> {
-        let result = sqlx::query("INSERT INTO repositories (name, path) VALUES (?, ?)")
+    pub async fn create_repository(&self, org_name: &str, name: &str, path: &str) -> Result<i64, sqlx::Error> {
+        let result = sqlx::query("INSERT INTO repositories (org_name, name, path) VALUES (?, ?, ?)")
+            .bind(org_name)
             .bind(name)
             .bind(path)
             .execute(&self.pool)
@@ -130,8 +245,9 @@ impl Database {
     }
 
     /// Create a new repository entry with fork info
-    pub async fn create_repository_with_fork(&self, name: &str, path: &str, forked_from: &str) -> Result<i64, sqlx::Error> {
-        let result = sqlx::query("INSERT INTO repositories (name, path, forked_from) VALUES (?, ?, ?)")
+    pub async fn create_repository_with_fork(&self, org_name: &str, name: &str, path: &str, forked_from: &str) -> Result<i64, sqlx::Error> {
+        let result = sqlx::query("INSERT INTO repositories (org_name, name, path, forked_from) VALUES (?, ?, ?, ?)")
+            .bind(org_name)
             .bind(name)
             .bind(path)
             .bind(forked_from)
@@ -140,25 +256,27 @@ impl Database {
         Ok(result.last_insert_rowid())
     }
 
-    /// Get repository by name
-    pub async fn get_repository(&self, name: &str) -> Result<Option<Repository>, sqlx::Error> {
-        let row = sqlx::query("SELECT id, name, path, forked_from FROM repositories WHERE name = ?")
+    /// Get repository by org and name
+    pub async fn get_repository(&self, org_name: &str, name: &str) -> Result<Option<Repository>, sqlx::Error> {
+        let row = sqlx::query("SELECT id, org_name, name, path, forked_from FROM repositories WHERE org_name = ? AND name = ?")
+            .bind(org_name)
             .bind(name)
             .fetch_optional(&self.pool)
             .await?;
 
         Ok(row.map(|r| Repository {
             id: r.get("id"),
+            org_name: r.get("org_name"),
             name: r.get("name"),
             path: r.get("path"),
             forked_from: r.get("forked_from"),
         }))
     }
 
-    /// List all repositories
-    #[allow(dead_code)]
-    pub async fn list_repositories(&self) -> Result<Vec<Repository>, sqlx::Error> {
-        let rows = sqlx::query("SELECT id, name, path, forked_from FROM repositories")
+    /// List all repositories for an organization
+    pub async fn list_repositories(&self, org_name: &str) -> Result<Vec<Repository>, sqlx::Error> {
+        let rows = sqlx::query("SELECT id, org_name, name, path, forked_from FROM repositories WHERE org_name = ? ORDER BY name")
+            .bind(org_name)
             .fetch_all(&self.pool)
             .await?;
 
@@ -166,6 +284,26 @@ impl Database {
             .into_iter()
             .map(|r| Repository {
                 id: r.get("id"),
+                org_name: r.get("org_name"),
+                name: r.get("name"),
+                path: r.get("path"),
+                forked_from: r.get("forked_from"),
+            })
+            .collect())
+    }
+
+    /// List all repositories across all organizations
+    #[allow(dead_code)]
+    pub async fn list_all_repositories(&self) -> Result<Vec<Repository>, sqlx::Error> {
+        let rows = sqlx::query("SELECT id, org_name, name, path, forked_from FROM repositories ORDER BY org_name, name")
+            .fetch_all(&self.pool)
+            .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| Repository {
+                id: r.get("id"),
+                org_name: r.get("org_name"),
                 name: r.get("name"),
                 path: r.get("path"),
                 forked_from: r.get("forked_from"),
@@ -566,6 +704,7 @@ fn chrono_now() -> String {
 #[allow(dead_code)]
 pub struct Repository {
     pub id: i64,
+    pub org_name: String,
     pub name: String,
     pub path: String,
     pub forked_from: Option<String>,
