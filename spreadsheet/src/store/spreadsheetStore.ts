@@ -2,7 +2,7 @@ import { signal, computed } from '@preact/signals';
 import * as Automerge from '@automerge/automerge';
 import type { SpreadsheetData, SpreadsheetListItem } from '../types/spreadsheet';
 import { getCellKey } from '../types/spreadsheet';
-import { initSync, broadcastChanges, startServerSync, stopServerSync } from './syncManager';
+import { initSync, broadcastChanges, startServerSync, stopServerSync, getServerUrl } from './syncManager';
 
 // Automerge document type
 interface AutomergeSpreadsheet {
@@ -15,6 +15,9 @@ interface AutomergeSpreadsheet {
 
 // Store for spreadsheet list
 export const spreadsheetList = signal<SpreadsheetListItem[]>([]);
+
+// Loading state for the spreadsheet list
+export const isLoadingList = signal<boolean>(false);
 
 // Current active spreadsheet document
 export const currentSpreadsheetDoc = signal<Automerge.Doc<AutomergeSpreadsheet> | null>(null);
@@ -53,7 +56,6 @@ function handleRemoteSync(spreadsheetId: string, remoteBinary: Uint8Array): void
     
     if (hasChanges) {
       currentSpreadsheetDoc.value = mergedDoc;
-      saveCurrentSpreadsheetInternal();
       updateSpreadsheetListItemInternal();
     }
   } catch {
@@ -105,82 +107,86 @@ export const currentSpreadsheet = computed<SpreadsheetData | null>(() => {
   const doc = currentSpreadsheetDoc.value;
   if (!doc) return null;
   return {
-    id: doc.id,
-    name: doc.name,
+    id: String(doc.id),
+    name: String(doc.name),
     cells: doc.cells,
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
+    createdAt: Number(doc.createdAt),
+    updatedAt: Number(doc.updatedAt),
   };
 });
 
-// Local storage key prefix
-const STORAGE_KEY_PREFIX = 'spreadsheet_';
-const SPREADSHEET_LIST_KEY = 'spreadsheet_list';
-
-// Generate a unique ID
-function generateId(): string {
-  return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+// Helper function for base64 decoding
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
-// Load spreadsheet list from localStorage
-export function loadSpreadsheetList(): void {
-  const storedList = localStorage.getItem(SPREADSHEET_LIST_KEY);
-  if (storedList) {
-    try {
-      spreadsheetList.value = JSON.parse(storedList);
-    } catch {
-      spreadsheetList.value = [];
+// Load spreadsheet list from server
+export async function loadSpreadsheetList(): Promise<void> {
+  isLoadingList.value = true;
+  try {
+    const response = await fetch(`${getServerUrl()}/api/spreadsheets`);
+    if (response.ok) {
+      const data = await response.json();
+      spreadsheetList.value = data.spreadsheets.map((s: { id: string; name: string; createdAt: number; updatedAt: number }) => ({
+        id: s.id,
+        name: s.name,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+      }));
     }
+  } catch {
+    // Server may be offline - keep existing list
+    console.debug('Failed to load spreadsheet list from server');
+  } finally {
+    isLoadingList.value = false;
   }
 }
 
-// Save spreadsheet list to localStorage
-function saveSpreadsheetList(): void {
-  localStorage.setItem(SPREADSHEET_LIST_KEY, JSON.stringify(spreadsheetList.value));
+// Create a new spreadsheet via server API
+export async function createSpreadsheet(name: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${getServerUrl()}/api/spreadsheets`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name }),
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      // Add to local list
+      spreadsheetList.value = [
+        { id: data.id, name: data.name, createdAt: data.createdAt, updatedAt: data.updatedAt },
+        ...spreadsheetList.value,
+      ];
+      return data.id;
+    }
+  } catch {
+    console.debug('Failed to create spreadsheet on server');
+  }
+  return null;
 }
 
-// Create a new spreadsheet
-export function createSpreadsheet(name: string): string {
-  const id = generateId();
-  const now = Date.now();
-  
-  // Create a new Automerge document
-  let doc = Automerge.init<AutomergeSpreadsheet>();
-  doc = Automerge.change(doc, 'Initialize spreadsheet', (d) => {
-    d.id = id;
-    d.name = name;
-    d.cells = {};
-    d.createdAt = now;
-    d.updatedAt = now;
-  });
-  
-  // Save document to localStorage
-  const binary = Automerge.save(doc);
-  localStorage.setItem(STORAGE_KEY_PREFIX + id, uint8ArrayToBase64(binary));
-  
-  // Add to list
-  spreadsheetList.value = [
-    ...spreadsheetList.value,
-    { id, name, createdAt: now, updatedAt: now },
-  ];
-  saveSpreadsheetList();
-  
-  return id;
-}
-
-// Load a spreadsheet by ID
-export function loadSpreadsheet(id: string): boolean {
+// Load a spreadsheet by ID from server
+export async function loadSpreadsheet(id: string): Promise<boolean> {
   // Stop any existing server sync
   stopServerSync();
   
-  const stored = localStorage.getItem(STORAGE_KEY_PREFIX + id);
-  if (!stored) {
-    currentSpreadsheetDoc.value = null;
-    return false;
-  }
-  
   try {
-    const binary = base64ToUint8Array(stored);
+    const response = await fetch(`${getServerUrl()}/api/spreadsheets/${id}`);
+    if (!response.ok) {
+      currentSpreadsheetDoc.value = null;
+      return false;
+    }
+    
+    const data = await response.json();
+    const binary = base64ToUint8Array(data.document);
     const doc = Automerge.load<AutomergeSpreadsheet>(binary);
     currentSpreadsheetDoc.value = doc;
     
@@ -192,6 +198,27 @@ export function loadSpreadsheet(id: string): boolean {
     currentSpreadsheetDoc.value = null;
     return false;
   }
+}
+
+// Delete a spreadsheet via server API
+export async function deleteSpreadsheet(id: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${getServerUrl()}/api/spreadsheets/${id}`, {
+      method: 'DELETE',
+    });
+    
+    if (response.ok || response.status === 204) {
+      spreadsheetList.value = spreadsheetList.value.filter((s) => s.id !== id);
+      
+      if (currentSpreadsheetDoc.value?.id === id) {
+        currentSpreadsheetDoc.value = null;
+      }
+      return true;
+    }
+  } catch {
+    console.debug('Failed to delete spreadsheet on server');
+  }
+  return false;
 }
 
 // Update a cell value
@@ -288,15 +315,6 @@ export function renameSpreadsheet(name: string): void {
   saveAndBroadcast(doc, newDoc);
 }
 
-// Save current spreadsheet to localStorage (internal, no broadcast)
-function saveCurrentSpreadsheetInternal(): void {
-  const doc = currentSpreadsheetDoc.value;
-  if (!doc) return;
-  
-  const binary = Automerge.save(doc);
-  localStorage.setItem(STORAGE_KEY_PREFIX + doc.id, uint8ArrayToBase64(binary));
-}
-
 // Update the list item with current spreadsheet info (internal, no broadcast)
 function updateSpreadsheetListItemInternal(): void {
   const doc = currentSpreadsheetDoc.value;
@@ -307,32 +325,19 @@ function updateSpreadsheetListItemInternal(): void {
       ? { ...item, name: doc.name, updatedAt: doc.updatedAt }
       : item
   );
-  saveSpreadsheetList();
 }
 
-// Save and broadcast changes to other tabs
+// Save and broadcast changes to other tabs (server sync handles persistence)
 function saveAndBroadcast(oldDoc: Automerge.Doc<AutomergeSpreadsheet>, newDoc: Automerge.Doc<AutomergeSpreadsheet>): void {
-  saveCurrentSpreadsheetInternal();
   updateSpreadsheetListItemInternal();
   broadcastChanges(newDoc.id, oldDoc, newDoc);
 }
 
-// Delete a spreadsheet
-export function deleteSpreadsheet(id: string): void {
-  localStorage.removeItem(STORAGE_KEY_PREFIX + id);
-  spreadsheetList.value = spreadsheetList.value.filter((s) => s.id !== id);
-  saveSpreadsheetList();
-  
-  if (currentSpreadsheetDoc.value?.id === id) {
-    currentSpreadsheetDoc.value = null;
-  }
-}
-
-// Get the Automerge binary for sync
-export function getSpreadsheetBinary(id: string): Uint8Array | null {
-  const stored = localStorage.getItem(STORAGE_KEY_PREFIX + id);
-  if (!stored) return null;
-  return base64ToUint8Array(stored);
+// Get the Automerge binary for current spreadsheet
+export function getSpreadsheetBinary(): Uint8Array | null {
+  const doc = currentSpreadsheetDoc.value;
+  if (!doc) return null;
+  return Automerge.save(doc);
 }
 
 // Merge remote changes into the spreadsheet
@@ -344,24 +349,5 @@ export function mergeRemoteChanges(id: string, remoteBinary: Uint8Array): void {
   const mergedDoc = Automerge.merge(doc, remoteDoc);
   
   currentSpreadsheetDoc.value = mergedDoc;
-  saveCurrentSpreadsheetInternal();
   updateSpreadsheetListItemInternal();
-}
-
-// Helper functions for base64 encoding/decoding
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
 }

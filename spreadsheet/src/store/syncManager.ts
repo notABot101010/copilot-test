@@ -5,6 +5,11 @@ const HTTP_SERVER_URL = import.meta.env.VITE_SYNC_SERVER_URL || 'http://localhos
 const WS_SERVER_URL = (import.meta.env.VITE_SYNC_SERVER_URL || 'http://localhost:3001')
   .replace(/^http/, 'ws');
 
+// Export getServerUrl for use in spreadsheetStore
+export function getServerUrl(): string {
+  return HTTP_SERVER_URL;
+}
+
 // BroadcastChannel name for spreadsheet sync (same browser only)
 const SYNC_CHANNEL_NAME = 'spreadsheet-sync';
 
