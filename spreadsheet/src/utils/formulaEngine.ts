@@ -228,16 +228,8 @@ export function evaluateFormula(
       });
     }
 
-    // Evaluate the expression safely
-    // Only allow numbers, basic operators, parentheses, and arrays
-    const safeExpression = processed.replace(/\s+/g, '');
-    if (!/^[\d.+\-*/%(),\[\]<>=!&|?:]+$/.test(safeExpression)) {
-      // For safety, we use a restricted evaluation
-      return '#ERROR';
-    }
-
-    // Use Function constructor for safe evaluation of math expressions
-    const result = new Function(`return ${processed}`)();
+    // Use safe mathematical expression evaluator instead of Function constructor
+    const result = safeEvaluate(processed);
     
     if (typeof result === 'number') {
       return isNaN(result) ? '#ERROR' : 
@@ -245,6 +237,184 @@ export function evaluateFormula(
              Number.isInteger(result) ? String(result) : result.toFixed(10).replace(/\.?0+$/, '');
     }
     return String(result);
+  } catch {
+    return '#ERROR';
+  }
+}
+
+// Token types for the expression parser
+type TokenType = 'NUMBER' | 'OPERATOR' | 'LPAREN' | 'RPAREN' | 'END';
+interface Token {
+  type: TokenType;
+  value: string | number;
+}
+
+// Tokenize expression into tokens
+function tokenize(expr: string): Token[] {
+  const tokens: Token[] = [];
+  let i = 0;
+  
+  while (i < expr.length) {
+    const char = expr[i];
+    
+    // Skip whitespace
+    if (/\s/.test(char)) {
+      i++;
+      continue;
+    }
+    
+    // Numbers (including decimals and negative numbers at start)
+    if (/[\d.]/.test(char) || (char === '-' && (tokens.length === 0 || tokens[tokens.length - 1].type === 'OPERATOR' || tokens[tokens.length - 1].type === 'LPAREN'))) {
+      let numStr = char;
+      i++;
+      while (i < expr.length && /[\d.]/.test(expr[i])) {
+        numStr += expr[i];
+        i++;
+      }
+      tokens.push({ type: 'NUMBER', value: parseFloat(numStr) });
+      continue;
+    }
+    
+    // Operators
+    if ('+-*/%'.includes(char)) {
+      tokens.push({ type: 'OPERATOR', value: char });
+      i++;
+      continue;
+    }
+    
+    // Comparison operators
+    if ('<>=!'.includes(char)) {
+      let op = char;
+      i++;
+      if (i < expr.length && expr[i] === '=') {
+        op += '=';
+        i++;
+      }
+      tokens.push({ type: 'OPERATOR', value: op });
+      continue;
+    }
+    
+    // Parentheses
+    if (char === '(') {
+      tokens.push({ type: 'LPAREN', value: '(' });
+      i++;
+      continue;
+    }
+    
+    if (char === ')') {
+      tokens.push({ type: 'RPAREN', value: ')' });
+      i++;
+      continue;
+    }
+    
+    // Unknown character - skip
+    i++;
+  }
+  
+  tokens.push({ type: 'END', value: '' });
+  return tokens;
+}
+
+// Simple recursive descent parser for safe expression evaluation
+function safeEvaluate(expr: string): number | string {
+  const tokens = tokenize(expr);
+  let pos = 0;
+  
+  function peek(): Token {
+    return tokens[pos];
+  }
+  
+  function consume(): Token {
+    return tokens[pos++];
+  }
+  
+  function parseExpression(): number {
+    let left = parseTerm();
+    
+    while (peek().type === 'OPERATOR' && (peek().value === '+' || peek().value === '-')) {
+      const op = consume().value;
+      const right = parseTerm();
+      if (op === '+') {
+        left = left + right;
+      } else {
+        left = left - right;
+      }
+    }
+    
+    return left;
+  }
+  
+  function parseTerm(): number {
+    let left = parseComparison();
+    
+    while (peek().type === 'OPERATOR' && (peek().value === '*' || peek().value === '/' || peek().value === '%')) {
+      const op = consume().value;
+      const right = parseComparison();
+      if (op === '*') {
+        left = left * right;
+      } else if (op === '/') {
+        left = right !== 0 ? left / right : NaN;
+      } else {
+        left = right !== 0 ? left % right : NaN;
+      }
+    }
+    
+    return left;
+  }
+  
+  function parseComparison(): number {
+    let left = parseFactor();
+    
+    while (peek().type === 'OPERATOR' && ['<', '>', '<=', '>=', '==', '!=', '='].includes(peek().value as string)) {
+      const op = consume().value;
+      const right = parseFactor();
+      switch (op) {
+        case '<': left = left < right ? 1 : 0; break;
+        case '>': left = left > right ? 1 : 0; break;
+        case '<=': left = left <= right ? 1 : 0; break;
+        case '>=': left = left >= right ? 1 : 0; break;
+        case '==':
+        case '=': left = left === right ? 1 : 0; break;
+        case '!=': left = left !== right ? 1 : 0; break;
+      }
+    }
+    
+    return left;
+  }
+  
+  function parseFactor(): number {
+    const token = peek();
+    
+    if (token.type === 'NUMBER') {
+      consume();
+      return token.value as number;
+    }
+    
+    if (token.type === 'LPAREN') {
+      consume(); // consume '('
+      const result = parseExpression();
+      if (peek().type === 'RPAREN') {
+        consume(); // consume ')'
+      }
+      return result;
+    }
+    
+    if (token.type === 'OPERATOR' && token.value === '-') {
+      consume();
+      return -parseFactor();
+    }
+    
+    if (token.type === 'OPERATOR' && token.value === '+') {
+      consume();
+      return parseFactor();
+    }
+    
+    // Default to 0 for unknown tokens
+    return 0;
+  }
+  
+  try {
+    return parseExpression();
   } catch {
     return '#ERROR';
   }

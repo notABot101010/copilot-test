@@ -129,35 +129,56 @@ export function SpreadsheetPage() {
     Math.ceil((scrollTop + containerHeight) / CELL_HEIGHT) + OVERSCAN
   );
 
-  // Calculate column positions and visible columns
+  // Calculate column positions incrementally - only recalculate changed positions
   const columnPositions = useMemo(() => {
     const positions: number[] = [0];
     let currentX = 0;
-    for (let col = 0; col < TOTAL_COLS; col++) {
+    // Only calculate positions up to visible area + buffer for performance
+    const maxNeededCol = Math.min(TOTAL_COLS, Math.ceil((scrollLeft + containerWidth) / DEFAULT_COLUMN_WIDTH) + OVERSCAN * 10);
+    for (let col = 0; col < maxNeededCol; col++) {
       currentX += columnWidths[col] || DEFAULT_COLUMN_WIDTH;
       positions.push(currentX);
     }
+    // Add remaining positions with default width
+    for (let col = maxNeededCol; col <= TOTAL_COLS; col++) {
+      positions.push(currentX + (col - maxNeededCol + 1) * DEFAULT_COLUMN_WIDTH);
+    }
     return positions;
-  }, [columnWidths]);
+  }, [columnWidths, scrollLeft, containerWidth]);
 
   const totalWidth = columnPositions[TOTAL_COLS] || TOTAL_COLS * DEFAULT_COLUMN_WIDTH;
   const totalHeight = TOTAL_ROWS * CELL_HEIGHT;
 
+  // Binary search for finding the visible column start
   const visibleColStart = useMemo(() => {
-    let col = 0;
-    while (col < TOTAL_COLS && columnPositions[col + 1] < scrollLeft - (columnWidths[col] || DEFAULT_COLUMN_WIDTH) * OVERSCAN) {
-      col++;
+    const targetX = Math.max(0, scrollLeft - DEFAULT_COLUMN_WIDTH * OVERSCAN);
+    let low = 0;
+    let high = columnPositions.length - 1;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (columnPositions[mid] < targetX) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
     }
-    return Math.max(0, col);
-  }, [scrollLeft, columnPositions, columnWidths]);
+    return Math.max(0, low - 1);
+  }, [scrollLeft, columnPositions]);
 
   const visibleColEnd = useMemo(() => {
-    let col = visibleColStart;
-    while (col < TOTAL_COLS && columnPositions[col] < scrollLeft + containerWidth + (columnWidths[col] || DEFAULT_COLUMN_WIDTH) * OVERSCAN) {
-      col++;
+    const targetX = scrollLeft + containerWidth + DEFAULT_COLUMN_WIDTH * OVERSCAN;
+    let low = visibleColStart;
+    let high = columnPositions.length - 1;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (columnPositions[mid] <= targetX) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
     }
-    return Math.min(TOTAL_COLS, col);
-  }, [scrollLeft, containerWidth, visibleColStart, columnPositions, columnWidths]);
+    return Math.min(TOTAL_COLS, low);
+  }, [scrollLeft, containerWidth, visibleColStart, columnPositions]);
 
   // Handle scroll
   const handleScroll = useCallback((e: Event) => {
