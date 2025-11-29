@@ -31,15 +31,6 @@ initSync(
   // Handle incoming sync from other tabs/browsers
   (spreadsheetId: string, changes: Uint8Array) => {
     handleRemoteSync(spreadsheetId, changes);
-  },
-  // Get current document for server sync
-  () => {
-    const doc = currentSpreadsheetDoc.value;
-    if (!doc) return null;
-    return {
-      id: doc.id,
-      binary: Automerge.save(doc),
-    };
   }
 );
 
@@ -217,6 +208,29 @@ export function updateCell(row: number, col: number, value: string): void {
   pushToUndoStack(doc);
   
   const newDoc = Automerge.change(doc, `Update cell ${row}:${col}`, (d) => {
+    if (!d.cells[key]) {
+      d.cells[key] = { value: '' };
+    }
+    d.cells[key].value = value;
+    d.updatedAt = Date.now();
+  });
+  
+  currentSpreadsheetDoc.value = newDoc;
+  saveAndBroadcast(doc, newDoc);
+}
+
+// Update a cell value in real-time (without adding to undo stack)
+// This is used for propagating changes as the user types
+export function updateCellLive(row: number, col: number, value: string): void {
+  const doc = currentSpreadsheetDoc.value;
+  if (!doc) return;
+  
+  // Check if value actually changed
+  const key = getCellKey(row, col);
+  const currentValue = doc.cells[key]?.value || '';
+  if (currentValue === value) return;
+  
+  const newDoc = Automerge.change(doc, `Live update cell ${row}:${col}`, (d) => {
     if (!d.cells[key]) {
       d.cells[key] = { value: '' };
     }

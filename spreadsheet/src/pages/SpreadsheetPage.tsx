@@ -5,6 +5,7 @@ import {
   currentSpreadsheet,
   loadSpreadsheet,
   updateCell,
+  updateCellLive,
   renameSpreadsheet,
   updateMultipleCells,
   undo,
@@ -386,6 +387,15 @@ export function SpreadsheetPage() {
     }
   }, [selection, editingCell, spreadsheet, scrollTop, scrollLeft, containerHeight, containerWidth, columnPositions]);
 
+  // Handler for cell input value changes (broadcasts live to other clients)
+  const handleCellInputChange = useCallback((value: string) => {
+    setEditValue(value);
+    if (editingCell) {
+      // Broadcast the live change to other clients
+      updateCellLive(editingCell.row, editingCell.col, value);
+    }
+  }, [editingCell]);
+
   // Inline edit key handler
   const handleEditKeyDown = useCallback((e: KeyboardEvent) => {
     if (!editingCell) return;
@@ -540,6 +550,11 @@ export function SpreadsheetPage() {
     setEditValue(value);
     if (selection && !editingCell) {
       setEditingCell({ row: selection.end.row, col: selection.end.col });
+      // Broadcast the live change
+      updateCellLive(selection.end.row, selection.end.col, value);
+    } else if (editingCell) {
+      // Broadcast the live change
+      updateCellLive(editingCell.row, editingCell.col, value);
     }
   }, [selection, editingCell]);
 
@@ -816,7 +831,7 @@ export function SpreadsheetPage() {
                         ref={cellInputRef}
                         type="text"
                         value={editValue}
-                        onChange={(e: Event) => setEditValue((e.target as HTMLInputElement).value)}
+                        onChange={(e: Event) => handleCellInputChange((e.target as HTMLInputElement).value)}
                         onKeyDown={handleEditKeyDown}
                         onBlur={() => {
                           updateCell(editingCell.row, editingCell.col, editValue);
