@@ -18,7 +18,9 @@ export const spreadsheetList = signal<SpreadsheetListItem[]>([]);
 // Current active spreadsheet document
 export const currentSpreadsheetDoc = signal<Automerge.Doc<AutomergeSpreadsheet> | null>(null);
 
-// Undo/Redo history
+// Undo/Redo history configuration
+// Maximum number of undo steps to keep in memory. Each step stores a full document snapshot.
+// Higher values use more memory but allow more undo history.
 const MAX_HISTORY = 100;
 const undoStack: Automerge.Doc<AutomergeSpreadsheet>[] = [];
 const redoStack: Automerge.Doc<AutomergeSpreadsheet>[] = [];

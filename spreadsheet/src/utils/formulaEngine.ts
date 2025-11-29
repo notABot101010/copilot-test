@@ -123,7 +123,7 @@ export const builtinFunctions: Record<string, (...args: (number | number[])[]) =
   },
   SQRT: (value: number | number[]) => {
     const v = Array.isArray(value) ? value[0] : value;
-    return typeof v === 'number' && v >= 0 ? Math.sqrt(v) : 0;
+    return typeof v === 'number' ? (v >= 0 ? Math.sqrt(v) : NaN) : 0;
   },
   POW: (base: number | number[], exp: number | number[]) => {
     const b = Array.isArray(base) ? base[0] : base;
@@ -232,9 +232,11 @@ export function evaluateFormula(
     const result = safeEvaluate(processed);
     
     if (typeof result === 'number') {
-      return isNaN(result) ? '#ERROR' : 
-             result === Infinity || result === -Infinity ? '#ERROR' :
-             Number.isInteger(result) ? String(result) : result.toFixed(10).replace(/\.?0+$/, '');
+      if (isNaN(result)) return '#ERROR';
+      if (result === Infinity || result === -Infinity) return '#ERROR';
+      if (Number.isInteger(result)) return String(result);
+      // Use reasonable precision (6 decimal places) for display
+      return result.toFixed(6).replace(/\.?0+$/, '');
     }
     return String(result);
   } catch {
@@ -266,12 +268,24 @@ function tokenize(expr: string): Token[] {
     // Numbers (including decimals and negative numbers at start)
     if (/[\d.]/.test(char) || (char === '-' && (tokens.length === 0 || tokens[tokens.length - 1].type === 'OPERATOR' || tokens[tokens.length - 1].type === 'LPAREN'))) {
       let numStr = char;
+      let hasDecimal = char === '.';
       i++;
-      while (i < expr.length && /[\d.]/.test(expr[i])) {
-        numStr += expr[i];
-        i++;
+      while (i < expr.length) {
+        const nextChar = expr[i];
+        if (/\d/.test(nextChar)) {
+          numStr += nextChar;
+          i++;
+        } else if (nextChar === '.' && !hasDecimal) {
+          // Only allow one decimal point
+          numStr += nextChar;
+          hasDecimal = true;
+          i++;
+        } else {
+          break;
+        }
       }
-      tokens.push({ type: 'NUMBER', value: parseFloat(numStr) });
+      const parsed = parseFloat(numStr);
+      tokens.push({ type: 'NUMBER', value: isNaN(parsed) ? 0 : parsed });
       continue;
     }
     
