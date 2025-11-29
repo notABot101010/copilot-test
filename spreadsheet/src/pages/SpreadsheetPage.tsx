@@ -10,8 +10,9 @@ import {
   updateMultipleCells,
   undo,
   redo,
-  canUndo,
-  canRedo,
+  canUndoSignal,
+  canRedoSignal,
+  cancelEdit,
 } from '../store/spreadsheetStore';
 import { getCellKey } from '../types/spreadsheet';
 import { getComputedValue, indexToColumn } from '../utils/formulaEngine';
@@ -454,6 +455,7 @@ export function SpreadsheetPage() {
         setSelection({ start: { row: editingCell.row, col: newCol }, end: { row: editingCell.row, col: newCol } });
       }
     } else if (e.key === 'Escape') {
+      cancelEdit();
       setEditingCell(null);
     }
   }, [editingCell, editValue]);
@@ -607,6 +609,7 @@ export function SpreadsheetPage() {
         setEditingCell(null);
       }
     } else if (e.key === 'Escape') {
+      cancelEdit();
       setEditingCell(null);
     }
   }, [editingCell, editValue]);
@@ -679,7 +682,7 @@ export function SpreadsheetPage() {
           <Tooltip label="Undo (Ctrl+Z)">
             <ActionIcon
               variant="subtle"
-              disabled={!canUndo()}
+              disabled={!canUndoSignal.value}
               onClick={() => undo()}
             >
               <span className="text-lg">↶</span>
@@ -688,7 +691,7 @@ export function SpreadsheetPage() {
           <Tooltip label="Redo (Ctrl+Y)">
             <ActionIcon
               variant="subtle"
-              disabled={!canRedo()}
+              disabled={!canRedoSignal.value}
               onClick={() => redo()}
             >
               <span className="text-lg">↷</span>
