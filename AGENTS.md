@@ -6,7 +6,8 @@ Always ensure to use the latest version of package when creating or updating a p
 
 ## Rust
 
-Use `aws-lc-rs` for crypto operations.
+* Use `aws-lc-rs` for crypto operations.
+* Use `reqwest` when you need an HTTP client and `axum` when you need an HTTP server.
 
 ## Web applications
 
