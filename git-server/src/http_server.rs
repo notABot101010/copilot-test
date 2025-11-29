@@ -245,11 +245,19 @@ pub fn create_router(state: AppState) -> Router {
         .route("/orgs/:org/repos/:name/pulls/:number/files", get(get_pr_files))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
+    // Git HTTP Smart Protocol routes (for HTTP clone)
+    let git_routes = Router::new()
+        .route("/:org/:name.git/info/refs", get(git_info_refs))
+        .route("/:org/:name.git/git-upload-pack", axum::routing::post(git_upload_pack))
+        .route("/:org/:name.git/git-receive-pack", axum::routing::post(git_receive_pack))
+        .with_state(state.clone());
+
     // Try to find static directory - check multiple locations
     let static_dir = find_static_dir();
 
     let app = Router::new()
         .nest("/api", api_routes)
+        .merge(git_routes)
         .fallback_service(ServeDir::new(static_dir).fallback(get(serve_index)))
         .layer(cors)
         .with_state(state);
@@ -1719,6 +1727,168 @@ async fn get_branch_diff(
     }
 
     Ok(Json(files))
+}
+
+/// Query parameters for git info/refs
+#[derive(Debug, Deserialize)]
+pub struct GitInfoRefsQuery {
+    service: Option<String>,
+}
+
+/// Get git info/refs for HTTP smart protocol
+async fn git_info_refs(
+    State(state): State<AppState>,
+    Path((org, name)): Path<(String, String)>,
+    Query(query): Query<GitInfoRefsQuery>,
+) -> Result<Response, (StatusCode, String)> {
+    let service = query.service.as_deref().unwrap_or("git-upload-pack");
+    
+    // Remove .git suffix if present
+    let repo_name = name.strip_suffix(".git").unwrap_or(&name);
+    
+    // Get repository
+    let repo = state.db
+        .get_repository(&org, repo_name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+
+    let repo_path = state.repos_path.join(&repo.path);
+
+    // Service name comes with git- prefix, but the git command needs it without
+    let git_cmd = service.strip_prefix("git-").unwrap_or(service);
+
+    // Run git command
+    let output = Command::new("git")
+        .args([git_cmd, "--stateless-rpc", "--advertise-refs", "."])
+        .current_dir(&repo_path)
+        .output()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, stderr.to_string()));
+    }
+
+    // Build response with proper git smart protocol format
+    let pkt_line = format!("# service={}\n", service);
+    let pkt_len = format!("{:04x}", pkt_line.len() + 4);
+    
+    let mut body = Vec::new();
+    body.extend_from_slice(pkt_len.as_bytes());
+    body.extend_from_slice(pkt_line.as_bytes());
+    body.extend_from_slice(b"0000"); // flush packet
+    body.extend_from_slice(&output.stdout);
+
+    let content_type = format!("application/x-{}-advertisement", service);
+    
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header("Cache-Control", "no-cache")
+        .body(Body::from(body))
+        .unwrap())
+}
+
+/// Handle git-upload-pack (for git fetch/clone)
+async fn git_upload_pack(
+    State(state): State<AppState>,
+    Path((org, name)): Path<(String, String)>,
+    body: axum::body::Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    // Remove .git suffix if present
+    let repo_name = name.strip_suffix(".git").unwrap_or(&name);
+    
+    // Get repository
+    let repo = state.db
+        .get_repository(&org, repo_name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+
+    let repo_path = state.repos_path.join(&repo.path);
+
+    // Create a child process
+    let mut child = tokio::process::Command::new("git")
+        .args(["upload-pack", "--stateless-rpc", "."])
+        .current_dir(&repo_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Write request body to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        use tokio::io::AsyncWriteExt;
+        stdin.write_all(&body).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+
+    // Read output
+    let output = child.wait_with_output().await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, stderr.to_string()));
+    }
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/x-git-upload-pack-result")
+        .header("Cache-Control", "no-cache")
+        .body(Body::from(output.stdout))
+        .unwrap())
+}
+
+/// Handle git-receive-pack (for git push)
+async fn git_receive_pack(
+    State(state): State<AppState>,
+    Path((org, name)): Path<(String, String)>,
+    body: axum::body::Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    // Remove .git suffix if present
+    let repo_name = name.strip_suffix(".git").unwrap_or(&name);
+    
+    // Get repository
+    let repo = state.db
+        .get_repository(&org, repo_name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
+
+    let repo_path = state.repos_path.join(&repo.path);
+
+    // Create a child process
+    let mut child = tokio::process::Command::new("git")
+        .args(["receive-pack", "--stateless-rpc", "."])
+        .current_dir(&repo_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Write request body to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        use tokio::io::AsyncWriteExt;
+        stdin.write_all(&body).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+
+    // Read output
+    let output = child.wait_with_output().await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, stderr.to_string()));
+    }
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/x-git-receive-pack-result")
+        .header("Cache-Control", "no-cache")
+        .body(Body::from(output.stdout))
+        .unwrap())
 }
 
 /// Run the HTTP server
