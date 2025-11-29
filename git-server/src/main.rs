@@ -6,10 +6,12 @@ use russh::keys::ssh_key::PublicKey;
 
 mod config;
 mod database;
+mod http_server;
 mod ssh_server;
 
 use config::Config;
 use database::Database;
+use http_server::run_http_server;
 use ssh_server::GitServer;
 
 #[derive(Parser)]
@@ -131,14 +133,34 @@ async fn serve(
         println!("Loaded {} authorized public key(s)", authorized_keys.len());
     }
 
-    let server = GitServer::new(
-        Arc::new(config.clone()),
-        Arc::new(db.clone()),
+    let config = Arc::new(config.clone());
+    let db = Arc::new(db.clone());
+
+    // Start SSH server
+    let ssh_server = GitServer::new(
+        config.clone(),
+        db.clone(),
         repos_path.clone(),
         authorized_keys,
     );
 
-    server.run().await.map_err(|e| -> Box<dyn std::error::Error> { e })?;
+    // Start HTTP server
+    let http_config = config.clone();
+    let http_db = db.clone();
+    let http_repos_path = repos_path.clone();
+    let http_handle = tokio::spawn(async move {
+        if let Err(e) = run_http_server(http_config, http_db, http_repos_path).await {
+            eprintln!("HTTP server error: {}", e);
+        }
+    });
+
+    // Run SSH server (this blocks)
+    let ssh_result = ssh_server.run().await;
+
+    // Cancel HTTP server if SSH server stops
+    http_handle.abort();
+
+    ssh_result.map_err(|e| -> Box<dyn std::error::Error> { e })?;
 
     Ok(())
 }
