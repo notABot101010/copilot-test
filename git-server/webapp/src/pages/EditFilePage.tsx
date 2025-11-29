@@ -86,10 +86,6 @@ export function EditFilePage() {
     <Anchor
       key="root"
       href={`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}`}
-      onClick={(e: Event) => {
-        e.preventDefault();
-        router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}`);
-      }}
     >
       {projectName}
     </Anchor>,
@@ -102,10 +98,6 @@ export function EditFilePage() {
         <Anchor
           key={partPath}
           href={`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
-          onClick={(e: Event) => {
-            e.preventDefault();
-            router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
-          }}
         >
           {part}
         </Anchor>

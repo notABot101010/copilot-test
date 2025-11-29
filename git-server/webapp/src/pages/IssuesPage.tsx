@@ -83,10 +83,6 @@ export function IssuesPage() {
                   <Anchor
                     href={`/${orgName}/${projectName}/issues/${issue.number}`}
                     class="font-semibold text-lg hover:underline"
-                    onClick={(e: Event) => {
-                      e.preventDefault();
-                      router.push(`/${orgName}/${projectName}/issues/${issue.number}`);
-                    }}
                   >
                     {issue.title}
                   </Anchor>

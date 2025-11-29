@@ -34,7 +34,7 @@ export function ProjectPage() {
 
   // Clone URLs - use current host for HTTP URL
   const sshCloneUrl = `git@localhost:${orgName}/${projectName}.git`;
-  const httpCloneUrl = typeof window !== 'undefined' 
+  const httpCloneUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/${orgName}/${projectName}.git`
     : `http://localhost:8080/${orgName}/${projectName}.git`;
 
@@ -85,10 +85,6 @@ export function ProjectPage() {
       <Anchor
         key="root"
         href={`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}`}
-        onClick={(e: Event) => {
-          e.preventDefault();
-          router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}`);
-        }}
       >
         {projectName}
       </Anchor>
@@ -102,10 +98,6 @@ export function ProjectPage() {
           <Anchor
             key={partPath}
             href={`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
-            onClick={(e: Event) => {
-              e.preventDefault();
-              router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
-            }}
           >
             {part}
           </Anchor>
@@ -130,7 +122,7 @@ export function ProjectPage() {
             )}
           </CopyButton>
         </Group>
-        
+
         <Text size="sm" fw={500} mb="xs">HTTP</Text>
         <Group>
           <Code block style={{ flex: 1 }}>git clone {httpCloneUrl}</Code>
@@ -291,10 +283,6 @@ export function ProjectPage() {
                       <Anchor
                         href={`/${orgName}/${projectName}?ref=${encodeURIComponent(commit.hash)}`}
                         class="font-mono bg-gray-100 px-2 py-1 rounded text-sm text-blue-600 hover:bg-blue-50"
-                        onClick={(e: Event) => {
-                          e.preventDefault();
-                          router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(commit.hash)}`);
-                        }}
                       >
                         {commit.short_hash}
                       </Anchor>

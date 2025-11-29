@@ -4,7 +4,8 @@
 * Be mindful about your token usage, we often have errors about too much tokens used.
 * Always ensure to use the latest version of package when creating or updating a project.
 * Don't use emojis unless very necessary (e.g. to make a joke)
-
+* when you need to name an error variable (e.g. in a catch), name it `err`, instead of `e`
+& avoid single-letter variable names as much as possible (other than for numerical code).
 
 ## Rust
 
@@ -24,3 +25,5 @@
 "dev": "vite --strictPort --port 4000 --host",
 ```
 * Always use preact signals for state management, don't use hooks for state management as much as possible (unless there is no other solution).
+* Use native links (`<a>` HTML tags) as much as possible instaod of special component link `Anchor`...
+* when creating a button to move to another page, wrap it into a link insteaod of using `onClick={router.push}`

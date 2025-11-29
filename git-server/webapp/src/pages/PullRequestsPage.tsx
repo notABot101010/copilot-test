@@ -93,10 +93,6 @@ export function PullRequestsPage() {
                   <Anchor
                     href={`/${orgName}/${projectName}/pulls/${pr.number}`}
                     class="font-semibold text-lg hover:underline"
-                    onClick={(e: Event) => {
-                      e.preventDefault();
-                      router.push(`/${orgName}/${projectName}/pulls/${pr.number}`);
-                    }}
                   >
                     {pr.title}
                   </Anchor>

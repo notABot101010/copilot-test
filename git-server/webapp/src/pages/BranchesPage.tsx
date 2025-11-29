@@ -67,10 +67,6 @@ export function BranchesPage() {
               <Group justify="space-between">
                 <Anchor
                   href={`/${orgName}/${projectName}?ref=${encodeURIComponent(branch)}`}
-                  onClick={(e: Event) => {
-                    e.preventDefault();
-                    router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(branch)}`);
-                  }}
                 >
                   <Group gap="xs">
                     <span>🌿</span>
