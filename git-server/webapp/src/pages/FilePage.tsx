@@ -1,7 +1,7 @@
 import { useSignal, useSignalEffect } from '@preact/signals';
 import { Card, Text, Loader, Alert, Breadcrumbs, Anchor, Badge, Button, Group } from '@mantine/core';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
-import { getBlob, deleteFile } from '../api';
+import { getProjectBlob, deleteProjectFile } from '../api';
 
 export function FilePage() {
   const route = useRoute();
@@ -15,7 +15,6 @@ export function FilePage() {
   const query = route.value.query as { ref?: string };
   const orgName = params.org as string;
   const projectName = params.project as string;
-  const repoName = params.name as string;
   const filePath = params.path as string;
   const gitRef = (query.ref as string) || 'HEAD';
 
@@ -24,10 +23,15 @@ export function FilePage() {
   });
 
   async function loadContent() {
+    if (!filePath) {
+      error.value = 'No file path provided';
+      loading.value = false;
+      return;
+    }
     try {
       loading.value = true;
       error.value = null;
-      content.value = await getBlob(orgName, projectName, repoName, filePath, gitRef);
+      content.value = await getProjectBlob(orgName, projectName, filePath, gitRef);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load file';
     } finally {
@@ -43,8 +47,8 @@ export function FilePage() {
     try {
       deleting.value = true;
       error.value = null;
-      await deleteFile(orgName, projectName, repoName, filePath, `Delete ${filePath}`);
-      router.push(`/${orgName}/${projectName}/${repoName}`);
+      await deleteProjectFile(orgName, projectName, filePath, `Delete ${filePath}`);
+      router.push(`/${orgName}/${projectName}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to delete file';
       deleting.value = false;
@@ -68,17 +72,17 @@ export function FilePage() {
   }
 
   // Build breadcrumb items
-  const parts = filePath.split('/');
+  const parts = filePath ? filePath.split('/') : [];
   const breadcrumbItems = [
     <Anchor
       key="root"
-      href={`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}`}
+      href={`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}`}
       onClick={(e: Event) => {
         e.preventDefault();
-        router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}`);
+        router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}`);
       }}
     >
-      {repoName}
+      {projectName}
     </Anchor>,
     ...parts.map((part, i) => {
       const partPath = parts.slice(0, i + 1).join('/');
@@ -88,10 +92,10 @@ export function FilePage() {
       return (
         <Anchor
           key={partPath}
-          href={`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
+          href={`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`}
           onClick={(e: Event) => {
             e.preventDefault();
-            router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
+            router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(gitRef)}&path=${encodeURIComponent(partPath)}`);
           }}
         >
           {part}
@@ -116,7 +120,7 @@ export function FilePage() {
             <Button
               variant="filled"
               size="sm"
-              onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/edit/${filePath}?ref=${encodeURIComponent(gitRef)}`)}
+              onClick={() => router.push(`/${orgName}/${projectName}/edit/${filePath}?ref=${encodeURIComponent(gitRef)}`)}
             >
               ✏️ Edit
             </Button>

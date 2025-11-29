@@ -11,7 +11,7 @@ import {
   Loader,
 } from '@mantine/core';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
-import { createPullRequest, getRepoBranches, listRepos, type RepoInfo } from '../api';
+import { createProjectPullRequest, getProjectBranches, listProjects, type Project } from '../api';
 
 export function CreatePullRequestPage() {
   const route = useRoute();
@@ -24,14 +24,13 @@ export function CreatePullRequestPage() {
   const loading = useSignal(false);
   const loadingData = useSignal(true);
   const error = useSignal<string | null>(null);
-  const repos = useSignal<RepoInfo[]>([]);
+  const projects = useSignal<Project[]>([]);
   const branches = useSignal<string[]>([]);
   const sourceBranches = useSignal<string[]>([]);
 
   const params = route.value.params;
   const orgName = params.org as string;
   const projectName = params.project as string;
-  const repoName = params.name as string;
 
   useSignalEffect(() => {
     loadData();
@@ -40,14 +39,14 @@ export function CreatePullRequestPage() {
   async function loadData() {
     try {
       loadingData.value = true;
-      const [reposData, branchesData] = await Promise.all([
-        listRepos(orgName, projectName),
-        getRepoBranches(orgName, projectName, repoName),
+      const [projectsData, branchesData] = await Promise.all([
+        listProjects(orgName),
+        getProjectBranches(orgName, projectName),
       ]);
-      repos.value = reposData;
+      projects.value = projectsData;
       branches.value = branchesData;
       sourceBranches.value = branchesData;
-      sourceRepo.value = `${orgName}/${projectName}/${repoName}`;
+      sourceRepo.value = `${orgName}/${projectName}`;
       if (branchesData.length > 0) {
         targetBranch.value = branchesData.includes('main') ? 'main' : branchesData[0];
         sourceBranch.value = branchesData.length > 1 ? branchesData[1] : branchesData[0];
@@ -63,10 +62,10 @@ export function CreatePullRequestPage() {
     if (!value) return;
     sourceRepo.value = value;
     try {
-      // Parse org/project/name from the value
+      // Parse org/project from the value
       const parts = value.split('/');
-      if (parts.length === 3) {
-        const branchesData = await getRepoBranches(parts[0], parts[1], parts[2]);
+      if (parts.length === 2) {
+        const branchesData = await getProjectBranches(parts[0], parts[1]);
         sourceBranches.value = branchesData;
         if (branchesData.length > 0) {
           sourceBranch.value = branchesData[0];
@@ -93,17 +92,16 @@ export function CreatePullRequestPage() {
     try {
       loading.value = true;
       error.value = null;
-      const pr = await createPullRequest(
+      const pr = await createProjectPullRequest(
         orgName,
         projectName,
-        repoName,
         title.value.trim(),
         body.value.trim(),
         sourceRepo.value,
         sourceBranch.value,
         targetBranch.value
       );
-      router.push(`/${orgName}/${projectName}/${repoName}/pulls/${pr.number}`);
+      router.push(`/${orgName}/${projectName}/pulls/${pr.number}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create pull request';
       loading.value = false;
@@ -133,9 +131,9 @@ export function CreatePullRequestPage() {
       <form onSubmit={handleSubmit}>
         <div class="grid grid-cols-2 gap-4 mb-4">
           <Select
-            label="Source repository"
-            placeholder="Select repository"
-            data={repos.value.map((r) => ({ value: `${r.org_name}/${r.project_name}/${r.name}`, label: `${r.org_name}/${r.project_name}/${r.name}` }))}
+            label="Source project"
+            placeholder="Select project"
+            data={projects.value.map((p) => ({ value: `${p.org_name}/${p.name}`, label: `${p.org_name}/${p.name}` }))}
             value={sourceRepo.value}
             onChange={handleSourceRepoChange}
           />
@@ -182,7 +180,7 @@ export function CreatePullRequestPage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/pulls`)}
+            onClick={() => router.push(`/${orgName}/${projectName}/pulls`)}
             disabled={loading.value}
           >
             Cancel

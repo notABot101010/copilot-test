@@ -1,7 +1,7 @@
 import { useSignal } from '@preact/signals';
 import { Card, Text, TextInput, Textarea, Button, Alert, Group } from '@mantine/core';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
-import { updateFile } from '../api';
+import { updateProjectFile } from '../api';
 
 export function CreateFilePage() {
   const route = useRoute();
@@ -15,7 +15,6 @@ export function CreateFilePage() {
   const params = route.value.params;
   const orgName = params.org as string;
   const projectName = params.project as string;
-  const repoName = params.name as string;
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
@@ -33,15 +32,14 @@ export function CreateFilePage() {
     try {
       loading.value = true;
       error.value = null;
-      await updateFile(
+      await updateProjectFile(
         orgName,
         projectName,
-        repoName,
         filePath.value.trim(),
         content.value,
         commitMessage.value.trim()
       );
-      router.push(`/${orgName}/${projectName}/${repoName}/blob/${filePath.value.trim()}`);
+      router.push(`/${orgName}/${projectName}/blob/${filePath.value.trim()}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create file';
       loading.value = false;
@@ -51,7 +49,7 @@ export function CreateFilePage() {
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
       <Text size="xl" fw={600} mb="lg">
-        ➕ Create new file in {repoName}
+        ➕ Create new file in {projectName}
       </Text>
 
       {error.value && (
@@ -104,7 +102,7 @@ export function CreateFilePage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/${orgName}/${projectName}/${repoName}`)}
+            onClick={() => router.push(`/${orgName}/${projectName}`)}
             disabled={loading.value}
           >
             Cancel

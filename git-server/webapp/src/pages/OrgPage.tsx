@@ -83,7 +83,7 @@ export function OrgPage() {
             </Button>
             <Button
               color="green"
-              onClick={() => router.push(`/${orgName}/new-project`)}
+              onClick={() => router.push(`/${orgName}/projects/new`)}
             >
               + New Project
             </Button>
@@ -103,7 +103,7 @@ export function OrgPage() {
             <Button
               variant="filled"
               color="blue"
-              onClick={() => router.push(`/${orgName}/new-project`)}
+              onClick={() => router.push(`/${orgName}/projects/new`)}
             >
               Create Project
             </Button>

@@ -1,7 +1,7 @@
 import { useSignal, useSignalEffect } from '@preact/signals';
 import { Card, Text, Loader, Alert, Badge, Group, Anchor } from '@mantine/core';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
-import { getRepoBranches } from '../api';
+import { getProjectBranches } from '../api';
 
 export function BranchesPage() {
   const route = useRoute();
@@ -13,7 +13,6 @@ export function BranchesPage() {
   const params = route.value.params;
   const orgName = params.org as string;
   const projectName = params.project as string;
-  const repoName = params.name as string;
 
   useSignalEffect(() => {
     loadBranches();
@@ -23,7 +22,7 @@ export function BranchesPage() {
     try {
       loading.value = true;
       error.value = null;
-      const data = await getRepoBranches(orgName, projectName, repoName);
+      const data = await getProjectBranches(orgName, projectName);
       branches.value = Array.isArray(data) ? data : [];
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load branches';
@@ -67,10 +66,10 @@ export function BranchesPage() {
             <li key={branch} class="py-3">
               <Group justify="space-between">
                 <Anchor
-                  href={`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(branch)}`}
+                  href={`/${orgName}/${projectName}?ref=${encodeURIComponent(branch)}`}
                   onClick={(e: Event) => {
                     e.preventDefault();
-                    router.push(`/${orgName}/${projectName}/${repoName}?ref=${encodeURIComponent(branch)}`);
+                    router.push(`/${orgName}/${projectName}?ref=${encodeURIComponent(branch)}`);
                   }}
                 >
                   <Group gap="xs">

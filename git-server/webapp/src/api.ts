@@ -144,7 +144,7 @@ export async function updateOrganization(
   });
 }
 
-// Project APIs
+// Project APIs (project now creates a git repo automatically)
 export async function listProjects(orgName: string): Promise<Project[]> {
   return api<Project[]>(`/orgs/${encodeURIComponent(orgName)}/projects`);
 }
@@ -176,7 +176,221 @@ export async function updateProject(
   });
 }
 
-// Repository APIs
+// Project Git Operations (project = repository)
+
+export async function getProjectTree(
+  orgName: string,
+  projectName: string,
+  ref: string = 'HEAD',
+  path: string = ''
+): Promise<FileEntry[]> {
+  const params = new URLSearchParams();
+  if (ref !== 'HEAD') params.set('ref', ref);
+  if (path) params.set('path', path);
+  const query = params.toString() ? '?' + params.toString() : '';
+  return api<FileEntry[]>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/tree${query}`);
+}
+
+export async function getProjectCommits(orgName: string, projectName: string): Promise<CommitInfo[]> {
+  return api<CommitInfo[]>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/commits`);
+}
+
+export async function getProjectBlob(
+  orgName: string,
+  projectName: string,
+  path: string,
+  ref: string = 'HEAD'
+): Promise<string> {
+  const params = new URLSearchParams();
+  params.set('path', path);
+  if (ref !== 'HEAD') params.set('ref', ref);
+  return api<string>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/blob?${params.toString()}`);
+}
+
+export async function updateProjectFile(
+  orgName: string,
+  projectName: string,
+  path: string,
+  content: string,
+  message: string
+): Promise<void> {
+  await api(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/files`, {
+    method: 'POST',
+    body: JSON.stringify({ path, content, message }),
+  });
+}
+
+export async function deleteProjectFile(
+  orgName: string,
+  projectName: string,
+  path: string,
+  message: string
+): Promise<void> {
+  await api(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/files`, {
+    method: 'DELETE',
+    body: JSON.stringify({ path, message }),
+  });
+}
+
+export async function getProjectBranches(orgName: string, projectName: string): Promise<string[]> {
+  return api<string[]>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/branches`);
+}
+
+// Fork project
+export async function forkProject(
+  orgName: string,
+  projectName: string,
+  newName: string,
+  targetOrg?: string
+): Promise<RepoInfo> {
+  return api<RepoInfo>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/fork`, {
+    method: 'POST',
+    body: JSON.stringify({ name: newName, target_org: targetOrg }),
+  });
+}
+
+// Project Issue APIs
+export async function listProjectIssues(orgName: string, projectName: string): Promise<Issue[]> {
+  return api<Issue[]>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues`);
+}
+
+export async function getProjectIssue(orgName: string, projectName: string, issueNumber: number): Promise<Issue> {
+  return api<Issue>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues/${issueNumber}`);
+}
+
+export async function createProjectIssue(
+  orgName: string,
+  projectName: string,
+  title: string,
+  body: string
+): Promise<Issue> {
+  return api<Issue>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues`, {
+    method: 'POST',
+    body: JSON.stringify({ title, body }),
+  });
+}
+
+export async function updateProjectIssue(
+  orgName: string,
+  projectName: string,
+  issueNumber: number,
+  updates: { title?: string; body?: string; state?: 'open' | 'closed' }
+): Promise<Issue> {
+  return api<Issue>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues/${issueNumber}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function getProjectIssueComments(
+  orgName: string,
+  projectName: string,
+  issueNumber: number
+): Promise<IssueComment[]> {
+  return api<IssueComment[]>(
+    `/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues/${issueNumber}/comments`
+  );
+}
+
+export async function createProjectIssueComment(
+  orgName: string,
+  projectName: string,
+  issueNumber: number,
+  body: string
+): Promise<IssueComment> {
+  return api<IssueComment>(
+    `/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues/${issueNumber}/comments`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }
+  );
+}
+
+// Project Pull Request APIs
+export async function listProjectPullRequests(orgName: string, projectName: string): Promise<PullRequest[]> {
+  return api<PullRequest[]>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/pulls`);
+}
+
+export async function getProjectPullRequest(orgName: string, projectName: string, prNumber: number): Promise<PullRequest> {
+  return api<PullRequest>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/pulls/${prNumber}`);
+}
+
+export async function createProjectPullRequest(
+  orgName: string,
+  projectName: string,
+  title: string,
+  body: string,
+  sourceRepo: string,
+  sourceBranch: string,
+  targetBranch: string
+): Promise<PullRequest> {
+  return api<PullRequest>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/pulls`, {
+    method: 'POST',
+    body: JSON.stringify({
+      title,
+      body,
+      source_repo: sourceRepo,
+      source_branch: sourceBranch,
+      target_branch: targetBranch,
+    }),
+  });
+}
+
+export async function updateProjectPullRequest(
+  orgName: string,
+  projectName: string,
+  prNumber: number,
+  updates: { title?: string; body?: string; state?: 'open' | 'closed' | 'merged' }
+): Promise<PullRequest> {
+  return api<PullRequest>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/pulls/${prNumber}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function getProjectPullRequestComments(
+  orgName: string,
+  projectName: string,
+  prNumber: number
+): Promise<PullRequestComment[]> {
+  return api<PullRequestComment[]>(
+    `/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/pulls/${prNumber}/comments`
+  );
+}
+
+export async function createProjectPullRequestComment(
+  orgName: string,
+  projectName: string,
+  prNumber: number,
+  body: string
+): Promise<PullRequestComment> {
+  return api<PullRequestComment>(
+    `/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/pulls/${prNumber}/comments`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }
+  );
+}
+
+export async function getProjectPullRequestCommits(
+  orgName: string,
+  projectName: string,
+  prNumber: number
+): Promise<CommitInfo[]> {
+  return api<CommitInfo[]>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/pulls/${prNumber}/commits`);
+}
+
+export async function getProjectPullRequestFiles(
+  orgName: string,
+  projectName: string,
+  prNumber: number
+): Promise<FileDiff[]> {
+  return api<FileDiff[]>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/pulls/${prNumber}/files`);
+}
+
+// Legacy Repository APIs (kept for backward compatibility)
 export async function listRepos(orgName: string, projectName: string): Promise<RepoInfo[]> {
   return api<RepoInfo[]>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/repos`);
 }

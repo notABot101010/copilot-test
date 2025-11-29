@@ -1,7 +1,7 @@
 import { useSignal } from '@preact/signals';
 import { Card, Text, TextInput, Textarea, Button, Alert, Group } from '@mantine/core';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
-import { createIssue } from '../api';
+import { createProjectIssue } from '../api';
 
 export function CreateIssuePage() {
   const route = useRoute();
@@ -14,7 +14,6 @@ export function CreateIssuePage() {
   const params = route.value.params;
   const orgName = params.org as string;
   const projectName = params.project as string;
-  const repoName = params.name as string;
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
@@ -27,8 +26,8 @@ export function CreateIssuePage() {
     try {
       loading.value = true;
       error.value = null;
-      const issue = await createIssue(orgName, projectName, repoName, title.value.trim(), body.value.trim());
-      router.push(`/${orgName}/${projectName}/${repoName}/issues/${issue.number}`);
+      const issue = await createProjectIssue(orgName, projectName, title.value.trim(), body.value.trim());
+      router.push(`/${orgName}/${projectName}/issues/${issue.number}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create issue';
       loading.value = false;
@@ -72,7 +71,7 @@ export function CreateIssuePage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/${orgName}/${projectName}/${repoName}/issues`)}
+            onClick={() => router.push(`/${orgName}/${projectName}/issues`)}
             disabled={loading.value}
           >
             Cancel
