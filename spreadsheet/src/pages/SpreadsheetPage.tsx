@@ -57,6 +57,30 @@ function isCellInSelection(row: number, col: number, selection: Selection | null
   return row >= norm.start.row && row <= norm.end.row && col >= norm.start.col && col <= norm.end.col;
 }
 
+interface SelectionBorders {
+  top: boolean;
+  right: boolean;
+  bottom: boolean;
+  left: boolean;
+}
+
+function getSelectionBorders(row: number, col: number, selection: Selection | null): SelectionBorders | null {
+  if (!selection) return null;
+  const norm = normalizeSelection(selection);
+  
+  // Check if cell is in selection
+  if (row < norm.start.row || row > norm.end.row || col < norm.start.col || col > norm.end.col) {
+    return null;
+  }
+  
+  return {
+    top: row === norm.start.row,
+    right: col === norm.end.col,
+    bottom: row === norm.end.row,
+    left: col === norm.start.col,
+  };
+}
+
 export function SpreadsheetPage() {
   const router = useRouter();
   const route = useRoute();
@@ -744,17 +768,30 @@ export function SpreadsheetPage() {
                 const isFormula = rawValue.startsWith('=');
                 const width = columnWidths[col] || DEFAULT_COLUMN_WIDTH;
                 const left = columnPositions[col];
+                const selectionBorders = getSelectionBorders(row, col, selection);
+                
+                // Build border styles for selection (only outer edges)
+                const borderStyle: Record<string, string> = {};
+                if (isActiveCell) {
+                  borderStyle.border = '2px solid rgb(59, 130, 246)'; // blue-500
+                } else if (selectionBorders) {
+                  const borderColor = 'rgb(96, 165, 250)'; // blue-400
+                  borderStyle.borderTop = selectionBorders.top ? `2px solid ${borderColor}` : '1px solid rgb(55, 65, 81)';
+                  borderStyle.borderRight = selectionBorders.right ? `2px solid ${borderColor}` : '1px solid rgb(55, 65, 81)';
+                  borderStyle.borderBottom = selectionBorders.bottom ? `2px solid ${borderColor}` : '1px solid rgb(55, 65, 81)';
+                  borderStyle.borderLeft = selectionBorders.left ? `2px solid ${borderColor}` : '1px solid rgb(55, 65, 81)';
+                }
                 
                 return (
                   <div
                     key={`${row}:${col}`}
                     className={`
-                      absolute border text-white text-sm px-1 flex items-center
+                      absolute text-white text-sm px-1 flex items-center
                       ${isActiveCell 
-                        ? 'border-blue-500 border-2 bg-blue-900/50' 
+                        ? 'bg-blue-900/50' 
                         : isSelected 
-                          ? 'border-blue-400 bg-blue-900/30' 
-                          : 'border-gray-700 bg-gray-900 hover:bg-gray-800'
+                          ? 'bg-blue-900/30' 
+                          : 'border border-gray-700 bg-gray-900 hover:bg-gray-800'
                       }
                       ${isFormula && !isEditing ? 'text-green-400' : ''}
                     `}
@@ -764,6 +801,7 @@ export function SpreadsheetPage() {
                       width: width,
                       height: CELL_HEIGHT,
                       cursor: resizingColumn !== null ? 'col-resize' : 'cell',
+                      ...borderStyle,
                     }}
                     onMouseDown={(e) => handleCellMouseDown(row, col, e)}
                     onMouseEnter={() => handleCellMouseEnter(row, col)}
