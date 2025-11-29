@@ -1,9 +1,9 @@
 
 ## General
 
-Be mindful about your token usage, we often have errors about too much tokens used.
-
-Always ensure to use the latest version of package when creating or updating a project.
+* Be mindful about your token usage, we often have errors about too much tokens used.
+* Always ensure to use the latest version of package when creating or updating a project.
+* Don't use emojis unless very necessary (e.g. to make a joke)
 
 
 ## Rust
