@@ -29,6 +29,14 @@ const MAX_HISTORY = 100;
 const undoStack: Automerge.Doc<AutomergeSpreadsheet>[] = [];
 const redoStack: Automerge.Doc<AutomergeSpreadsheet>[] = [];
 
+// Signals to track undo/redo availability for UI reactivity
+export const canUndoSignal = signal<boolean>(false);
+export const canRedoSignal = signal<boolean>(false);
+
+// Track the document state before the current edit session started
+// This is used to push to undo stack when the first live update happens
+let preEditDoc: Automerge.Doc<AutomergeSpreadsheet> | null = null;
+
 // Initialize sync manager for cross-tab and cross-browser communication
 initSync(
   // Handle incoming sync from other tabs/browsers
@@ -57,6 +65,8 @@ function handleRemoteSync(spreadsheetId: string, remoteBinary: Uint8Array): void
     if (hasChanges) {
       currentSpreadsheetDoc.value = mergedDoc;
       updateSpreadsheetListItemInternal();
+      // Clear pre-edit state as remote changes invalidate the edit context
+      preEditDoc = null;
     }
   } catch {
     // Ignore invalid remote data
@@ -70,6 +80,9 @@ function pushToUndoStack(doc: Automerge.Doc<AutomergeSpreadsheet>): void {
   }
   // Clear redo stack on new action
   redoStack.length = 0;
+  // Update signals for UI reactivity
+  canUndoSignal.value = undoStack.length > 0;
+  canRedoSignal.value = false;
 }
 
 export function canUndo(): boolean {
@@ -88,6 +101,9 @@ export function undo(): void {
   const previousDoc = undoStack.pop()!;
   redoStack.push(doc);
   currentSpreadsheetDoc.value = previousDoc;
+  // Update signals for UI reactivity
+  canUndoSignal.value = undoStack.length > 0;
+  canRedoSignal.value = redoStack.length > 0;
   saveAndBroadcast(doc, previousDoc);
 }
 
@@ -99,6 +115,9 @@ export function redo(): void {
   const nextDoc = redoStack.pop()!;
   undoStack.push(doc);
   currentSpreadsheetDoc.value = nextDoc;
+  // Update signals for UI reactivity
+  canUndoSignal.value = undoStack.length > 0;
+  canRedoSignal.value = redoStack.length > 0;
   saveAndBroadcast(doc, nextDoc);
 }
 
@@ -180,6 +199,13 @@ export async function loadSpreadsheet(id: string): Promise<boolean> {
   // Stop any existing server sync
   stopServerSync();
   
+  // Reset undo/redo state for the new document
+  undoStack.length = 0;
+  redoStack.length = 0;
+  preEditDoc = null;
+  canUndoSignal.value = false;
+  canRedoSignal.value = false;
+  
   try {
     const response = await fetch(`${getServerUrl()}/api/spreadsheets/${id}`);
     if (!response.ok) {
@@ -228,13 +254,21 @@ export function updateCell(row: number, col: number, value: string): void {
   const doc = currentSpreadsheetDoc.value;
   if (!doc) return;
   
-  // Check if value actually changed
   const key = getCellKey(row, col);
   const currentValue = doc.cells[key]?.value || '';
-  if (currentValue === value) return;
   
-  // Save to undo stack before making changes
-  pushToUndoStack(doc);
+  // If there was a live edit session, push the pre-edit state to undo stack
+  if (preEditDoc !== null) {
+    pushToUndoStack(preEditDoc);
+    preEditDoc = null;
+    // If the value is the same as what was already set by live updates, just return
+    if (currentValue === value) return;
+  } else {
+    // No live edit session - check if value actually changed
+    if (currentValue === value) return;
+    // Save to undo stack before making changes
+    pushToUndoStack(doc);
+  }
   
   const newDoc = Automerge.change(doc, `Update cell ${row}:${col}`, (d) => {
     if (!d.cells[key]) {
@@ -248,8 +282,9 @@ export function updateCell(row: number, col: number, value: string): void {
   saveAndBroadcast(doc, newDoc);
 }
 
-// Update a cell value in real-time (without adding to undo stack)
+// Update a cell value in real-time (without adding to undo stack on each keystroke)
 // This is used for propagating changes as the user types
+// On the first call of an edit session, it saves the pre-edit state for undo
 export function updateCellLive(row: number, col: number, value: string): void {
   const doc = currentSpreadsheetDoc.value;
   if (!doc) return;
@@ -258,6 +293,11 @@ export function updateCellLive(row: number, col: number, value: string): void {
   const key = getCellKey(row, col);
   const currentValue = doc.cells[key]?.value || '';
   if (currentValue === value) return;
+  
+  // If this is the first change in an edit session, save the pre-edit state
+  if (preEditDoc === null) {
+    preEditDoc = doc;
+  }
   
   const newDoc = Automerge.change(doc, `Live update cell ${row}:${col}`, (d) => {
     if (!d.cells[key]) {
@@ -269,6 +309,19 @@ export function updateCellLive(row: number, col: number, value: string): void {
   
   currentSpreadsheetDoc.value = newDoc;
   saveAndBroadcast(doc, newDoc);
+}
+
+// Cancel the current edit session and restore the pre-edit state
+// This is called when the user cancels an edit (e.g., presses Escape)
+export function cancelEdit(): void {
+  if (preEditDoc !== null) {
+    const doc = currentSpreadsheetDoc.value;
+    currentSpreadsheetDoc.value = preEditDoc;
+    if (doc) {
+      saveAndBroadcast(doc, preEditDoc);
+    }
+    preEditDoc = null;
+  }
 }
 
 // Update multiple cells at once
