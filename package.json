@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "preact-router",
-    "router-test"
+    "router-test",
+    "spreadsheet"
   ]
 }
