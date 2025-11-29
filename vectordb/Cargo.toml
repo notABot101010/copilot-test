@@ -1,0 +1,57 @@
+[package]
+name = "vectordb"
+version = "0.1.0"
+edition = "2021"
+description = "A serverless hybrid search vector database with S3 storage"
+license = "MIT"
+
+[[bin]]
+name = "vectordb"
+path = "src/main.rs"
+
+[dependencies]
+# Web framework
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "sync", "fs", "io-util"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+
+# S3 storage
+aws-config = { version = "1.0", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1.0"
+aws-credential-types = "1.0"
+
+# Utilities
+thiserror = "2.0"
+uuid = { version = "1.0", features = ["v4"] }
+rand = "0.8"
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+
+# Caching
+lru = "0.12"
+parking_lot = "0.12"
+
+# Full-text search
+rust-stemmers = "1.2"
+unicode-segmentation = "1.11"
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Tracing/logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3.10"
+reqwest = { version = "0.12", features = ["json"] }
+tokio-test = "0.4"
