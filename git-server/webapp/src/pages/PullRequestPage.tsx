@@ -7,8 +7,8 @@ import {
   Badge,
   Button,
   Textarea,
-  Anchor,
   Tabs,
+  Group,
 } from '@mantine/core';
 import { useRoute } from '@copilot-test/preact-router';
 import {
@@ -38,6 +38,7 @@ export function PullRequestPage() {
   const activeTab = useSignal<string>('conversation');
 
   const params = route.value.params;
+  const orgName = params.org as string;
   const repoName = params.name as string;
   const prNumber = parseInt(params.number as string, 10);
 
@@ -50,10 +51,10 @@ export function PullRequestPage() {
       loading.value = true;
       error.value = null;
       const [prData, commentsData, commitsData, filesData] = await Promise.all([
-        getPullRequest(repoName, prNumber),
-        getPullRequestComments(repoName, prNumber),
-        getPullRequestCommits(repoName, prNumber),
-        getPullRequestFiles(repoName, prNumber),
+        getPullRequest(orgName, repoName, prNumber),
+        getPullRequestComments(orgName, repoName, prNumber),
+        getPullRequestCommits(orgName, repoName, prNumber),
+        getPullRequestFiles(orgName, repoName, prNumber),
       ]);
       pr.value = prData;
       comments.value = commentsData;
@@ -72,7 +73,7 @@ export function PullRequestPage() {
 
     try {
       submitting.value = true;
-      const comment = await createPullRequestComment(repoName, prNumber, newComment.value);
+      const comment = await createPullRequestComment(orgName, repoName, prNumber, newComment.value);
       comments.value = [...comments.value, comment];
       newComment.value = '';
     } catch (e) {
@@ -86,7 +87,7 @@ export function PullRequestPage() {
     if (!pr.value) return;
 
     try {
-      const updated = await updatePullRequest(repoName, prNumber, { state: newState });
+      const updated = await updatePullRequest(orgName, repoName, prNumber, { state: newState });
       pr.value = updated;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to update pull request';
@@ -133,66 +134,53 @@ export function PullRequestPage() {
   return (
     <div class="space-y-4">
       <Card shadow="sm" padding="lg" radius="md" withBorder>
-        <div class="border-b border-gray-200 pb-4 mb-4">
-          <div class="flex items-center gap-3 mb-2">
-            <Anchor href={`/repos/${encodeURIComponent(repoName)}`} c="blue">
-              {repoName}
-            </Anchor>
-            <span class="text-gray-400">/</span>
-            <Anchor href={`/repos/${encodeURIComponent(repoName)}/pulls`} c="blue">
-              Pull Requests
-            </Anchor>
-            <span class="text-gray-400">/</span>
-            <Text>#{pr.value.number}</Text>
+        <Group justify="space-between" mb="md" pb="md" style={{ borderBottom: '1px solid #e9ecef' }}>
+          <div>
+            <Text size="xl" fw={600}>
+              {pr.value.title}
+            </Text>
+            <Group gap="xs" mt="xs">
+              <Badge color={getStateBadgeColor(pr.value.state)} variant="filled">
+                {pr.value.state}
+              </Badge>
+              <Text size="sm" c="dimmed">
+                #{pr.value.number} opened by {pr.value.author} on {formatDate(pr.value.created_at)}
+              </Text>
+            </Group>
+            <Text size="sm" c="dimmed" mt="xs">
+              {pr.value.source_repo}:{pr.value.source_branch} → {pr.value.target_branch}
+            </Text>
           </div>
-          <div class="flex items-start justify-between">
-            <div>
-              <Text size="xl" fw={600}>
-                {pr.value.title}
-              </Text>
-              <div class="flex items-center gap-2 mt-2">
-                <Badge color={getStateBadgeColor(pr.value.state)} variant="filled">
-                  {pr.value.state}
-                </Badge>
-                <Text size="sm" c="dimmed">
-                  opened by {pr.value.author} on {formatDate(pr.value.created_at)}
-                </Text>
-              </div>
-              <Text size="sm" c="dimmed" mt="xs">
-                {pr.value.source_repo}:{pr.value.source_branch} → {pr.value.target_branch}
-              </Text>
-            </div>
-            <div class="flex gap-2">
-              {pr.value.state === 'open' && (
-                <>
-                  <Button
-                    variant="filled"
-                    color="purple"
-                    onClick={() => handleUpdateState('merged')}
-                  >
-                    Merge
-                  </Button>
-                  <Button
-                    variant="outline"
-                    color="red"
-                    onClick={() => handleUpdateState('closed')}
-                  >
-                    Close
-                  </Button>
-                </>
-              )}
-              {pr.value.state === 'closed' && (
+          <Group gap="xs">
+            {pr.value.state === 'open' && (
+              <>
+                <Button
+                  variant="filled"
+                  color="purple"
+                  onClick={() => handleUpdateState('merged')}
+                >
+                  ✓ Merge
+                </Button>
                 <Button
                   variant="outline"
-                  color="green"
-                  onClick={() => handleUpdateState('open')}
+                  color="red"
+                  onClick={() => handleUpdateState('closed')}
                 >
-                  Reopen
+                  Close
                 </Button>
-              )}
-            </div>
-          </div>
-        </div>
+              </>
+            )}
+            {pr.value.state === 'closed' && (
+              <Button
+                variant="outline"
+                color="green"
+                onClick={() => handleUpdateState('open')}
+              >
+                Reopen
+              </Button>
+            )}
+          </Group>
+        </Group>
 
         <Tabs
           value={activeTab.value}
@@ -205,29 +193,26 @@ export function PullRequestPage() {
           </Tabs.List>
 
           <Tabs.Panel value="conversation" pt="md">
-            {/* PR description */}
             {pr.value.body && (
               <div class="bg-gray-50 p-4 rounded-lg mb-4">
                 <Text style={{ whiteSpace: 'pre-wrap' }}>{pr.value.body}</Text>
               </div>
             )}
 
-            {/* Comments */}
             <div class="space-y-4 mb-4">
               {comments.value.map((comment) => (
                 <Card key={comment.id} shadow="xs" padding="md" radius="md" withBorder>
-                  <div class="flex items-center gap-2 mb-2">
+                  <Group gap="xs" mb="sm">
                     <Text fw={500}>{comment.author}</Text>
                     <Text size="sm" c="dimmed">
                       commented on {formatDate(comment.created_at)}
                     </Text>
-                  </div>
+                  </Group>
                   <Text style={{ whiteSpace: 'pre-wrap' }}>{comment.body}</Text>
                 </Card>
               ))}
             </div>
 
-            {/* New comment form */}
             <Card shadow="xs" padding="md" radius="md" withBorder>
               <Text fw={500} mb="md">
                 Add a comment
@@ -284,7 +269,7 @@ export function PullRequestPage() {
               <div class="space-y-4">
                 {files.value.map((file) => (
                   <Card key={file.path} shadow="xs" padding="md" radius="md" withBorder>
-                    <div class="flex items-center gap-2 mb-3">
+                    <Group gap="xs" mb="sm">
                       <Badge
                         color={
                           file.status === 'added'
@@ -304,7 +289,7 @@ export function PullRequestPage() {
                         <span class="text-green-600">+{file.additions}</span>{' '}
                         <span class="text-red-600">-{file.deletions}</span>
                       </Text>
-                    </div>
+                    </Group>
                     <pre class="bg-gray-50 p-3 rounded overflow-x-auto text-sm font-mono whitespace-pre-wrap">
                       {file.diff}
                     </pre>

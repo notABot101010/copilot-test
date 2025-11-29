@@ -7,7 +7,8 @@ import {
   Badge,
   Button,
   Textarea,
-  Anchor,
+  Group,
+  TypographyStylesProvider,
 } from '@mantine/core';
 import { useRoute } from '@copilot-test/preact-router';
 import {
@@ -20,6 +21,27 @@ import {
   formatDate,
 } from '../api';
 
+// Simple markdown renderer (converts basic markdown to HTML)
+function renderMarkdown(text: string): string {
+  return text
+    // Headers
+    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    // Bold
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    // Code blocks
+    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+    // Inline code
+    .replace(/`(.*?)`/g, '<code>$1</code>')
+    // Links
+    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2">$1</a>')
+    // Line breaks
+    .replace(/\n/g, '<br>');
+}
+
 export function IssuePage() {
   const route = useRoute();
   const issue = useSignal<Issue | null>(null);
@@ -30,6 +52,7 @@ export function IssuePage() {
   const submitting = useSignal(false);
 
   const params = route.value.params;
+  const orgName = params.org as string;
   const repoName = params.name as string;
   const issueNumber = parseInt(params.number as string, 10);
 
@@ -42,8 +65,8 @@ export function IssuePage() {
       loading.value = true;
       error.value = null;
       const [issueData, commentsData] = await Promise.all([
-        getIssue(repoName, issueNumber),
-        getIssueComments(repoName, issueNumber),
+        getIssue(orgName, repoName, issueNumber),
+        getIssueComments(orgName, repoName, issueNumber),
       ]);
       issue.value = issueData;
       comments.value = commentsData;
@@ -60,7 +83,7 @@ export function IssuePage() {
 
     try {
       submitting.value = true;
-      const comment = await createIssueComment(repoName, issueNumber, newComment.value);
+      const comment = await createIssueComment(orgName, repoName, issueNumber, newComment.value);
       comments.value = [...comments.value, comment];
       newComment.value = '';
     } catch (e) {
@@ -75,7 +98,7 @@ export function IssuePage() {
 
     try {
       const newState = issue.value.state === 'open' ? 'closed' : 'open';
-      const updated = await updateIssue(repoName, issueNumber, { state: newState });
+      const updated = await updateIssue(orgName, repoName, issueNumber, { state: newState });
       issue.value = updated;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to update issue';
@@ -109,49 +132,39 @@ export function IssuePage() {
   return (
     <div class="space-y-4">
       <Card shadow="sm" padding="lg" radius="md" withBorder>
-        <div class="border-b border-gray-200 pb-4 mb-4">
-          <div class="flex items-center gap-3 mb-2">
-            <Anchor href={`/repos/${encodeURIComponent(repoName)}`} c="blue">
-              {repoName}
-            </Anchor>
-            <span class="text-gray-400">/</span>
-            <Anchor href={`/repos/${encodeURIComponent(repoName)}/issues`} c="blue">
-              Issues
-            </Anchor>
-            <span class="text-gray-400">/</span>
-            <Text>#{issue.value.number}</Text>
-          </div>
-          <div class="flex items-start justify-between">
-            <div>
-              <Text size="xl" fw={600}>
-                {issue.value.title}
+        <Group justify="space-between" mb="md" pb="md" style={{ borderBottom: '1px solid #e9ecef' }}>
+          <div>
+            <Text size="xl" fw={600}>
+              {issue.value.title}
+            </Text>
+            <Group gap="xs" mt="xs">
+              <Badge
+                color={issue.value.state === 'open' ? 'green' : 'purple'}
+                variant="filled"
+              >
+                {issue.value.state}
+              </Badge>
+              <Text size="sm" c="dimmed">
+                #{issue.value.number} opened by {issue.value.author} on {formatDate(issue.value.created_at)}
               </Text>
-              <div class="flex items-center gap-2 mt-2">
-                <Badge
-                  color={issue.value.state === 'open' ? 'green' : 'purple'}
-                  variant="filled"
-                >
-                  {issue.value.state}
-                </Badge>
-                <Text size="sm" c="dimmed">
-                  opened by {issue.value.author} on {formatDate(issue.value.created_at)}
-                </Text>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              color={issue.value.state === 'open' ? 'red' : 'green'}
-              onClick={handleToggleState}
-            >
-              {issue.value.state === 'open' ? 'Close issue' : 'Reopen issue'}
-            </Button>
+            </Group>
           </div>
-        </div>
+          <Button
+            variant="outline"
+            color={issue.value.state === 'open' ? 'red' : 'green'}
+            onClick={handleToggleState}
+          >
+            {issue.value.state === 'open' ? 'Close issue' : 'Reopen issue'}
+          </Button>
+        </Group>
 
         {issue.value.body && (
-          <div class="bg-gray-50 p-4 rounded-lg mb-4">
-            <Text style={{ whiteSpace: 'pre-wrap' }}>{issue.value.body}</Text>
-          </div>
+          <TypographyStylesProvider>
+            <div 
+              class="bg-gray-50 p-4 rounded-lg"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(issue.value.body) }}
+            />
+          </TypographyStylesProvider>
         )}
       </Card>
 
@@ -159,13 +172,15 @@ export function IssuePage() {
       <div class="space-y-4">
         {comments.value.map((comment) => (
           <Card key={comment.id} shadow="sm" padding="md" radius="md" withBorder>
-            <div class="flex items-center gap-2 mb-2">
+            <Group gap="xs" mb="sm">
               <Text fw={500}>{comment.author}</Text>
               <Text size="sm" c="dimmed">
                 commented on {formatDate(comment.created_at)}
               </Text>
-            </div>
-            <Text style={{ whiteSpace: 'pre-wrap' }}>{comment.body}</Text>
+            </Group>
+            <TypographyStylesProvider>
+              <div dangerouslySetInnerHTML={{ __html: renderMarkdown(comment.body) }} />
+            </TypographyStylesProvider>
           </Card>
         ))}
       </div>
@@ -173,11 +188,11 @@ export function IssuePage() {
       {/* New comment form */}
       <Card shadow="sm" padding="lg" radius="md" withBorder>
         <Text fw={500} mb="md">
-          Add a comment
+          Add a comment (supports Markdown)
         </Text>
         <form onSubmit={handleSubmitComment}>
           <Textarea
-            placeholder="Leave a comment..."
+            placeholder="Leave a comment... (Markdown supported)"
             value={newComment.value}
             onChange={(e: Event) => (newComment.value = (e.target as HTMLTextAreaElement).value)}
             minRows={4}

@@ -1,13 +1,17 @@
 import { useSignal } from '@preact/signals';
-import { Card, Text, TextInput, Button, Alert } from '@mantine/core';
-import { useRouter } from '@copilot-test/preact-router';
+import { Card, Text, TextInput, Button, Alert, Group } from '@mantine/core';
+import { useRoute, useRouter } from '@copilot-test/preact-router';
 import { createRepo } from '../api';
 
 export function CreateRepoPage() {
+  const route = useRoute();
   const router = useRouter();
   const name = useSignal('');
   const loading = useSignal(false);
   const error = useSignal<string | null>(null);
+
+  const params = route.value.params;
+  const orgName = params.org as string;
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
@@ -20,8 +24,8 @@ export function CreateRepoPage() {
     try {
       loading.value = true;
       error.value = null;
-      await createRepo(name.value.trim());
-      router.push(`/repos/${encodeURIComponent(name.value.trim())}`);
+      await createRepo(orgName, name.value.trim());
+      router.push(`/${orgName}/${encodeURIComponent(name.value.trim())}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create repository';
       loading.value = false;
@@ -29,12 +33,10 @@ export function CreateRepoPage() {
   }
 
   return (
-    <Card shadow="sm" padding="lg" radius="md" withBorder class="max-w-lg mx-auto">
-      <div class="border-b border-gray-200 pb-4 mb-4">
-        <Text size="xl" fw={600}>
-          Create a new repository
-        </Text>
-      </div>
+    <Card shadow="sm" padding="lg" radius="md" withBorder>
+      <Text size="xl" fw={600} mb="lg">
+        Create a new repository in {orgName}
+      </Text>
 
       {error.value && (
         <Alert color="red" title="Error" mb="md">
@@ -45,25 +47,26 @@ export function CreateRepoPage() {
       <form onSubmit={handleSubmit}>
         <TextInput
           label="Repository name"
+          description="Use lowercase letters, numbers, and hyphens"
           placeholder="my-project"
           value={name.value}
-          onChange={(e: Event) => (name.value = (e.target as HTMLInputElement).value)}
+          onChange={(e: Event) => (name.value = (e.target as HTMLInputElement).value.toLowerCase().replace(/[^a-z0-9-_.]/g, '-'))}
           required
           mb="lg"
         />
 
-        <div class="flex gap-3">
+        <Group>
           <Button type="submit" loading={loading.value} color="green">
             Create repository
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push('/')}
+            onClick={() => router.push(`/${orgName}`)}
             disabled={loading.value}
           >
             Cancel
           </Button>
-        </div>
+        </Group>
       </form>
     </Card>
   );

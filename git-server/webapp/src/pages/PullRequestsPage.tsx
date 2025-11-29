@@ -1,15 +1,17 @@
 import { useSignal, useSignalEffect } from '@preact/signals';
-import { Card, Text, Loader, Alert, Badge, Button, Anchor } from '@mantine/core';
-import { useRoute } from '@copilot-test/preact-router';
+import { Card, Text, Loader, Alert, Badge, Button, Anchor, Group } from '@mantine/core';
+import { useRoute, useRouter } from '@copilot-test/preact-router';
 import { listPullRequests, type PullRequest, formatDate } from '../api';
 
 export function PullRequestsPage() {
   const route = useRoute();
+  const router = useRouter();
   const prs = useSignal<PullRequest[]>([]);
   const loading = useSignal(true);
   const error = useSignal<string | null>(null);
 
   const params = route.value.params;
+  const orgName = params.org as string;
   const repoName = params.name as string;
 
   useSignalEffect(() => {
@@ -20,7 +22,7 @@ export function PullRequestsPage() {
     try {
       loading.value = true;
       error.value = null;
-      const data = await listPullRequests(repoName);
+      const data = await listPullRequests(orgName, repoName);
       prs.value = data;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load pull requests';
@@ -60,24 +62,17 @@ export function PullRequestsPage() {
 
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
-      <div class="border-b border-gray-200 pb-4 mb-4 flex justify-between items-center">
-        <div class="flex items-center gap-3">
-          <Anchor href={`/repos/${encodeURIComponent(repoName)}`} c="blue">
-            {repoName}
-          </Anchor>
-          <span class="text-gray-400">/</span>
-          <Text size="xl" fw={600}>
-            Pull Requests
-          </Text>
-        </div>
+      <Group justify="space-between" mb="lg" pb="md" style={{ borderBottom: '1px solid #e9ecef' }}>
+        <Text size="xl" fw={600}>
+          🔀 Pull Requests
+        </Text>
         <Button
-          component="a"
-          href={`/repos/${encodeURIComponent(repoName)}/pulls/new`}
+          onClick={() => router.push(`/${orgName}/${repoName}/pulls/new`)}
           color="green"
         >
-          New Pull Request
+          + New Pull Request
         </Button>
-      </div>
+      </Group>
 
       {prs.value.length === 0 ? (
         <div class="text-center py-8 text-gray-500">
@@ -96,8 +91,12 @@ export function PullRequestsPage() {
                 </Badge>
                 <div class="flex-1">
                   <Anchor
-                    href={`/repos/${encodeURIComponent(repoName)}/pulls/${pr.number}`}
+                    href={`/${orgName}/${repoName}/pulls/${pr.number}`}
                     class="font-semibold text-lg hover:underline"
+                    onClick={(e: Event) => {
+                      e.preventDefault();
+                      router.push(`/${orgName}/${repoName}/pulls/${pr.number}`);
+                    }}
                   >
                     {pr.title}
                   </Anchor>

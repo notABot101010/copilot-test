@@ -1,17 +1,39 @@
-import { useSignal } from '@preact/signals';
-import { Card, Text, TextInput, Button, Alert, Anchor } from '@mantine/core';
+import { useSignal, useSignalEffect } from '@preact/signals';
+import { Card, Text, TextInput, Button, Alert, Group, Select } from '@mantine/core';
 import { useRoute, useRouter } from '@copilot-test/preact-router';
-import { forkRepo } from '../api';
+import { forkRepo, listOrganizations, type Organization } from '../api';
 
 export function ForkRepoPage() {
   const route = useRoute();
   const router = useRouter();
   const newName = useSignal('');
+  const targetOrg = useSignal<string | null>(null);
+  const orgs = useSignal<Organization[]>([]);
   const loading = useSignal(false);
+  const loadingOrgs = useSignal(true);
   const error = useSignal<string | null>(null);
 
   const params = route.value.params;
+  const orgName = params.org as string;
   const repoName = params.name as string;
+
+  useSignalEffect(() => {
+    loadOrgs();
+  });
+
+  async function loadOrgs() {
+    try {
+      loadingOrgs.value = true;
+      const data = await listOrganizations();
+      orgs.value = data;
+      targetOrg.value = orgName; // Default to current org
+      newName.value = `${repoName}-fork`;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load organizations';
+    } finally {
+      loadingOrgs.value = false;
+    }
+  }
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
@@ -21,11 +43,16 @@ export function ForkRepoPage() {
       return;
     }
 
+    if (!targetOrg.value) {
+      error.value = 'Target organization is required';
+      return;
+    }
+
     try {
       loading.value = true;
       error.value = null;
-      const repo = await forkRepo(repoName, newName.value.trim());
-      router.push(`/repos/${encodeURIComponent(repo.name)}`);
+      const repo = await forkRepo(orgName, repoName, newName.value.trim(), targetOrg.value);
+      router.push(`/${repo.org_name}/${repo.name}`);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fork repository';
       loading.value = false;
@@ -33,22 +60,13 @@ export function ForkRepoPage() {
   }
 
   return (
-    <Card shadow="sm" padding="lg" radius="md" withBorder class="max-w-lg mx-auto">
-      <div class="border-b border-gray-200 pb-4 mb-4">
-        <div class="flex items-center gap-3 mb-2">
-          <Anchor href={`/repos/${encodeURIComponent(repoName)}`} c="blue">
-            {repoName}
-          </Anchor>
-          <span class="text-gray-400">/</span>
-          <Text>Fork</Text>
-        </div>
-        <Text size="xl" fw={600}>
-          Fork this repository
-        </Text>
-        <Text size="sm" c="dimmed" mt="xs">
-          Create a copy of this repository under a new name
-        </Text>
-      </div>
+    <Card shadow="sm" padding="lg" radius="md" withBorder>
+      <Text size="xl" fw={600} mb="xs">
+        🍴 Fork this repository
+      </Text>
+      <Text size="sm" c="dimmed" mb="lg">
+        Create a copy of {orgName}/{repoName} under a new name
+      </Text>
 
       {error.value && (
         <Alert color="red" title="Error" mb="md">
@@ -57,6 +75,16 @@ export function ForkRepoPage() {
       )}
 
       <form onSubmit={handleSubmit}>
+        <Select
+          label="Target organization"
+          placeholder="Select organization"
+          data={orgs.value.map((org) => ({ value: org.name, label: org.display_name }))}
+          value={targetOrg.value}
+          onChange={(value: string | null) => (targetOrg.value = value)}
+          disabled={loadingOrgs.value}
+          mb="md"
+        />
+
         <TextInput
           label="New repository name"
           placeholder={`${repoName}-fork`}
@@ -66,18 +94,18 @@ export function ForkRepoPage() {
           mb="lg"
         />
 
-        <div class="flex gap-3">
+        <Group>
           <Button type="submit" loading={loading.value} color="green">
             Fork repository
           </Button>
           <Button
             variant="outline"
-            onClick={() => router.push(`/repos/${encodeURIComponent(repoName)}`)}
+            onClick={() => router.push(`/${orgName}/${repoName}`)}
             disabled={loading.value}
           >
             Cancel
           </Button>
-        </div>
+        </Group>
       </form>
     </Card>
   );

@@ -36,8 +36,19 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Create a new organization
+    CreateOrg {
+        /// Name of the organization
+        name: String,
+        /// Display name of the organization
+        #[arg(long)]
+        display_name: Option<String>,
+    },
     /// Create a new repository
     CreateRepo {
+        /// Organization name
+        #[arg(long)]
+        org: String,
         /// Name of the repository
         name: String,
     },
@@ -71,8 +82,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db.init().await?;
 
     match cli.command {
-        Commands::CreateRepo { name } => {
-            create_repository(&db, &name, &cli.repos_path).await?;
+        Commands::CreateOrg { name, display_name } => {
+            create_organization(&db, &name, display_name.as_deref(), &cli.repos_path).await?;
+        }
+        Commands::CreateRepo { org, name } => {
+            create_repository(&db, &org, &name, &cli.repos_path).await?;
         }
         Commands::Serve => {
             serve(&config, &db, &cli.repos_path).await?;
@@ -82,27 +96,68 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+async fn create_organization(
+    db: &Database,
+    name: &str,
+    display_name: Option<&str>,
+    repos_path: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Check if organization already exists
+    if db.get_organization(name).await?.is_some() {
+        return Err(format!("Organization '{}' already exists", name).into());
+    }
+
+    // Create organization directory
+    let org_path = repos_path.join(name);
+    std::fs::create_dir_all(&org_path)?;
+
+    // Store in database
+    let dn = display_name.unwrap_or(name);
+    db.create_organization(name, dn, "").await?;
+
+    println!("Created organization '{}' at {:?}", name, org_path);
+
+    Ok(())
+}
+
 async fn create_repository(
     db: &Database,
+    org: &str,
     name: &str,
     repos_path: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Check if organization exists
+    if db.get_organization(org).await?.is_none() {
+        return Err(format!("Organization '{}' does not exist", org).into());
+    }
+
     // Check if repository already exists
-    if db.get_repository(name).await?.is_some() {
-        return Err(format!("Repository '{}' already exists", name).into());
+    if db.get_repository(org, name).await?.is_some() {
+        return Err(format!("Repository '{}/{}' already exists", org, name).into());
     }
 
     // Create repository path
-    let repo_path = repos_path.join(format!("{}.git", name));
+    let repo_path = repos_path.join(org).join(format!("{}.git", name));
 
-    // Initialize bare git repository
-    database::init_bare_repo(&repo_path).await?;
+    // Ensure org directory exists
+    std::fs::create_dir_all(repos_path.join(org))?;
+
+    // Initialize bare git repository with main as default branch
+    let status = tokio::process::Command::new("git")
+        .args(["init", "--bare", "--initial-branch=main"])
+        .arg(&repo_path)
+        .status()
+        .await?;
+
+    if !status.success() {
+        return Err("Failed to initialize bare git repository".into());
+    }
 
     // Store in database
-    let relative_path = format!("{}.git", name);
-    db.create_repository(name, &relative_path).await?;
+    let relative_path = format!("{}/{}.git", org, name);
+    db.create_repository(org, name, &relative_path).await?;
 
-    println!("Created repository '{}' at {:?}", name, repo_path);
+    println!("Created repository '{}/{}' at {:?}", org, name, repo_path);
 
     Ok(())
 }

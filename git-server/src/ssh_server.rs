@@ -138,7 +138,7 @@ impl russh::server::Handler for GitSessionHandler {
         let command = String::from_utf8_lossy(data);
         println!("Received command: {}", command);
 
-        // Parse git command (git-upload-pack 'repo' or git-receive-pack 'repo')
+        // Parse git command (git-upload-pack 'org/repo' or git-receive-pack 'org/repo')
         let parts: Vec<&str> = command.split_whitespace().collect();
         if parts.len() != 2 {
             session.channel_failure(channel)?;
@@ -146,7 +146,7 @@ impl russh::server::Handler for GitSessionHandler {
         }
 
         let git_cmd = parts[0];
-        let repo_name = parts[1].trim_matches('\'').trim_matches('"');
+        let repo_path_str = parts[1].trim_matches('\'').trim_matches('"');
 
         // Validate git command
         if git_cmd != "git-upload-pack" && git_cmd != "git-receive-pack" {
@@ -154,18 +154,30 @@ impl russh::server::Handler for GitSessionHandler {
             return Ok(());
         }
 
+        // Parse org/repo format
+        let repo_parts: Vec<&str> = repo_path_str.split('/').collect();
+        if repo_parts.len() != 2 {
+            eprintln!("Invalid repository path format (expected org/repo): {}", repo_path_str);
+            session.channel_failure(channel)?;
+            return Ok(());
+        }
+        
+        let org_name = repo_parts[0];
+        let repo_name = repo_parts[1];
+
         // Validate repository name contains no path traversal sequences
-        if repo_name.contains("..") || repo_name.starts_with('/') || repo_name.contains('\0') {
-            eprintln!("Invalid repository name (potential path traversal): {}", repo_name);
+        if org_name.contains("..") || org_name.starts_with('/') || org_name.contains('\0') ||
+           repo_name.contains("..") || repo_name.starts_with('/') || repo_name.contains('\0') {
+            eprintln!("Invalid repository name (potential path traversal): {}", repo_path_str);
             session.channel_failure(channel)?;
             return Ok(());
         }
 
         // Look up repository
-        let repo = match self.db.get_repository(repo_name).await {
+        let repo = match self.db.get_repository(org_name, repo_name).await {
             Ok(Some(repo)) => repo,
             Ok(None) => {
-                eprintln!("Repository not found: {}", repo_name);
+                eprintln!("Repository not found: {}/{}", org_name, repo_name);
                 session.channel_failure(channel)?;
                 return Ok(());
             }
