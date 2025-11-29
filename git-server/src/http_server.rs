@@ -263,28 +263,7 @@ async fn get_tree(
     Ok(Json(files))
 }
 
-/// Get tree at a specific path
-#[allow(dead_code)]
-async fn get_tree_path(
-    State(state): State<AppState>,
-    Path((name, path)): Path<(String, String)>,
-    Query(query): Query<TreeQuery>,
-) -> Result<Json<Vec<FileEntry>>, (StatusCode, String)> {
-    let repo = state
-        .db
-        .get_repository(&name)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
-
-    let repo_path = state.repos_path.join(&repo.path);
-    let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
-    let files = list_git_files(&repo_path, git_ref, &path).await?;
-
-    Ok(Json(files))
-}
-
-/// Get blob content (for root path, uses query param)
+/// Get blob content (uses query params for ref and path)
 async fn get_blob_root(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -301,27 +280,6 @@ async fn get_blob_root(
     let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
     let path = query.path.as_deref().ok_or((StatusCode::BAD_REQUEST, "path query parameter required".to_string()))?;
     let content = get_git_blob(&repo_path, git_ref, path).await?;
-
-    Ok(content)
-}
-
-/// Get blob content (legacy, with path in URL)
-#[allow(dead_code)]
-async fn get_blob(
-    State(state): State<AppState>,
-    Path((name, path)): Path<(String, String)>,
-    Query(query): Query<TreeQuery>,
-) -> Result<String, (StatusCode, String)> {
-    let repo = state
-        .db
-        .get_repository(&name)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Repository not found".to_string()))?;
-
-    let repo_path = state.repos_path.join(&repo.path);
-    let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
-    let content = get_git_blob(&repo_path, git_ref, &path).await?;
 
     Ok(content)
 }
@@ -476,10 +434,43 @@ async fn get_git_blob(
 
 /// Validate that a git ref is safe (no special characters that could be used for injection)
 fn is_safe_git_ref(git_ref: &str) -> bool {
-    // Allow alphanumeric, dash, underscore, dot, forward slash, and caret/tilde for refs like HEAD~1
-    git_ref.chars().all(|c| {
-        c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' || c == '^' || c == '~'
-    }) && !git_ref.is_empty() && git_ref.len() < 256
+    if git_ref.is_empty() || git_ref.len() > 255 {
+        return false;
+    }
+    
+    // Check for invalid patterns
+    if git_ref.starts_with('-') || git_ref.starts_with('.') {
+        return false;
+    }
+    
+    // Don't allow consecutive special characters that could be malformed
+    if git_ref.contains("..") || git_ref.contains("//") {
+        return false;
+    }
+    
+    // Allow alphanumeric, dash, underscore, dot, forward slash
+    // Allow caret and tilde only when followed by digits (e.g., HEAD~1, HEAD^2)
+    let mut chars = git_ref.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '/' {
+            continue;
+        }
+        if c == '^' || c == '~' {
+            // Must be followed by nothing or digits
+            match chars.peek() {
+                None => continue,
+                Some(next) if next.is_ascii_digit() => continue,
+                Some(next) if *next == '^' || *next == '~' => {
+                    // Allow chained like HEAD^^
+                    continue;
+                }
+                _ => return false,
+            }
+        }
+        return false;
+    }
+    
+    true
 }
 
 /// Run the HTTP server
