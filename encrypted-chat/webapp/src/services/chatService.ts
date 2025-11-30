@@ -132,31 +132,44 @@ export async function login(username: string, password: string): Promise<void> {
     salt: userData.salt
   };
   
-  // Fetch and decrypt signed prekey private for receiving messages
-  // We need to regenerate prekeys since we don't have the private key stored locally
-  const preKeyData = await crypto.generatePreKeyBundle(
-    { privateKey: identityPrivateKey, publicKey: identityPublicKey },
-    masterKey,
-    10
-  );
-  
-  await api.uploadPreKeyBundle(username, {
-    signed_prekey_public: preKeyData.bundle.signedPrekeyPublic,
-    signed_prekey_signature: preKeyData.bundle.signedPrekeySignature,
-    encrypted_signed_prekey_private: preKeyData.signedPrekeyPrivateEncrypted,
-    signed_prekey_iv: preKeyData.signedPrekeyIv,
-    one_time_prekeys: preKeyData.oneTimePrekeyPublics,
-    encrypted_one_time_prekey_privates: preKeyData.oneTimePrekeyPrivatesEncrypted,
-    one_time_prekey_ivs: preKeyData.oneTimePrekeyIvs
-  });
-  
-  const signedPrekeyIvBuffer = new Uint8Array(crypto.base64ToArrayBuffer(preKeyData.signedPrekeyIv));
-  const encryptedSignedPrekeyPrivate = crypto.base64ToArrayBuffer(preKeyData.signedPrekeyPrivateEncrypted);
-  signedPrekeyPrivate = await crypto.decryptExchangePrivateKey(
-    masterKey,
-    encryptedSignedPrekeyPrivate,
-    signedPrekeyIvBuffer
-  );
+  // Fetch existing prekey private key from server
+  // This allows us to decrypt messages sent before this login
+  try {
+    const myPreKeys = await api.getMyPreKeys(username);
+    const signedPrekeyIvBuffer = new Uint8Array(crypto.base64ToArrayBuffer(myPreKeys.signed_prekey_iv));
+    const encryptedSignedPrekeyPrivate = crypto.base64ToArrayBuffer(myPreKeys.encrypted_signed_prekey_private);
+    signedPrekeyPrivate = await crypto.decryptExchangePrivateKey(
+      masterKey,
+      encryptedSignedPrekeyPrivate,
+      signedPrekeyIvBuffer
+    );
+  } catch (err) {
+    // If no prekeys exist yet (e.g., new account), generate new ones
+    console.log('No existing prekeys found, generating new ones');
+    const preKeyData = await crypto.generatePreKeyBundle(
+      { privateKey: identityPrivateKey, publicKey: identityPublicKey },
+      masterKey,
+      10
+    );
+    
+    await api.uploadPreKeyBundle(username, {
+      signed_prekey_public: preKeyData.bundle.signedPrekeyPublic,
+      signed_prekey_signature: preKeyData.bundle.signedPrekeySignature,
+      encrypted_signed_prekey_private: preKeyData.signedPrekeyPrivateEncrypted,
+      signed_prekey_iv: preKeyData.signedPrekeyIv,
+      one_time_prekeys: preKeyData.oneTimePrekeyPublics,
+      encrypted_one_time_prekey_privates: preKeyData.oneTimePrekeyPrivatesEncrypted,
+      one_time_prekey_ivs: preKeyData.oneTimePrekeyIvs
+    });
+    
+    const signedPrekeyIvBuffer = new Uint8Array(crypto.base64ToArrayBuffer(preKeyData.signedPrekeyIv));
+    const encryptedSignedPrekeyPrivate = crypto.base64ToArrayBuffer(preKeyData.signedPrekeyPrivateEncrypted);
+    signedPrekeyPrivate = await crypto.decryptExchangePrivateKey(
+      masterKey,
+      encryptedSignedPrekeyPrivate,
+      signedPrekeyIvBuffer
+    );
+  }
   
   // Start polling for messages
   startPolling();
