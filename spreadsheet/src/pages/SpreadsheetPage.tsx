@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'preact/hooks';
 import { useRouter, useRoute } from '@copilot-test/preact-router';
-import { Button, TextInput, Group, ActionIcon, Text, Loader, Tooltip } from '@mantine/core';
+import { Button, TextInput, Group, ActionIcon, Text, Loader, Tooltip, Menu } from '@mantine/core';
 import {
   currentSpreadsheet,
   loadSpreadsheet,
@@ -16,6 +16,7 @@ import {
 } from '../store/spreadsheetStore';
 import { getCellKey } from '../types/spreadsheet';
 import { getComputedValue, indexToColumn } from '../utils/formulaEngine';
+import { generateCSV, downloadCSV, openCSVFilePicker, importCSVToCells } from '../utils/csv';
 
 // Virtual scrolling configuration
 const CELL_HEIGHT = 28;
@@ -629,6 +630,33 @@ export function SpreadsheetPage() {
     });
   }, []);
 
+  // CSV Import handler
+  const handleImportCSV = useCallback(async () => {
+    const content = await openCSVFilePicker();
+    if (content) {
+      const updates = importCSVToCells(content);
+      if (updates.length > 0) {
+        updateMultipleCells(updates);
+        // Select the imported area
+        const maxRow = Math.max(...updates.map(u => u.row));
+        const maxCol = Math.max(...updates.map(u => u.col));
+        setSelection({
+          start: { row: 0, col: 0 },
+          end: { row: maxRow, col: maxCol },
+        });
+      }
+    }
+  }, []);
+
+  // CSV Export handler
+  const handleExportCSV = useCallback(() => {
+    if (!spreadsheet) return;
+    const csvContent = generateCSV(spreadsheet.cells);
+    // Sanitize filename: only remove characters that are invalid in filenames
+    const filename = `${spreadsheet.name.replace(/[<>:"/\\|?*]/g, '_')}.csv`;
+    downloadCSV(csvContent, filename);
+  }, [spreadsheet]);
+
   if (isLoading) {
     return (
       <div className="py-8 flex justify-center items-center h-screen">
@@ -676,6 +704,23 @@ export function SpreadsheetPage() {
             {spreadsheet.name}
           </div>
         )}
+        
+        {/* File Menu */}
+        <Menu shadow="md" width={200}>
+          <Menu.Target>
+            <Button variant="subtle" size="sm">
+              File
+            </Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Item onClick={handleImportCSV}>
+              Import CSV
+            </Menu.Item>
+            <Menu.Item onClick={handleExportCSV}>
+              Export to CSV
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
         
         {/* Toolbar */}
         <Group gap="xs" className="ml-4">
