@@ -136,13 +136,29 @@ export function CalendarPage() {
   const issuesByDate = useComputed(() => {
     const map = new Map<string, Issue[]>();
     for (const issue of issues.value) {
+      const startDate = parseDate(issue.start_date);
       const targetDate = parseDate(issue.target_date);
+
       if (targetDate) {
-        const key = targetDate.toISOString().split('T')[0];
-        if (!map.has(key)) {
-          map.set(key, []);
+        if (startDate && startDate <= targetDate) {
+          // Add issue to all days between start and target
+          const current = new Date(startDate);
+          while (current <= targetDate) {
+            const key = current.toISOString().split('T')[0];
+            if (!map.has(key)) {
+              map.set(key, []);
+            }
+            map.get(key)!.push(issue);
+            current.setDate(current.getDate() + 1);
+          }
+        } else {
+          // No start date or start > target, just show on target date
+          const key = targetDate.toISOString().split('T')[0];
+          if (!map.has(key)) {
+            map.set(key, []);
+          }
+          map.get(key)!.push(issue);
         }
-        map.get(key)!.push(issue);
       }
     }
     return map;

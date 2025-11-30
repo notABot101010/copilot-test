@@ -1,0 +1,37 @@
+{
+  "name": "webapp",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --strictPort --port 4000 --host",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@automerge/automerge": "^3.2.0",
+    "@mantine/core": "^8.3.9",
+    "@mantine/hooks": "^8.3.9",
+    "@preact/signals": "^2.5.1",
+    "@tailwindcss/postcss": "^4.1.17",
+    "@tiptap/core": "^3.11.1",
+    "@tiptap/extension-document": "^3.11.1",
+    "@tiptap/extension-paragraph": "^3.11.1",
+    "@tiptap/extension-text": "^3.11.1",
+    "@tiptap/pm": "^3.11.1",
+    "@tiptap/starter-kit": "^3.11.1",
+    "autoprefixer": "^10.4.22",
+    "postcss": "^8.5.6",
+    "preact": "^10.27.2",
+    "preact-router": "^4.1.2",
+    "tailwindcss": "^4.1.17"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.2",
+    "@types/node": "^24.10.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.2.4",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.5.0"
+  }
+}
