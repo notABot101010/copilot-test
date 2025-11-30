@@ -1,0 +1,19 @@
+{
+  "name": "@customer-support/sdk",
+  "version": "1.0.0",
+  "description": "Customer Support Chat Widget SDK",
+  "type": "module",
+  "main": "dist/sdk.js",
+  "module": "dist/sdk.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "esbuild src/sdk.ts --bundle --minify --format=iife --global-name=CustomerSupport --outfile=dist/sdk.js",
+    "dev": "esbuild src/sdk.ts --bundle --format=iife --global-name=CustomerSupport --outfile=dist/sdk.js --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.0",
+    "typescript": "~5.9.3"
+  }
+}
