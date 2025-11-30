@@ -281,7 +281,25 @@ Creates a new router instance.
 
 - `RouterProvider` - Provides router context and intercepts link clicks
 - `RouterView` - Renders the matched route component
+  - `notFound` prop - Component to render when no route matches (404 page)
 - `RouterLink` - Optional declarative navigation link with active state classes
+
+### RouterView NotFound Support
+
+You can specify a component to render when no route matches:
+
+```tsx
+import { RouterView } from '@copilot-test/preact-router';
+import { NotFoundPage } from './pages/NotFoundPage';
+
+function App() {
+  return (
+    <RouterProvider router={router}>
+      <RouterView notFound={NotFoundPage} />
+    </RouterProvider>
+  );
+}
+```
 
 ### Link Attributes
 

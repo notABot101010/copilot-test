@@ -136,9 +136,9 @@ export function CalendarPage() {
   const issuesByDate = useComputed(() => {
     const map = new Map<string, Issue[]>();
     for (const issue of issues.value) {
-      const dueDate = parseDate(issue.due_date);
-      if (dueDate) {
-        const key = dueDate.toISOString().split('T')[0];
+      const targetDate = parseDate(issue.target_date);
+      if (targetDate) {
+        const key = targetDate.toISOString().split('T')[0];
         if (!map.has(key)) {
           map.set(key, []);
         }
@@ -268,10 +268,10 @@ export function CalendarPage() {
         </div>
       </div>
 
-      {/* Info about issues without due dates */}
-      {issues.value.filter(i => !i.due_date).length > 0 && (
+      {/* Info about issues without target dates */}
+      {issues.value.filter(i => !i.target_date).length > 0 && (
         <Text size="sm" c="dimmed" mt="md">
-          Note: {issues.value.filter(i => !i.due_date).length} issue(s) without due dates are not shown in the calendar.
+          Note: {issues.value.filter(i => !i.target_date).length} issue(s) without target dates are not shown in the calendar.
         </Text>
       )}
     </div>

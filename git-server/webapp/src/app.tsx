@@ -25,6 +25,7 @@ import { PullRequestsPage } from './pages/PullRequestsPage';
 import { PullRequestPage } from './pages/PullRequestPage';
 import { CreatePullRequestPage } from './pages/CreatePullRequestPage';
 import { ForkRepoPage } from './pages/ForkRepoPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 
 const router = createRouter({
   routes: [
@@ -69,7 +70,7 @@ export function App() {
     <MantineProvider>
       <RouterProvider router={router}>
         <AppLayout>
-          <RouterView />
+          <RouterView notFound={NotFoundPage} />
         </AppLayout>
       </RouterProvider>
     </MantineProvider>

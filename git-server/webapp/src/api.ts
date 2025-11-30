@@ -48,10 +48,18 @@ export interface Issue {
   body: string;
   state: 'open' | 'closed';
   status: 'todo' | 'doing' | 'done';
-  due_date: string | null;
+  start_date: string | null;
+  target_date: string | null;
   author: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface Tag {
+  id: number;
+  repo_name: string;
+  name: string;
+  color: string;
 }
 
 export interface IssueComment {
@@ -266,11 +274,12 @@ export async function createProjectIssue(
   projectName: string,
   title: string,
   body: string,
-  dueDate?: string
+  startDate?: string,
+  targetDate?: string
 ): Promise<Issue> {
   return api<Issue>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues`, {
     method: 'POST',
-    body: JSON.stringify({ title, body, due_date: dueDate }),
+    body: JSON.stringify({ title, body, start_date: startDate, target_date: targetDate }),
   });
 }
 
@@ -278,7 +287,7 @@ export async function updateProjectIssue(
   orgName: string,
   projectName: string,
   issueNumber: number,
-  updates: { title?: string; body?: string; state?: 'open' | 'closed'; status?: 'todo' | 'doing' | 'done'; due_date?: string | null }
+  updates: { title?: string; body?: string; state?: 'open' | 'closed'; status?: 'todo' | 'doing' | 'done'; start_date?: string | null; target_date?: string | null }
 ): Promise<Issue> {
   return api<Issue>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues/${issueNumber}`, {
     method: 'PATCH',
@@ -669,4 +678,82 @@ export function formatDate(dateString: string): string {
     month: 'short',
     day: 'numeric',
   });
+}
+
+// Tag APIs
+export async function listProjectTags(orgName: string, projectName: string): Promise<Tag[]> {
+  return api<Tag[]>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/tags`);
+}
+
+export async function createProjectTag(
+  orgName: string,
+  projectName: string,
+  name: string,
+  color: string = '#6b7280'
+): Promise<Tag> {
+  return api<Tag>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/tags`, {
+    method: 'POST',
+    body: JSON.stringify({ name, color }),
+  });
+}
+
+export async function updateProjectTag(
+  orgName: string,
+  projectName: string,
+  tagId: number,
+  updates: { name?: string; color?: string }
+): Promise<Tag> {
+  return api<Tag>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/tags/${tagId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteProjectTag(
+  orgName: string,
+  projectName: string,
+  tagId: number
+): Promise<void> {
+  await api(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/tags/${tagId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getIssueTags(
+  orgName: string,
+  projectName: string,
+  issueNumber: number
+): Promise<Tag[]> {
+  return api<Tag[]>(
+    `/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues/${issueNumber}/tags`
+  );
+}
+
+export async function addTagToIssue(
+  orgName: string,
+  projectName: string,
+  issueNumber: number,
+  tagId: number
+): Promise<void> {
+  await api(
+    `/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues/${issueNumber}/tags`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ tag_id: tagId }),
+    }
+  );
+}
+
+export async function removeTagFromIssue(
+  orgName: string,
+  projectName: string,
+  issueNumber: number,
+  tagId: number
+): Promise<void> {
+  await api(
+    `/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues/${issueNumber}/tags/${tagId}`,
+    {
+      method: 'DELETE',
+    }
+  );
 }
