@@ -7,8 +7,22 @@
  * - User session handling
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { signal } from '@preact/signals';
+
+interface Message {
+  id: string;
+  senderUsername: string;
+  content: string;
+  timestamp: number;
+  isOutgoing: boolean;
+}
+
+interface Conversation {
+  peerUsername: string;
+  messages: Message[];
+  unread: number;
+}
 
 describe('Chat Service - Conversation Management', () => {
   describe('Conversation list operations', () => {
@@ -16,7 +30,7 @@ describe('Chat Service - Conversation Management', () => {
       // Simulate the getConversationList logic
       const now = Date.now();
       
-      const conversationsMap = new Map([
+      const conversationsMap = new Map<string, Conversation>([
         ['user1', {
           peerUsername: 'user1',
           messages: [{ id: '1', senderUsername: 'user1', content: 'old', timestamp: now - 10000, isOutgoing: false }],
@@ -45,7 +59,7 @@ describe('Chat Service - Conversation Management', () => {
     });
 
     it('should handle empty conversations in list', () => {
-      const conversationsMap = new Map([
+      const conversationsMap = new Map<string, Conversation>([
         ['user1', {
           peerUsername: 'user1',
           messages: [],
@@ -72,7 +86,7 @@ describe('Chat Service - Conversation Management', () => {
     });
 
     it('should get specific conversation from map', () => {
-      const conversationsMap = new Map([
+      const conversationsMap = new Map<string, Conversation>([
         ['user1', {
           peerUsername: 'user1',
           messages: [{ id: '1', senderUsername: 'user1', content: 'hello', timestamp: Date.now(), isOutgoing: false }],
@@ -93,7 +107,7 @@ describe('Chat Service - Conversation Management', () => {
 
   describe('Mark conversation as read', () => {
     it('should set unread count to zero', () => {
-      const conversationsMap = new Map([
+      const conversationsMap = new Map<string, Conversation>([
         ['user1', {
           peerUsername: 'user1',
           messages: [{ id: '1', senderUsername: 'user1', content: 'hello', timestamp: Date.now(), isOutgoing: false }],
@@ -115,7 +129,7 @@ describe('Chat Service - Conversation Management', () => {
 
   describe('User session handling', () => {
     it('should clear conversations on logout', () => {
-      const conversationsSignal = signal(new Map([
+      const conversationsSignal = signal(new Map<string, Conversation>([
         ['user1', {
           peerUsername: 'user1',
           messages: [],
@@ -171,11 +185,11 @@ describe('Chat Service - Conversation Management', () => {
 
   describe('Conversation updates', () => {
     it('should create new conversation when sending to new user', () => {
-      const conversations = new Map();
+      const conversations = new Map<string, Conversation>();
       
       // Simulate starting a new conversation
       const peerUsername = 'newUser';
-      const message = {
+      const message: Message = {
         id: 'msg_1',
         senderUsername: 'me',
         content: 'Hello!',
@@ -183,7 +197,7 @@ describe('Chat Service - Conversation Management', () => {
         isOutgoing: true
       };
       
-      const newConversation = {
+      const newConversation: Conversation = {
         peerUsername,
         messages: [message],
         unread: 0
@@ -196,7 +210,7 @@ describe('Chat Service - Conversation Management', () => {
     });
 
     it('should append message to existing conversation', () => {
-      const conversations = new Map([
+      const conversations = new Map<string, Conversation>([
         ['existingUser', {
           peerUsername: 'existingUser',
           messages: [
@@ -224,7 +238,7 @@ describe('Chat Service - Conversation Management', () => {
     });
 
     it('should increment unread count for incoming messages', () => {
-      const conversations = new Map([
+      const conversations = new Map<string, Conversation>([
         ['sender', {
           peerUsername: 'sender',
           messages: [],

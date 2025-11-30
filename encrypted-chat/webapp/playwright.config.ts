@@ -21,13 +21,13 @@ export default defineConfig({
     {
       command: 'cd ../server && cargo run',
       port: 4001,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: true,
       timeout: 120 * 1000,
     },
     {
       command: 'npm run dev',
       port: 4000,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: true,
       timeout: 30 * 1000,
     },
   ],
