@@ -110,8 +110,8 @@ test.describe('User Login', () => {
     // The server returns 404 for non-existent users, which triggers an error
     await expect(page).toHaveURL('/');
     
-    // Wait for potential error message to appear
-    await page.waitForTimeout(2000);
+    // Wait for the button to no longer be loading (indicates request completed)
+    await expect(page.locator('button[type="submit"]')).not.toHaveAttribute('data-loading', { timeout: 5000 });
     
     // Should still be on login page (not redirected to conversations)
     await expect(page.locator('h3:has-text("Login")')).toBeVisible();

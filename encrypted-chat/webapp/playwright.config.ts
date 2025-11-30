@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Server path can be configured via environment variable
+const serverPath = process.env.CHAT_SERVER_PATH || '../server';
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -19,7 +22,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'cd ../server && cargo run',
+      command: `cd ${serverPath} && cargo run`,
       port: 4001,
       reuseExistingServer: true,
       timeout: 120 * 1000,
