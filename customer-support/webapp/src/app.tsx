@@ -1,4 +1,4 @@
-import { useEffect } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 import { MantineProvider } from '@mantine/core';
 import { createRouter, RouterProvider, RouterView, useRoute } from '@copilot-test/preact-router';
 import {
@@ -8,13 +8,14 @@ import {
   ContactsView,
   WorkspaceSelector,
 } from './components';
-import { currentWorkspace, setWorkspace } from './state';
+import { currentWorkspace, setWorkspace, addMessage, updateConversationInList, conversations } from './state';
 import * as api from './services/api';
 
 function WorkspaceLayout() {
   const route = useRoute();
   const currentPath = route.value.path;
   const workspace = currentWorkspace.value;
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Extract workspace ID from params
   const workspaceId = route.value.params.workspaceId as string | undefined;
@@ -24,6 +25,52 @@ function WorkspaceLayout() {
       loadWorkspace(workspaceId);
     }
   }, [workspaceId]);
+
+  // Start long polling when workspace is loaded
+  useEffect(() => {
+    if (!workspace) return;
+
+    const pollLoop = async () => {
+      while (true) {
+        try {
+          abortControllerRef.current = new AbortController();
+          const result = await api.pollEvents(workspace.id, abortControllerRef.current.signal);
+
+          // Process events
+          for (const event of result.events) {
+            if (event.type === 'new_message' && event.message && event.conversation_id) {
+              addMessage(event.message);
+              // Refresh conversation to update last message
+              try {
+                const conv = await api.getConversation(workspace.id, event.conversation_id);
+                updateConversationInList(conv);
+              } catch (err) {
+                console.error('Failed to refresh conversation:', err);
+              }
+            } else if (event.type === 'new_conversation' && event.conversation) {
+              updateConversationInList(event.conversation);
+            } else if (event.type === 'conversation_updated' && event.conversation) {
+              updateConversationInList(event.conversation);
+            }
+          }
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') {
+            break;
+          }
+          console.error('Polling error:', err);
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      }
+    };
+
+    pollLoop();
+
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [workspace?.id]);
 
   async function loadWorkspace(id: string) {
     try {

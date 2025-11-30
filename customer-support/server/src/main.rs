@@ -344,6 +344,27 @@ fn hash_for_anonymous_id(ip: &str, user_agent: &str) -> String {
     hash.to_hex().to_string()
 }
 
+async fn ensure_workspace_exists(pool: &SqlitePool, workspace_id: &str) -> Result<(), sqlx::Error> {
+    let existing = sqlx::query_as::<_, Workspace>(
+        "SELECT * FROM workspaces WHERE id = ?",
+    )
+    .bind(workspace_id)
+    .fetch_optional(pool)
+    .await?;
+
+    if existing.is_none() {
+        let now = get_current_time();
+        sqlx::query("INSERT INTO workspaces (id, name, created_at) VALUES (?, ?, ?)")
+            .bind(workspace_id)
+            .bind("Auto-created Workspace")
+            .bind(now)
+            .execute(pool)
+            .await?;
+    }
+
+    Ok(())
+}
+
 fn extract_ip(addr: &SocketAddr, headers: &HeaderMap) -> String {
     // Check for X-Forwarded-For header first (for proxies)
     if let Some(forwarded) = headers.get("x-forwarded-for") {
@@ -978,6 +999,14 @@ async fn track_page_view(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(payload): Json<TrackPageViewRequest>,
 ) -> Result<StatusCode, StatusCode> {
+    // Ensure workspace exists
+    ensure_workspace_exists(&state.db, &workspace_id)
+        .await
+        .map_err(|err| {
+            tracing::error!("Failed to ensure workspace exists: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
     let id = uuid::Uuid::new_v4().to_string();
     let now = get_current_time();
 
@@ -1141,6 +1170,14 @@ async fn visitor_init(
     State(state): State<AppState>,
     Json(payload): Json<VisitorInitRequest>,
 ) -> Result<Json<VisitorInitResponse>, StatusCode> {
+    // Ensure workspace exists
+    ensure_workspace_exists(&state.db, &workspace_id)
+        .await
+        .map_err(|err| {
+            tracing::error!("Failed to ensure workspace exists: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
     // Create or get contact
     let contact = sqlx::query_as::<_, Contact>(
         "SELECT * FROM contacts WHERE workspace_id = ? AND visitor_id = ?",
@@ -1249,11 +1286,30 @@ struct VisitorSendMessageResponse {
     message: MessageResponse,
 }
 
+#[derive(Debug, Deserialize)]
+struct PollEventsQuery {
+    since: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+struct PollEventsResponse {
+    events: Vec<WsEvent>,
+    timestamp: i64,
+}
+
 async fn visitor_send_message(
     Path(workspace_id): Path<String>,
     State(state): State<AppState>,
     Json(payload): Json<VisitorSendMessageRequest>,
 ) -> Result<(StatusCode, Json<VisitorSendMessageResponse>), StatusCode> {
+    // Ensure workspace exists
+    ensure_workspace_exists(&state.db, &workspace_id)
+        .await
+        .map_err(|err| {
+            tracing::error!("Failed to ensure workspace exists: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
     let now = get_current_time();
 
     // Get contact
@@ -1420,6 +1476,53 @@ async fn broadcast_event(state: &AppState, workspace_id: &str, event: WsEvent) {
     }
 }
 
+// Long polling endpoint
+async fn poll_events(
+    Path(workspace_id): Path<String>,
+    Query(_query): Query<PollEventsQuery>,
+    State(state): State<AppState>,
+) -> Result<Json<PollEventsResponse>, StatusCode> {
+    // Get or create broadcast channel for this workspace
+    let mut rx = {
+        let mut channels = state.channels.write().await;
+        let tx = channels
+            .entry(workspace_id.clone())
+            .or_insert_with(|| broadcast::channel(BROADCAST_CAPACITY).0);
+        tx.subscribe()
+    };
+
+    // Collect events with a timeout
+    let mut events = Vec::new();
+    let timeout_duration = tokio::time::Duration::from_secs(25);
+    let start = tokio::time::Instant::now();
+
+    while start.elapsed() < timeout_duration {
+        match tokio::time::timeout(
+            timeout_duration - start.elapsed(),
+            rx.recv()
+        ).await {
+            Ok(Ok(event)) => {
+                events.push(event);
+                // Return immediately if we got at least one event
+                break;
+            }
+            Ok(Err(_)) => {
+                // Channel closed or lagged, break
+                break;
+            }
+            Err(_) => {
+                // Timeout reached
+                break;
+            }
+        }
+    }
+
+    Ok(Json(PollEventsResponse {
+        events,
+        timestamp: get_current_time(),
+    }))
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -1429,6 +1532,12 @@ async fn main() {
     
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
+        .after_connect(|conn, _| Box::pin(async move {
+            sqlx::query("PRAGMA foreign_keys = ON")
+                .execute(conn)
+                .await?;
+            Ok(())
+        }))
         .connect(&db_url)
         .await
         .expect("Failed to connect to database");
@@ -1463,7 +1572,9 @@ async fn main() {
         // Visitor (SDK) endpoints
         .route("/api/workspaces/{workspace_id}/visitor/init", post(visitor_init))
         .route("/api/workspaces/{workspace_id}/visitor/message", post(visitor_send_message))
-        // WebSocket
+        // Long polling
+        .route("/api/workspaces/{workspace_id}/events", get(poll_events))
+        // WebSocket (deprecated, keeping for backward compatibility)
         .route("/ws/workspaces/{workspace_id}", get(ws_handler))
         .layer(cors)
         .with_state(state)

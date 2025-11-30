@@ -137,9 +137,18 @@ export async function getAnalytics(workspaceId: string, days: number = 30): Prom
   return handleResponse<Analytics>(response);
 }
 
-// WebSocket connection for real-time updates
-export function createWebSocket(workspaceId: string): WebSocket {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
-  return new WebSocket(`${protocol}//${host}/ws/workspaces/${workspaceId}`);
+// Long polling for real-time updates
+export async function pollEvents(workspaceId: string, signal?: AbortSignal): Promise<{
+  events: Array<{
+    type: string;
+    conversation_id?: string;
+    message?: any;
+    conversation?: any;
+  }>;
+  timestamp: number;
+}> {
+  const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/events`, {
+    signal,
+  });
+  return handleResponse(response);
 }

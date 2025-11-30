@@ -12,6 +12,7 @@
 
 ## Rust
 
+* use cargo check before any build to make sure that the code compiles.
 * Use `aws-lc-rs` for crypto operations.
 * Use `reqwest` when you need an HTTP client and `axum` when you need an HTTP server.
 * Use `sqlx` when you need to interact with a database. Use the `sqlx::query_as` function for database queries when relevant, to deserialize directly into a struct.

@@ -36,7 +36,7 @@ class CustomerSupportWidget {
   private contactId: string | null = null;
   private conversationId: string | null = null;
   private messages: Message[] = [];
-  private ws: WebSocket | null = null;
+  private pollingAbortController: AbortController | null = null;
 
   constructor(config: CustomerSupportConfig) {
     this.config = {
@@ -80,7 +80,7 @@ class CustomerSupportWidget {
     this.createStyles();
     this.createWidget();
     await this.initVisitor();
-    this.connectWebSocket();
+    this.startPolling();
     this.trackPageView();
   }
 
@@ -378,35 +378,54 @@ class CustomerSupportWidget {
     }
   }
 
-  private connectWebSocket() {
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = this.config.apiUrl
-      ? new URL(this.config.apiUrl).host
-      : window.location.host;
+  private async startPolling() {
+    const pollLoop = async () => {
+      while (true) {
+        try {
+          this.pollingAbortController = new AbortController();
+          const response = await fetch(
+            `${this.config.apiUrl}/api/workspaces/${this.config.workspaceId}/events`,
+            {
+              signal: this.pollingAbortController.signal,
+            }
+          );
 
-    this.ws = new WebSocket(
-      `${wsProtocol}//${wsHost}/ws/workspaces/${this.config.workspaceId}`
-    );
+          if (!response.ok) {
+            throw new Error('Polling failed');
+          }
 
-    this.ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (
-          data.type === 'new_message' &&
-          data.conversation_id === this.conversationId
-        ) {
-          this.messages.push(data.message);
-          this.renderMessages();
+          const data = await response.json();
+
+          // Process events
+          if (data.events && Array.isArray(data.events)) {
+            for (const event of data.events) {
+              if (
+                event.type === 'new_message' &&
+                event.conversation_id === this.conversationId &&
+                event.message
+              ) {
+                this.messages.push(event.message);
+                this.renderMessages();
+              }
+            }
+          }
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') {
+            break;
+          }
+          console.error('Polling error:', err);
+          await new Promise(resolve => setTimeout(resolve, 5000));
         }
-      } catch (err) {
-        console.error('Failed to parse WebSocket message:', err);
       }
     };
 
-    this.ws.onclose = () => {
-      // Reconnect after 5 seconds
-      setTimeout(() => this.connectWebSocket(), 5000);
-    };
+    pollLoop();
+  }
+
+  destroy() {
+    if (this.pollingAbortController) {
+      this.pollingAbortController.abort();
+    }
   }
 
   private renderMessages() {
