@@ -26,11 +26,8 @@
 * Use only tailwindcss for design and mantine for components. Unless strictly necessary, never use css-in-js libraries, don't use inline styles, don't use separate CSS files
 * Always use our own preact-router from this repo for routing.
 * Always make sure that the webapp compiles.
-* Always use the following "dev" script in package.json
-```
-"dev": "vite --strictPort --port 4000 --host",
-```
-* Always use preact signals for state management, don't use hooks for state management as much as possible (unless there is no other solution).
+* ALWAYS use preact signals for state management. NEVER use hooks for state management.
+* Always use the following "dev" script in package.json `"dev": "vite --strictPort --port 4000 --host"`
 * Use native links (`<a>` HTML tags) as much as possible instaod of special component link `Anchor` or similar.
 * when creating a button to move to another page, wrap it into a link insteaod of using `onClick={router.push(...)}`
 * prefer minimalist, simple and elegant design.
