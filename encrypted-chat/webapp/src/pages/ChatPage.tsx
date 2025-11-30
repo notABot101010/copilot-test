@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { Button, TextInput, Paper, Container, Title } from '@mantine/core';
 import { useRoute } from '@copilot-test/preact-router';
 import { currentUser, sendMessage, getConversation, markConversationAsRead, conversations } from '../services/chatService';
@@ -8,8 +9,8 @@ export function ChatPage() {
   const route = useRoute();
   const peerUsername = route.value.params.username as string;
   
-  const [message, setMessage] = useState('');
-  const [sending, setSending] = useState(false);
+  const message = useSignal('');
+  const sending = useSignal(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const user = currentUser.value;
@@ -39,19 +40,19 @@ export function ChatPage() {
   async function handleSend(event?: Event) {
     event?.preventDefault();
     
-    if (!message.trim() || sending) {
+    if (!message.value.trim() || sending.value) {
       return;
     }
 
-    setSending(true);
+    sending.value = true;
     try {
-      await sendMessage(peerUsername, message.trim());
-      setMessage('');
+      await sendMessage(peerUsername, message.value.trim());
+      message.value = '';
     } catch (err) {
       console.error('Failed to send message:', err);
       alert('Failed to send message');
     } finally {
-      setSending(false);
+      sending.value = false;
     }
   }
 
@@ -123,17 +124,17 @@ export function ChatPage() {
           <form onSubmit={handleSend} className="flex gap-2">
             <TextInput
               placeholder="Type a message..."
-              value={message}
-              onChange={(event: Event) => setMessage((event.target as HTMLInputElement).value)}
+              value={message.value}
+              onChange={(event: Event) => { message.value = (event.target as HTMLInputElement).value; }}
               onKeyDown={handleKeyDown}
               className="flex-1"
               size="md"
-              disabled={sending}
+              disabled={sending.value}
             />
             <Button 
               type="submit" 
-              loading={sending}
-              disabled={!message.trim()}
+              loading={sending.value}
+              disabled={!message.value.trim()}
               size="md"
             >
               Send

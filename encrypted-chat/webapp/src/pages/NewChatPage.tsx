@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useEffect } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { Button, Paper, Container, Title, TextInput, Loader } from '@mantine/core';
 import { currentUser, listUsers } from '../services/chatService';
 import { router } from '../router';
 
 export function NewChatPage() {
-  const [users, setUsers] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const users = useSignal<string[]>([]);
+  const loading = useSignal(true);
+  const searchQuery = useSignal('');
   
   const user = currentUser.value;
 
@@ -21,18 +22,18 @@ export function NewChatPage() {
       try {
         const userList = await listUsers();
         // Filter out current user
-        setUsers(userList.filter((u) => u !== user?.username));
+        users.value = userList.filter((u) => u !== user?.username);
       } catch (err) {
         console.error('Failed to fetch users:', err);
       } finally {
-        setLoading(false);
+        loading.value = false;
       }
     }
     fetchUsers();
   }, [user?.username]);
 
-  const filteredUsers = users.filter((u) =>
-    u.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredUsers = users.value.filter((u) =>
+    u.toLowerCase().includes(searchQuery.value.toLowerCase())
   );
 
   return (
@@ -53,21 +54,21 @@ export function NewChatPage() {
       <Paper shadow="md" p="md" radius="md" className="mb-4">
         <TextInput
           placeholder="Search users..."
-          value={searchQuery}
-          onChange={(event: Event) => setSearchQuery((event.target as HTMLInputElement).value)}
+          value={searchQuery.value}
+          onChange={(event: Event) => { searchQuery.value = (event.target as HTMLInputElement).value; }}
           size="md"
         />
       </Paper>
 
       {/* User list */}
       <Paper shadow="md" p="md" radius="md">
-        {loading ? (
+        {loading.value ? (
           <div className="flex justify-center py-8">
             <Loader />
           </div>
         ) : filteredUsers.length === 0 ? (
           <div className="text-center py-8 text-gray-400">
-            {searchQuery ? 'No users found' : 'No other users yet'}
+            {searchQuery.value ? 'No users found' : 'No other users yet'}
           </div>
         ) : (
           <div className="space-y-2">

@@ -1,43 +1,43 @@
-import { useState } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { Button, TextInput, PasswordInput, Paper, Container, Title, Alert } from '@mantine/core';
 import { register, currentUser } from '../services/chatService';
 import { router } from '../router';
 
 export function RegisterPage() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const username = useSignal('');
+  const password = useSignal('');
+  const confirmPassword = useSignal('');
+  const error = useSignal('');
+  const loading = useSignal(false);
 
   async function handleSubmit(event: Event) {
     event.preventDefault();
-    setError('');
+    error.value = '';
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
+    if (password.value !== confirmPassword.value) {
+      error.value = 'Passwords do not match';
       return;
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (password.value.length < 8) {
+      error.value = 'Password must be at least 8 characters';
       return;
     }
 
-    if (username.length < 3) {
-      setError('Username must be at least 3 characters');
+    if (username.value.length < 3) {
+      error.value = 'Username must be at least 3 characters';
       return;
     }
 
-    setLoading(true);
+    loading.value = true;
 
     try {
-      await register(username, password);
+      await register(username.value, password.value);
       router.push('/conversations');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      error.value = err instanceof Error ? err.message : 'Registration failed';
     } finally {
-      setLoading(false);
+      loading.value = false;
     }
   }
 
@@ -53,9 +53,9 @@ export function RegisterPage() {
         <Title order={1} className="text-center mb-6">Encrypted Chat</Title>
         <Title order={3} className="text-center mb-6 text-gray-400">Create Account</Title>
 
-        {error && (
+        {error.value && (
           <Alert color="red" className="mb-4">
-            {error}
+            {error.value}
           </Alert>
         )}
 
@@ -63,8 +63,8 @@ export function RegisterPage() {
           <TextInput
             label="Username"
             placeholder="Choose a username"
-            value={username}
-            onChange={(event: Event) => setUsername((event.target as HTMLInputElement).value)}
+            value={username.value}
+            onChange={(event: Event) => { username.value = (event.target as HTMLInputElement).value; }}
             required
             className="mb-4"
             size="md"
@@ -73,8 +73,8 @@ export function RegisterPage() {
           <PasswordInput
             label="Password"
             placeholder="Choose a password"
-            value={password}
-            onChange={(event: Event) => setPassword((event.target as HTMLInputElement).value)}
+            value={password.value}
+            onChange={(event: Event) => { password.value = (event.target as HTMLInputElement).value; }}
             required
             className="mb-4"
             size="md"
@@ -83,8 +83,8 @@ export function RegisterPage() {
           <PasswordInput
             label="Confirm Password"
             placeholder="Confirm your password"
-            value={confirmPassword}
-            onChange={(event: Event) => setConfirmPassword((event.target as HTMLInputElement).value)}
+            value={confirmPassword.value}
+            onChange={(event: Event) => { confirmPassword.value = (event.target as HTMLInputElement).value; }}
             required
             className="mb-6"
             size="md"
@@ -93,7 +93,7 @@ export function RegisterPage() {
           <Button 
             type="submit" 
             fullWidth 
-            loading={loading}
+            loading={loading.value}
             size="md"
           >
             Create Account
