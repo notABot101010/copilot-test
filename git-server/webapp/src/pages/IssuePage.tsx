@@ -11,6 +11,10 @@ import {
   TypographyStylesProvider,
   Select,
   TextInput,
+  Popover,
+  Stack,
+  ColorInput,
+  CloseButton,
 } from '@mantine/core';
 import { useRoute } from '@copilot-test/preact-router';
 import {
@@ -19,8 +23,14 @@ import {
   createProjectIssueComment,
   updateProjectIssue,
   updateProjectIssueComment,
+  listProjectTags,
+  createProjectTag,
+  getIssueTags,
+  addTagToIssue,
+  removeTagFromIssue,
   type Issue,
   type IssueComment,
+  type Tag,
   formatDate,
 } from '../api';
 
@@ -55,6 +65,13 @@ export function IssuePage() {
   const submitting = useSignal(false);
   const editingCommentId = useSignal<number | null>(null);
   const editingCommentBody = useSignal('');
+  
+  // Tag-related state
+  const issueTags = useSignal<Tag[]>([]);
+  const availableTags = useSignal<Tag[]>([]);
+  const newTagName = useSignal('');
+  const newTagColor = useSignal('#6b7280');
+  const tagPopoverOpened = useSignal(false);
 
   useSignalEffect(() => {
     // Access route.value inside the effect to track signal changes
@@ -74,12 +91,16 @@ export function IssuePage() {
     try {
       loading.value = true;
       error.value = null;
-      const [issueData, commentsData] = await Promise.all([
+      const [issueData, commentsData, issueTagsData, allTagsData] = await Promise.all([
         getProjectIssue(orgName, projectName, issueNumber),
         getProjectIssueComments(orgName, projectName, issueNumber),
+        getIssueTags(orgName, projectName, issueNumber).catch(() => []),
+        listProjectTags(orgName, projectName).catch(() => []),
       ]);
       issue.value = issueData;
       comments.value = commentsData;
+      issueTags.value = issueTagsData;
+      availableTags.value = allTagsData;
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to load issue';
     } finally {
@@ -161,6 +182,49 @@ export function IssuePage() {
       error.value = err instanceof Error ? err.message : 'Failed to update target date';
     }
   }
+
+  async function handleAddTag(tagId: number) {
+    try {
+      await addTagToIssue(orgName, projectName, issueNumber, tagId);
+      const tag = availableTags.value.find(t => t.id === tagId);
+      if (tag) {
+        issueTags.value = [...issueTags.value, tag];
+      }
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to add tag';
+    }
+  }
+
+  async function handleRemoveTag(tagId: number) {
+    try {
+      await removeTagFromIssue(orgName, projectName, issueNumber, tagId);
+      issueTags.value = issueTags.value.filter(t => t.id !== tagId);
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to remove tag';
+    }
+  }
+
+  async function handleCreateTag() {
+    if (!newTagName.value.trim()) return;
+    
+    try {
+      const tag = await createProjectTag(orgName, projectName, newTagName.value.trim(), newTagColor.value);
+      availableTags.value = [...availableTags.value, tag];
+      // Also add it to the issue
+      await addTagToIssue(orgName, projectName, issueNumber, tag.id);
+      issueTags.value = [...issueTags.value, tag];
+      newTagName.value = '';
+      newTagColor.value = '#6b7280';
+      tagPopoverOpened.value = false;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to create tag';
+    }
+  }
+
+  // Get tags not yet assigned to this issue
+  const unassignedTags = availableTags.value.filter(
+    tag => !issueTags.value.some(it => it.id === tag.id)
+  );
 
   function startEditingComment(comment: IssueComment) {
     editingCommentId.value = comment.id;
@@ -281,6 +345,78 @@ export function IssuePage() {
             style={{ width: 180 }}
           />
         </Group>
+
+        {/* Tags section */}
+        <div class="mb-4">
+          <Text size="sm" fw={500} mb="xs">Tags</Text>
+          <Group gap="xs">
+            {issueTags.value.map((tag) => (
+              <Badge 
+                key={tag.id} 
+                style={{ backgroundColor: tag.color, color: '#fff' }}
+                rightSection={
+                  <CloseButton 
+                    size="xs" 
+                    variant="transparent" 
+                    c="white"
+                    onClick={() => handleRemoveTag(tag.id)}
+                    aria-label={`Remove tag ${tag.name}`}
+                  />
+                }
+              >
+                {tag.name}
+              </Badge>
+            ))}
+            
+            <Popover opened={tagPopoverOpened.value} onChange={(opened) => tagPopoverOpened.value = opened}>
+              <Popover.Target>
+                <Button size="xs" variant="light" onClick={() => tagPopoverOpened.value = !tagPopoverOpened.value}>
+                  + Add Tag
+                </Button>
+              </Popover.Target>
+              <Popover.Dropdown>
+                <Stack gap="sm" style={{ minWidth: 200 }}>
+                  {unassignedTags.length > 0 && (
+                    <>
+                      <Text size="xs" c="dimmed">Existing tags</Text>
+                      <Group gap="xs">
+                        {unassignedTags.map((tag) => (
+                          <Badge 
+                            key={tag.id}
+                            style={{ backgroundColor: tag.color, color: '#fff', cursor: 'pointer' }}
+                            onClick={() => handleAddTag(tag.id)}
+                          >
+                            {tag.name}
+                          </Badge>
+                        ))}
+                      </Group>
+                    </>
+                  )}
+                  <Text size="xs" c="dimmed">Create new tag</Text>
+                  <Group gap="xs">
+                    <TextInput
+                      placeholder="Tag name"
+                      size="xs"
+                      value={newTagName.value}
+                      onChange={(e: Event) => newTagName.value = (e.target as HTMLInputElement).value}
+                      style={{ flex: 1 }}
+                    />
+                    <ColorInput
+                      size="xs"
+                      value={newTagColor.value}
+                      onChange={(color: string) => newTagColor.value = color}
+                      style={{ width: 80 }}
+                      withEyeDropper={false}
+                    />
+                  </Group>
+                  <Button size="xs" onClick={handleCreateTag} disabled={!newTagName.value.trim()}>
+                    Create & Add
+                  </Button>
+                </Stack>
+              </Popover.Dropdown>
+            </Popover>
+          </Group>
+        </div>
 
         {issue.value.body && (
           <TypographyStylesProvider>
