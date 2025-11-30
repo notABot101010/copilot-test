@@ -48,7 +48,8 @@ initSync(
 // Handle remote sync updates from other tabs
 function handleRemoteSync(spreadsheetId: string, remoteBinary: Uint8Array): void {
   const doc = currentSpreadsheetDoc.value;
-  if (!doc || doc.id !== spreadsheetId) return;
+  // Note: String() cast is required because Automerge returns CRDT wrapper objects
+  if (!doc || String(doc.id) !== spreadsheetId) return;
   
   try {
     const remoteDoc = Automerge.load<AutomergeSpreadsheet>(remoteBinary);
@@ -83,6 +84,16 @@ function pushToUndoStack(doc: Automerge.Doc<AutomergeSpreadsheet>): void {
   // Update signals for UI reactivity
   canUndoSignal.value = undoStack.length > 0;
   canRedoSignal.value = false;
+}
+
+/**
+ * Get the latest document from the signal and clone it to avoid outdated document errors.
+ * Returns null if no document is available.
+ */
+function getLatestClonedDoc(): Automerge.Doc<AutomergeSpreadsheet> | null {
+  const doc = currentSpreadsheetDoc.value;
+  if (!doc) return null;
+  return Automerge.clone(doc);
 }
 
 export function canUndo(): boolean {
@@ -251,7 +262,8 @@ export async function deleteSpreadsheet(id: string): Promise<boolean> {
 
 // Update a cell value
 export function updateCell(row: number, col: number, value: string): void {
-  const doc = currentSpreadsheetDoc.value;
+  // Always get the latest doc reference to avoid race conditions
+  let doc = currentSpreadsheetDoc.value;
   if (!doc) return;
   
   const key = getCellKey(row, col);
@@ -270,7 +282,11 @@ export function updateCell(row: number, col: number, value: string): void {
     pushToUndoStack(doc);
   }
   
-  const newDoc = Automerge.change(doc, `Update cell ${row}:${col}`, (d) => {
+  // Get latest cloned doc to avoid outdated document errors
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
+  
+  const newDoc = Automerge.change(clonedDoc, `Update cell ${row}:${col}`, (d) => {
     if (!d.cells[key]) {
       d.cells[key] = { value: '' };
     }
@@ -279,13 +295,14 @@ export function updateCell(row: number, col: number, value: string): void {
   });
   
   currentSpreadsheetDoc.value = newDoc;
-  saveAndBroadcast(doc, newDoc);
+  saveAndBroadcast(clonedDoc, newDoc);
 }
 
 // Update a cell value in real-time (without adding to undo stack on each keystroke)
 // This is used for propagating changes as the user types
 // On the first call of an edit session, it saves the pre-edit state for undo
 export function updateCellLive(row: number, col: number, value: string): void {
+  // Always get the latest doc reference to avoid race conditions
   const doc = currentSpreadsheetDoc.value;
   if (!doc) return;
   
@@ -299,7 +316,11 @@ export function updateCellLive(row: number, col: number, value: string): void {
     preEditDoc = doc;
   }
   
-  const newDoc = Automerge.change(doc, `Live update cell ${row}:${col}`, (d) => {
+  // Get latest cloned doc to avoid outdated document errors
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
+  
+  const newDoc = Automerge.change(clonedDoc, `Live update cell ${row}:${col}`, (d) => {
     if (!d.cells[key]) {
       d.cells[key] = { value: '' };
     }
@@ -308,7 +329,7 @@ export function updateCellLive(row: number, col: number, value: string): void {
   });
   
   currentSpreadsheetDoc.value = newDoc;
-  saveAndBroadcast(doc, newDoc);
+  saveAndBroadcast(clonedDoc, newDoc);
 }
 
 // Cancel the current edit session and restore the pre-edit state
@@ -326,22 +347,26 @@ export function cancelEdit(): void {
 
 // Update multiple cells at once
 export function updateMultipleCells(updates: { row: number; col: number; value: string }[]): void {
-  const doc = currentSpreadsheetDoc.value;
-  if (!doc || updates.length === 0) return;
+  const initialDoc = currentSpreadsheetDoc.value;
+  if (!initialDoc || updates.length === 0) return;
   
   // Check if any values actually changed
   const changedUpdates = updates.filter(({ row, col, value }) => {
     const key = getCellKey(row, col);
-    const currentValue = doc.cells[key]?.value || '';
+    const currentValue = initialDoc.cells[key]?.value || '';
     return currentValue !== value;
   });
   
   if (changedUpdates.length === 0) return;
   
   // Save to undo stack before making changes
-  pushToUndoStack(doc);
+  pushToUndoStack(initialDoc);
   
-  const newDoc = Automerge.change(doc, `Update ${changedUpdates.length} cells`, (d) => {
+  // Get latest cloned doc to avoid outdated document errors
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
+  
+  const newDoc = Automerge.change(clonedDoc, `Update ${changedUpdates.length} cells`, (d) => {
     for (const { row, col, value } of changedUpdates) {
       const key = getCellKey(row, col);
       if (!d.cells[key]) {
@@ -353,21 +378,22 @@ export function updateMultipleCells(updates: { row: number; col: number; value: 
   });
   
   currentSpreadsheetDoc.value = newDoc;
-  saveAndBroadcast(doc, newDoc);
+  saveAndBroadcast(clonedDoc, newDoc);
 }
 
 // Rename spreadsheet
 export function renameSpreadsheet(name: string): void {
-  const doc = currentSpreadsheetDoc.value;
-  if (!doc) return;
+  // Get latest cloned doc to avoid outdated document errors
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
   
-  const newDoc = Automerge.change(doc, 'Rename spreadsheet', (d) => {
+  const newDoc = Automerge.change(clonedDoc, 'Rename spreadsheet', (d) => {
     d.name = name;
     d.updatedAt = Date.now();
   });
   
   currentSpreadsheetDoc.value = newDoc;
-  saveAndBroadcast(doc, newDoc);
+  saveAndBroadcast(clonedDoc, newDoc);
 }
 
 // Update the list item with current spreadsheet info (internal, no broadcast)
@@ -376,7 +402,7 @@ function updateSpreadsheetListItemInternal(): void {
   if (!doc) return;
   
   spreadsheetList.value = spreadsheetList.value.map((item) =>
-    item.id === doc.id
+    item.id === String(doc.id)
       ? { ...item, name: doc.name, updatedAt: doc.updatedAt }
       : item
   );
@@ -385,7 +411,8 @@ function updateSpreadsheetListItemInternal(): void {
 // Save and broadcast changes to other tabs (server sync handles persistence)
 function saveAndBroadcast(oldDoc: Automerge.Doc<AutomergeSpreadsheet>, newDoc: Automerge.Doc<AutomergeSpreadsheet>): void {
   updateSpreadsheetListItemInternal();
-  broadcastChanges(newDoc.id, oldDoc, newDoc);
+  // Note: String() cast is required because Automerge returns CRDT wrapper objects
+  broadcastChanges(String(newDoc.id), oldDoc, newDoc);
 }
 
 // Get the Automerge binary for current spreadsheet
@@ -398,7 +425,8 @@ export function getSpreadsheetBinary(): Uint8Array | null {
 // Merge remote changes into the spreadsheet
 export function mergeRemoteChanges(id: string, remoteBinary: Uint8Array): void {
   const doc = currentSpreadsheetDoc.value;
-  if (!doc || doc.id !== id) return;
+  // Note: String() cast is required because Automerge returns CRDT wrapper objects
+  if (!doc || String(doc.id) !== id) return;
   
   const remoteDoc = Automerge.load<AutomergeSpreadsheet>(remoteBinary);
   const mergedDoc = Automerge.merge(doc, remoteDoc);
