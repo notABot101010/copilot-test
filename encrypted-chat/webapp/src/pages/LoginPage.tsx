@@ -1,26 +1,26 @@
-import { useState } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { Button, TextInput, PasswordInput, Paper, Container, Title, Alert } from '@mantine/core';
 import { login, currentUser } from '../services/chatService';
 import { router } from '../router';
 
 export function LoginPage() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const username = useSignal('');
+  const password = useSignal('');
+  const error = useSignal('');
+  const loading = useSignal(false);
 
   async function handleSubmit(event: Event) {
     event.preventDefault();
-    setError('');
-    setLoading(true);
+    error.value = '';
+    loading.value = true;
 
     try {
-      await login(username, password);
+      await login(username.value, password.value);
       router.push('/conversations');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      error.value = err instanceof Error ? err.message : 'Login failed';
     } finally {
-      setLoading(false);
+      loading.value = false;
     }
   }
 
@@ -36,9 +36,9 @@ export function LoginPage() {
         <Title order={1} className="text-center mb-6">Encrypted Chat</Title>
         <Title order={3} className="text-center mb-6 text-gray-400">Login</Title>
 
-        {error && (
+        {error.value && (
           <Alert color="red" className="mb-4">
-            {error}
+            {error.value}
           </Alert>
         )}
 
@@ -46,8 +46,8 @@ export function LoginPage() {
           <TextInput
             label="Username"
             placeholder="Enter your username"
-            value={username}
-            onChange={(event: Event) => setUsername((event.target as HTMLInputElement).value)}
+            value={username.value}
+            onChange={(event: Event) => { username.value = (event.target as HTMLInputElement).value; }}
             required
             className="mb-4"
             size="md"
@@ -56,8 +56,8 @@ export function LoginPage() {
           <PasswordInput
             label="Password"
             placeholder="Enter your password"
-            value={password}
-            onChange={(event: Event) => setPassword((event.target as HTMLInputElement).value)}
+            value={password.value}
+            onChange={(event: Event) => { password.value = (event.target as HTMLInputElement).value; }}
             required
             className="mb-6"
             size="md"
@@ -66,7 +66,7 @@ export function LoginPage() {
           <Button 
             type="submit" 
             fullWidth 
-            loading={loading}
+            loading={loading.value}
             size="md"
           >
             Login
