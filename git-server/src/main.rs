@@ -8,6 +8,7 @@ use tracing::{error, info, warn};
 mod config;
 mod database;
 mod error;
+mod git_ops;
 mod http_server;
 mod ssh_server;
 
@@ -200,16 +201,9 @@ async fn create_repository(
     // Ensure project directory exists
     std::fs::create_dir_all(repos_path.join(org).join(project))?;
 
-    // Initialize bare git repository with main as default branch
-    let status = tokio::process::Command::new("git")
-        .args(["init", "--bare", "--initial-branch=main"])
-        .arg(&repo_path)
-        .status()
-        .await?;
-
-    if !status.success() {
-        return Err("Failed to initialize bare git repository".into());
-    }
+    // Initialize bare git repository with main as default branch using git2
+    git_ops::init_bare_repo(&repo_path, "main")
+        .map_err(|e| format!("Failed to initialize bare git repository: {}", e))?;
 
     // Store in database
     let relative_path = format!("{}/{}/{}.git", org, project, name);

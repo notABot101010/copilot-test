@@ -12,7 +12,6 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
-use tokio::process::Command;
 use tokio::fs;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
@@ -21,6 +20,7 @@ use tracing::info;
 use crate::config::Config;
 use crate::database::Database;
 use crate::error::AppError;
+use crate::git_ops;
 
 /// Shared state for the HTTP server
 #[derive(Clone)]
@@ -565,17 +565,9 @@ async fn create_project(
     let repo_dir_name = format!("{}.git", name);
     let repo_path = state.repos_path.join(&org).join(name).join(&repo_dir_name);
 
-    // Initialize bare git repository with main as default branch
-    let output = Command::new("git")
-        .args(["init", "--bare", "--initial-branch=main"])
-        .arg(&repo_path)
-        .output()
-        .await?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to create repository: {}", stderr)));
-    }
+    // Initialize bare git repository with main as default branch using git2
+    git_ops::init_bare_repo(&repo_path, "main")
+        .map_err(|e| AppError::internal(format!("Failed to create repository: {}", e)))?;
 
     // Add to database - store relative path from repos root
     let relative_path = format!("{}/{}/{}", org, name, repo_dir_name);
@@ -696,18 +688,9 @@ async fn create_repo(
         .await
         ?;
 
-    // Initialize bare git repository with main as default branch
-    let output = Command::new("git")
-        .args(["init", "--bare", "--initial-branch=main"])
-        .arg(&repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to create repository: {}", stderr)));
-    }
+    // Initialize bare git repository with main as default branch using git2
+    git_ops::init_bare_repo(&repo_path, "main")
+        .map_err(|e| AppError::internal(format!("Failed to create repository: {}", e)))?;
 
     // Add to database - store relative path from repos root
     let relative_path = format!("{}/{}/{}", org, project, repo_dir_name);
@@ -759,7 +742,7 @@ async fn list_files(
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
-    let files = list_git_files(&repo_path, "HEAD", "").await?;
+    let files = list_git_files(&repo_path, "HEAD", "")?;
 
     Ok(Json(files))
 }
@@ -790,143 +773,9 @@ async fn update_file(
 
     let repo_path = state.repos_path.join(&repo.path);
 
-    // For a bare repository, we need to use a worktree to make changes
-    // We'll create a temporary worktree, make the change, commit, and clean up
-    let temp_dir = std::env::temp_dir().join(format!("git-server-{}-{}", name, std::process::id()));
-
-    // Clone the bare repo to a temporary directory
-    let output = Command::new("git")
-        .args(["clone", "--local"])
-        .arg(&repo_path)
-        .arg(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    // If clone fails (empty repo), init a new repo
-    let is_empty_repo = !output.status.success();
-    if is_empty_repo {
-        fs::create_dir_all(&temp_dir)
-            .await
-            ?;
-
-        let output = Command::new("git")
-            .args(["init"])
-            .current_dir(&temp_dir)
-            .output()
-            .await
-            ?;
-
-        if !output.status.success() {
-            let _ = fs::remove_dir_all(&temp_dir).await;
-            return Err(AppError::internal("Failed to initialize temp repository"));
-        }
-
-        // Set remote to push to
-        let output = Command::new("git")
-            .args(["remote", "add", "origin"])
-            .arg(&repo_path)
-            .current_dir(&temp_dir)
-            .output()
-            .await
-            ?;
-
-        if !output.status.success() {
-            let _ = fs::remove_dir_all(&temp_dir).await;
-            return Err(AppError::internal("Failed to set remote"));
-        }
-    }
-
-    // Write the file
-    let file_path = temp_dir.join(&body.path);
-    if let Some(parent) = file_path.parent() {
-        fs::create_dir_all(parent)
-            .await
-            ?;
-    }
-    fs::write(&file_path, &body.content)
-        .await
-        ?;
-
-    // Configure git user for this commit
-    let email_output = Command::new("git")
-        .args(["config", "user.email", "webapp@git-server.local"])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !email_output.status.success() {
-        let _ = fs::remove_dir_all(&temp_dir).await;
-        return Err(AppError::internal("Failed to configure git user email"));
-    }
-
-    let name_output = Command::new("git")
-        .args(["config", "user.name", "Git Server Webapp"])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !name_output.status.success() {
-        let _ = fs::remove_dir_all(&temp_dir).await;
-        return Err(AppError::internal("Failed to configure git user name"));
-    }
-
-    // Add the file
-    let output = Command::new("git")
-        .args(["add", &body.path])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let _ = fs::remove_dir_all(&temp_dir).await;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to add file: {}", stderr)));
-    }
-
-    // Commit
-    let output = Command::new("git")
-        .args(["commit", "-m", &body.message])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let _ = fs::remove_dir_all(&temp_dir).await;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to commit: {}", stderr)));
-    }
-
-    // Push to the bare repo
-    let output = Command::new("git")
-        .args(["push", "origin", "HEAD:main"])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    // Try HEAD:master if main fails
-    if !output.status.success() {
-        let output = Command::new("git")
-            .args(["push", "origin", "HEAD:master"])
-            .current_dir(&temp_dir)
-            .output()
-            .await
-            ?;
-
-        if !output.status.success() {
-            let _ = fs::remove_dir_all(&temp_dir).await;
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AppError::internal(format!("Failed to push: {}", stderr)));
-        }
-    }
-
-    // Clean up temp directory
-    let _ = fs::remove_dir_all(&temp_dir).await;
+    // Use git2 to update the file directly in the bare repository
+    git_ops::update_file_and_commit(&repo_path, &body.path, &body.content, &body.message)
+        .map_err(|e| AppError::internal(format!("Failed to update file: {}", e)))?;
 
     Ok(())
 }
@@ -957,91 +806,9 @@ async fn delete_file(
 
     let repo_path = state.repos_path.join(&repo.path);
 
-    // For a bare repository, we need to use a temporary worktree
-    let temp_dir = std::env::temp_dir().join(format!("git-server-{}-{}-{}-{}", org, project, name, std::process::id()));
-
-    // Clone the bare repo to a temporary directory
-    let output = Command::new("git")
-        .args(["clone", "--local"])
-        .arg(&repo_path)
-        .arg(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let _ = fs::remove_dir_all(&temp_dir).await;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to clone: {}", stderr)));
-    }
-
-    // Configure git user for this commit
-    let _ = Command::new("git")
-        .args(["config", "user.email", "webapp@git-server.local"])
-        .current_dir(&temp_dir)
-        .output()
-        .await;
-
-    let _ = Command::new("git")
-        .args(["config", "user.name", "Git Server Webapp"])
-        .current_dir(&temp_dir)
-        .output()
-        .await;
-
-    // Remove the file
-    let output = Command::new("git")
-        .args(["rm", &body.path])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let _ = fs::remove_dir_all(&temp_dir).await;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to remove file: {}", stderr)));
-    }
-
-    // Commit
-    let output = Command::new("git")
-        .args(["commit", "-m", &body.message])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let _ = fs::remove_dir_all(&temp_dir).await;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to commit: {}", stderr)));
-    }
-
-    // Push to the bare repo
-    let output = Command::new("git")
-        .args(["push", "origin", "HEAD:main"])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    // Try HEAD:master if main fails
-    if !output.status.success() {
-        let output = Command::new("git")
-            .args(["push", "origin", "HEAD:master"])
-            .current_dir(&temp_dir)
-            .output()
-            .await
-            ?;
-
-        if !output.status.success() {
-            let _ = fs::remove_dir_all(&temp_dir).await;
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AppError::internal(format!("Failed to push: {}", stderr)));
-        }
-    }
-
-    // Clean up temp directory
-    let _ = fs::remove_dir_all(&temp_dir).await;
+    // Use git2 to delete the file directly in the bare repository
+    git_ops::delete_file_and_commit(&repo_path, &body.path, &body.message)
+        .map_err(|e| AppError::internal(format!("Failed to delete file: {}", e)))?;
 
     Ok(())
 }
@@ -1059,7 +826,7 @@ async fn list_commits(
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
-    let commits = list_git_commits(&repo_path).await?;
+    let commits = list_git_commits(&repo_path)?;
 
     Ok(Json(commits))
 }
@@ -1080,7 +847,7 @@ async fn get_tree(
     let repo_path = state.repos_path.join(&repo.path);
     let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
     let path = query.path.as_deref().unwrap_or("");
-    let files = list_git_files(&repo_path, git_ref, path).await?;
+    let files = list_git_files(&repo_path, git_ref, path)?;
 
     Ok(Json(files))
 }
@@ -1101,13 +868,13 @@ async fn get_blob_root(
     let repo_path = state.repos_path.join(&repo.path);
     let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
     let path = query.path.as_deref().ok_or_else(|| AppError::bad_request("path query parameter required"))?;
-    let content = get_git_blob(&repo_path, git_ref, path).await?;
+    let content = get_git_blob(&repo_path, git_ref, path)?;
 
     Ok(content)
 }
 
 /// List files in a git repository at a specific ref and path
-async fn list_git_files(
+fn list_git_files(
     repo_path: &PathBuf,
     git_ref: &str,
     path: &str,
@@ -1122,107 +889,54 @@ async fn list_git_files(
         return Err(AppError::bad_request("Invalid path"));
     }
 
-    let tree_path = if path.is_empty() {
-        git_ref.to_string()
-    } else {
-        format!("{}:{}", git_ref, path)
-    };
-
-    let output = Command::new("git")
-        .args(["ls-tree", "-l", &tree_path])
-        .current_dir(repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("Not a valid object") || stderr.contains("fatal:") {
-            return Ok(vec![]);
+    // Use git2 to list files
+    match git_ops::list_files(repo_path, git_ref, path) {
+        Ok(entries) => {
+            Ok(entries.into_iter().map(|e| FileEntry {
+                name: e.name,
+                path: e.path,
+                entry_type: e.entry_type,
+                size: e.size,
+            }).collect())
         }
-        return Err(AppError::internal(stderr.to_string()));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut entries = Vec::new();
-
-    for line in stdout.lines() {
-        // Format: <mode> <type> <hash> <size>\t<name>
-        // Example: 100644 blob abc123 1234    file.txt
-        if let Some((meta, name)) = line.split_once('\t') {
-            let parts: Vec<&str> = meta.split_whitespace().collect();
-            if parts.len() >= 4 {
-                let entry_type = match parts[1] {
-                    "blob" => "file",
-                    "tree" => "dir",
-                    _ => continue,
-                };
-                let size = if entry_type == "file" {
-                    parts[3].parse().ok()
-                } else {
-                    None
-                };
-                let entry_path = if path.is_empty() {
-                    name.to_string()
-                } else {
-                    format!("{}/{}", path, name)
-                };
-                entries.push(FileEntry {
-                    name: name.to_string(),
-                    path: entry_path,
-                    entry_type: entry_type.to_string(),
-                    size,
-                });
+        Err(git_ops::GitError::Git(err)) => {
+            // Empty repo or invalid ref
+            if err.code() == git2::ErrorCode::NotFound || err.code() == git2::ErrorCode::UnbornBranch {
+                Ok(vec![])
+            } else {
+                Err(AppError::internal(err.to_string()))
             }
         }
+        Err(e) => Err(AppError::internal(e.to_string())),
     }
-
-    Ok(entries)
 }
 
 /// List commits in a git repository
-async fn list_git_commits(repo_path: &PathBuf) -> Result<Vec<CommitInfo>, AppError> {
-    let output = Command::new("git")
-        .args([
-            "log",
-            "--format=%H%n%h%n%an%n%ai%n%s%n---",
-            "-n",
-            "50",
-        ])
-        .current_dir(repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("does not have any commits") {
-            return Ok(vec![]);
+fn list_git_commits(repo_path: &PathBuf) -> Result<Vec<CommitInfo>, AppError> {
+    match git_ops::list_commits(repo_path, 50) {
+        Ok(commits) => {
+            Ok(commits.into_iter().map(|c| CommitInfo {
+                hash: c.hash,
+                short_hash: c.short_hash,
+                author: c.author,
+                date: c.date,
+                message: c.message,
+            }).collect())
         }
-        return Err(AppError::internal(stderr.to_string()));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut commits = Vec::new();
-
-    for commit_block in stdout.split("---\n") {
-        let lines: Vec<&str> = commit_block.lines().collect();
-        if lines.len() >= 5 {
-            commits.push(CommitInfo {
-                hash: lines[0].to_string(),
-                short_hash: lines[1].to_string(),
-                author: lines[2].to_string(),
-                date: lines[3].to_string(),
-                message: lines[4].to_string(),
-            });
+        Err(git_ops::GitError::Git(err)) => {
+            // Empty repo
+            if err.code() == git2::ErrorCode::NotFound || err.code() == git2::ErrorCode::UnbornBranch {
+                Ok(vec![])
+            } else {
+                Err(AppError::internal(err.to_string()))
+            }
         }
+        Err(e) => Err(AppError::internal(e.to_string())),
     }
-
-    Ok(commits)
 }
 
 /// Get blob content from git
-async fn get_git_blob(
+fn get_git_blob(
     repo_path: &PathBuf,
     git_ref: &str,
     path: &str,
@@ -1237,21 +951,13 @@ async fn get_git_blob(
         return Err(AppError::bad_request("Invalid path"));
     }
 
-    let blob_path = format!("{}:{}", git_ref, path);
-
-    let output = Command::new("git")
-        .args(["show", &blob_path])
-        .current_dir(repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::not_found(stderr.to_string()));
+    match git_ops::get_blob_content(repo_path, git_ref, path) {
+        Ok(content) => Ok(content),
+        Err(git_ops::GitError::Git(err)) => {
+            Err(AppError::not_found(err.to_string()))
+        }
+        Err(e) => Err(AppError::not_found(e.to_string())),
     }
-
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 /// Validate that a git ref is safe (no special characters that could be used for injection)
@@ -1309,21 +1015,10 @@ async fn list_branches(
 
     let repo_path = state.repos_path.join(&repo.path);
 
-    let output = Command::new("git")
-        .args(["branch", "--list", "--format=%(refname:short)"])
-        .current_dir(&repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        return Ok(Json(vec![]));
+    match git_ops::list_branches(&repo_path) {
+        Ok(branches) => Ok(Json(branches)),
+        Err(_) => Ok(Json(vec![])),
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let branches: Vec<String> = stdout.lines().map(|s| s.to_string()).collect();
-
-    Ok(Json(branches))
 }
 
 /// Fork request body with optional target org and project
@@ -1392,19 +1087,9 @@ async fn fork_repo(
         .await
         ?;
 
-    // Clone the repository
-    let output = Command::new("git")
-        .args(["clone", "--bare"])
-        .arg(&source_repo_path)
-        .arg(&new_repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to fork repository: {}", stderr)));
-    }
+    // Clone the repository using git2
+    git_ops::clone_bare(&source_repo_path, &new_repo_path)
+        .map_err(|e| AppError::internal(format!("Failed to fork repository: {}", e)))?;
 
     // Add to database with fork info
     let forked_from = format!("{}/{}/{}", org, project, name);
@@ -1709,64 +1394,20 @@ async fn get_pr_commits(
 
     let repo_path = state.repos_path.join(&source_repo.path);
 
-    // Get commits on the source branch that aren't in the target branch
-    let output = Command::new("git")
-        .args([
-            "log",
-            "--format=%H%n%h%n%an%n%ai%n%s%n---",
-            &format!("{}..{}", pr.target_branch, pr.source_branch),
-        ])
-        .current_dir(&repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        // If the comparison fails, just get commits from source branch
-        let output = Command::new("git")
-            .args([
-                "log",
-                "--format=%H%n%h%n%an%n%ai%n%s%n---",
-                "-n",
-                "50",
-                &pr.source_branch,
-            ])
-            .current_dir(&repo_path)
-            .output()
-            .await
-            ?;
-
-        if !output.status.success() {
-            return Ok(Json(vec![]));
+    // Get commits between target and source branches using git2
+    match git_ops::get_commits_between(&repo_path, &pr.target_branch, &pr.source_branch, 50) {
+        Ok(commits) => {
+            let commit_infos: Vec<CommitInfo> = commits.into_iter().map(|c| CommitInfo {
+                hash: c.hash,
+                short_hash: c.short_hash,
+                author: c.author,
+                date: c.date,
+                message: c.message,
+            }).collect();
+            Ok(Json(commit_infos))
         }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let commits = parse_commits(&stdout);
-        return Ok(Json(commits));
+        Err(_) => Ok(Json(vec![])),
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let commits = parse_commits(&stdout);
-
-    Ok(Json(commits))
-}
-
-/// Parse commits from git log output
-fn parse_commits(stdout: &str) -> Vec<CommitInfo> {
-    let mut commits = Vec::new();
-    for commit_block in stdout.split("---\n") {
-        let lines: Vec<&str> = commit_block.lines().collect();
-        if lines.len() >= 5 {
-            commits.push(CommitInfo {
-                hash: lines[0].to_string(),
-                short_hash: lines[1].to_string(),
-                author: lines[2].to_string(),
-                date: lines[3].to_string(),
-                message: lines[4].to_string(),
-            });
-        }
-    }
-    commits
 }
 
 /// Get files changed in a pull request
@@ -1807,86 +1448,35 @@ async fn get_pr_files(
 
     // If same repo, do a simple diff
     if source_repo.org_name == target_repo.org_name && source_repo.project_name == target_repo.project_name && source_repo.name == target_repo.name {
-        return get_branch_diff(&source_repo_path, &pr.target_branch, &pr.source_branch).await;
+        return get_branch_diff(&source_repo_path, &pr.target_branch, &pr.source_branch);
     }
 
-    // For cross-repo PRs, we need to fetch the target and compare
-    // First, add the target as a remote if not already done
-    let _ = Command::new("git")
-        .args(["remote", "add", "target-for-pr"])
-        .arg(&target_repo_path)
-        .current_dir(&source_repo_path)
-        .output()
-        .await;
-
-    // Fetch from target
-    let _ = Command::new("git")
-        .args(["fetch", "target-for-pr", &pr.target_branch])
-        .current_dir(&source_repo_path)
-        .output()
-        .await;
+    // For cross-repo PRs, we need to fetch the target and compare using git2
+    let _ = git_ops::add_remote_and_fetch(&source_repo_path, "target-for-pr", &target_repo_path, &pr.target_branch);
 
     let target_ref = format!("target-for-pr/{}", pr.target_branch);
-    get_branch_diff(&source_repo_path, &target_ref, &pr.source_branch).await
+    get_branch_diff(&source_repo_path, &target_ref, &pr.source_branch)
 }
 
 /// Get diff between two branches
-async fn get_branch_diff(
+fn get_branch_diff(
     repo_path: &PathBuf,
     base: &str,
     head: &str,
 ) -> Result<Json<Vec<FileDiff>>, AppError> {
-    // Get list of changed files with stats
-    let output = Command::new("git")
-        .args(["diff", "--numstat", base, head])
-        .current_dir(repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        return Ok(Json(vec![]));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut files = Vec::new();
-
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() >= 3 {
-            let additions: i32 = parts[0].parse().unwrap_or(0);
-            let deletions: i32 = parts[1].parse().unwrap_or(0);
-            let path = parts[2].to_string();
-
-            // Get the actual diff for this file
-            let diff_output = Command::new("git")
-                .args(["diff", base, head, "--", &path])
-                .current_dir(repo_path)
-                .output()
-                .await
-                ?;
-
-            let diff = String::from_utf8_lossy(&diff_output.stdout).to_string();
-
-            let status = if additions > 0 && deletions == 0 {
-                "added"
-            } else if additions == 0 && deletions > 0 {
-                "deleted"
-            } else {
-                "modified"
-            };
-
-            files.push(FileDiff {
-                path,
-                status: status.to_string(),
-                additions,
-                deletions,
-                diff,
-            });
+    match git_ops::get_branch_diff(repo_path, base, head) {
+        Ok(diffs) => {
+            let file_diffs: Vec<FileDiff> = diffs.into_iter().map(|d| FileDiff {
+                path: d.path,
+                status: d.status,
+                additions: d.additions,
+                deletions: d.deletions,
+                diff: d.diff,
+            }).collect();
+            Ok(Json(file_diffs))
         }
+        Err(_) => Ok(Json(vec![])),
     }
-
-    Ok(Json(files))
 }
 
 /// Query parameters for git info/refs
@@ -1915,21 +1505,9 @@ async fn git_info_refs(
 
     let repo_path = state.repos_path.join(&repo.path);
 
-    // Service name comes with git- prefix, but the git command needs it without
-    let git_cmd = service.strip_prefix("git-").unwrap_or(service);
-
-    // Run git command
-    let output = Command::new("git")
-        .args([git_cmd, "--stateless-rpc", "--advertise-refs", "."])
-        .current_dir(&repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(stderr.to_string()));
-    }
+    // Get advertised refs using git2
+    let refs_output = git_ops::get_advertised_refs(&repo_path, service)
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
     // Build response with proper git smart protocol format
     let pkt_line = format!("# service={}\n", service);
@@ -1939,7 +1517,7 @@ async fn git_info_refs(
     body.extend_from_slice(pkt_len.as_bytes());
     body.extend_from_slice(pkt_line.as_bytes());
     body.extend_from_slice(b"0000"); // flush packet
-    body.extend_from_slice(&output.stdout);
+    body.extend_from_slice(&refs_output);
 
     let content_type = format!("application/x-{}-advertisement", service);
 
@@ -1969,35 +1547,15 @@ async fn git_upload_pack(
 
     let repo_path = state.repos_path.join(&repo.path);
 
-    // Create a child process
-    let mut child = tokio::process::Command::new("git")
-        .args(["upload-pack", "--stateless-rpc", "."])
-        .current_dir(&repo_path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        ?;
-
-    // Write request body to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(&body).await?;
-    }
-
-    // Read output
-    let output = child.wait_with_output().await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(stderr.to_string()));
-    }
+    // Process upload-pack request using git2
+    let response_data = git_ops::process_upload_pack_request(&repo_path, &body)
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/x-git-upload-pack-result")
         .header("Cache-Control", "no-cache")
-        .body(Body::from(output.stdout))
+        .body(Body::from(response_data))
         .unwrap())
 }
 
@@ -2019,35 +1577,15 @@ async fn git_receive_pack(
 
     let repo_path = state.repos_path.join(&repo.path);
 
-    // Create a child process
-    let mut child = tokio::process::Command::new("git")
-        .args(["receive-pack", "--stateless-rpc", "."])
-        .current_dir(&repo_path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        ?;
-
-    // Write request body to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(&body).await?;
-    }
-
-    // Read output
-    let output = child.wait_with_output().await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(stderr.to_string()));
-    }
+    // Process receive-pack request using git2
+    let response_data = git_ops::process_receive_pack_request(&repo_path, &body)
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/x-git-receive-pack-result")
         .header("Cache-Control", "no-cache")
-        .body(Body::from(output.stdout))
+        .body(Body::from(response_data))
         .unwrap())
 }
 
@@ -2074,7 +1612,7 @@ async fn project_list_files(
 ) -> Result<Json<Vec<FileEntry>>, AppError> {
     let repo = get_project_repo(&state, &org, &project).await?;
     let repo_path = state.repos_path.join(&repo.path);
-    let files = list_git_files(&repo_path, "HEAD", "").await?;
+    let files = list_git_files(&repo_path, "HEAD", "")?;
     Ok(Json(files))
 }
 
@@ -2106,7 +1644,7 @@ async fn project_list_commits(
 ) -> Result<Json<Vec<CommitInfo>>, AppError> {
     let repo = get_project_repo(&state, &org, &project).await?;
     let repo_path = state.repos_path.join(&repo.path);
-    let commits = list_git_commits(&repo_path).await?;
+    let commits = list_git_commits(&repo_path)?;
     Ok(Json(commits))
 }
 
@@ -2120,7 +1658,7 @@ async fn project_get_tree(
     let repo_path = state.repos_path.join(&repo.path);
     let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
     let path = query.path.as_deref().unwrap_or("");
-    let files = list_git_files(&repo_path, git_ref, path).await?;
+    let files = list_git_files(&repo_path, git_ref, path)?;
     Ok(Json(files))
 }
 
@@ -2134,7 +1672,7 @@ async fn project_get_blob(
     let repo_path = state.repos_path.join(&repo.path);
     let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
     let path = query.path.as_deref().ok_or_else(|| AppError::bad_request("path query parameter required"))?;
-    let content = get_git_blob(&repo_path, git_ref, path).await?;
+    let content = get_git_blob(&repo_path, git_ref, path)?;
     Ok(content)
 }
 
@@ -2146,21 +1684,10 @@ async fn project_list_branches(
     let repo = get_project_repo(&state, &org, &project).await?;
     let repo_path = state.repos_path.join(&repo.path);
 
-    let output = Command::new("git")
-        .args(["branch", "--list", "--format=%(refname:short)"])
-        .current_dir(&repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        return Ok(Json(vec![]));
+    match git_ops::list_branches(&repo_path) {
+        Ok(branches) => Ok(Json(branches)),
+        Err(_) => Ok(Json(vec![])),
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let branches: Vec<String> = stdout.lines().map(|s| s.to_string()).collect();
-
-    Ok(Json(branches))
 }
 
 /// Fork a project's repository
@@ -2217,19 +1744,9 @@ async fn project_fork(
     let new_repo_path = state.repos_path.join(target_org).join(target_project).join(&new_repo_dir_name);
     let source_repo_path = state.repos_path.join(&source_repo.path);
 
-    // Clone the repository
-    let output = Command::new("git")
-        .args(["clone", "--bare"])
-        .arg(&source_repo_path)
-        .arg(&new_repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to fork repository: {}", stderr)));
-    }
+    // Clone the repository using git2
+    git_ops::clone_bare(&source_repo_path, &new_repo_path)
+        .map_err(|e| AppError::internal(format!("Failed to fork repository: {}", e)))?;
 
     // Add to database with fork info
     let forked_from = format!("{}/{}", org, project);
@@ -2495,27 +2012,20 @@ async fn project_get_pr_commits(
     let source_repo = get_project_repo(&state, source_org, source_project).await?;
     let repo_path = state.repos_path.join(&source_repo.path);
 
-    // Get commits on the source branch
-    let output = Command::new("git")
-        .args([
-            "log",
-            "--format=%H%n%h%n%an%n%ai%n%s%n---",
-            "-n",
-            "50",
-            &pr.source_branch,
-        ])
-        .current_dir(&repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        return Ok(Json(vec![]));
+    // Get commits between target and source branches using git2
+    match git_ops::get_commits_between(&repo_path, &pr.target_branch, &pr.source_branch, 50) {
+        Ok(commits) => {
+            let commit_infos: Vec<CommitInfo> = commits.into_iter().map(|c| CommitInfo {
+                hash: c.hash,
+                short_hash: c.short_hash,
+                author: c.author,
+                date: c.date,
+                message: c.message,
+            }).collect();
+            Ok(Json(commit_infos))
+        }
+        Err(_) => Ok(Json(vec![])),
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let commits = parse_commits(&stdout);
-    Ok(Json(commits))
 }
 
 /// Get files changed in a pull request for a project
@@ -2548,25 +2058,14 @@ async fn project_get_pr_files(
 
     // If same repo, do a simple diff
     if source_repo.org_name == target_repo.org_name && source_repo.project_name == target_repo.project_name {
-        return get_branch_diff(&source_repo_path, &pr.target_branch, &pr.source_branch).await;
+        return get_branch_diff(&source_repo_path, &pr.target_branch, &pr.source_branch);
     }
 
-    // For cross-repo PRs, fetch and compare
-    let _ = Command::new("git")
-        .args(["remote", "add", "target-for-pr"])
-        .arg(&target_repo_path)
-        .current_dir(&source_repo_path)
-        .output()
-        .await;
-
-    let _ = Command::new("git")
-        .args(["fetch", "target-for-pr", &pr.target_branch])
-        .current_dir(&source_repo_path)
-        .output()
-        .await;
+    // For cross-repo PRs, fetch and compare using git2
+    let _ = git_ops::add_remote_and_fetch(&source_repo_path, "target-for-pr", &target_repo_path, &pr.target_branch);
 
     let target_ref = format!("target-for-pr/{}", pr.target_branch);
-    get_branch_diff(&source_repo_path, &target_ref, &pr.source_branch).await
+    get_branch_diff(&source_repo_path, &target_ref, &pr.source_branch)
 }
 
 // ============ Project-level Git HTTP Smart Protocol ============
@@ -2586,19 +2085,9 @@ async fn project_git_info_refs(
     let repo = get_project_repo(&state, &org, project_name).await?;
     let repo_path = state.repos_path.join(&repo.path);
 
-    let git_cmd = service.strip_prefix("git-").unwrap_or(service);
-
-    let output = Command::new("git")
-        .args([git_cmd, "--stateless-rpc", "--advertise-refs", "."])
-        .current_dir(&repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(stderr.to_string()));
-    }
+    // Get advertised refs using git2
+    let refs_output = git_ops::get_advertised_refs(&repo_path, service)
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
     let pkt_line = format!("# service={}\n", service);
     let pkt_len = format!("{:04x}", pkt_line.len() + 4);
@@ -2607,7 +2096,7 @@ async fn project_git_info_refs(
     body.extend_from_slice(pkt_len.as_bytes());
     body.extend_from_slice(pkt_line.as_bytes());
     body.extend_from_slice(b"0000");
-    body.extend_from_slice(&output.stdout);
+    body.extend_from_slice(&refs_output);
 
     let content_type = format!("application/x-{}-advertisement", service);
 
@@ -2629,32 +2118,15 @@ async fn project_git_upload_pack(
     let repo = get_project_repo(&state, &org, project_name).await?;
     let repo_path = state.repos_path.join(&repo.path);
 
-    let mut child = tokio::process::Command::new("git")
-        .args(["upload-pack", "--stateless-rpc", "."])
-        .current_dir(&repo_path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        ?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(&body).await?;
-    }
-
-    let output = child.wait_with_output().await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(stderr.to_string()));
-    }
+    // Process upload-pack request using git2
+    let response_data = git_ops::process_upload_pack_request(&repo_path, &body)
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/x-git-upload-pack-result")
         .header("Cache-Control", "no-cache")
-        .body(Body::from(output.stdout))
+        .body(Body::from(response_data))
         .unwrap())
 }
 
@@ -2668,32 +2140,15 @@ async fn project_git_receive_pack(
     let repo = get_project_repo(&state, &org, project_name).await?;
     let repo_path = state.repos_path.join(&repo.path);
 
-    let mut child = tokio::process::Command::new("git")
-        .args(["receive-pack", "--stateless-rpc", "."])
-        .current_dir(&repo_path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        ?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(&body).await?;
-    }
-
-    let output = child.wait_with_output().await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(stderr.to_string()));
-    }
+    // Process receive-pack request using git2
+    let response_data = git_ops::process_receive_pack_request(&repo_path, &body)
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/x-git-receive-pack-result")
         .header("Cache-Control", "no-cache")
-        .body(Body::from(output.stdout))
+        .body(Body::from(response_data))
         .unwrap())
 }
 
@@ -2718,127 +2173,10 @@ async fn update_file_impl(
 
     let repo_path = state.repos_path.join(&repo.path);
 
-    // For a bare repository, we need to use a worktree to make changes
-    let temp_dir = std::env::temp_dir().join(format!("git-server-{}-{}", repo.name, std::process::id()));
+    // Use git2 to update the file directly in the bare repository
+    git_ops::update_file_and_commit(&repo_path, &body.path, &body.content, &body.message)
+        .map_err(|e| AppError::internal(format!("Failed to update file: {}", e)))?;
 
-    // Clone the bare repo to a temporary directory
-    let output = Command::new("git")
-        .args(["clone", "--local"])
-        .arg(&repo_path)
-        .arg(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    // If clone fails (empty repo), init a new repo
-    let is_empty_repo = !output.status.success();
-    if is_empty_repo {
-        fs::create_dir_all(&temp_dir)
-            .await
-            ?;
-
-        let output = Command::new("git")
-            .args(["init"])
-            .current_dir(&temp_dir)
-            .output()
-            .await
-            ?;
-
-        if !output.status.success() {
-            let _ = fs::remove_dir_all(&temp_dir).await;
-            return Err(AppError::internal("Failed to initialize temp repository"));
-        }
-
-        let output = Command::new("git")
-            .args(["remote", "add", "origin"])
-            .arg(&repo_path)
-            .current_dir(&temp_dir)
-            .output()
-            .await
-            ?;
-
-        if !output.status.success() {
-            let _ = fs::remove_dir_all(&temp_dir).await;
-            return Err(AppError::internal("Failed to set remote"));
-        }
-    }
-
-    // Write the file
-    let file_path = temp_dir.join(&body.path);
-    if let Some(parent) = file_path.parent() {
-        fs::create_dir_all(parent)
-            .await
-            ?;
-    }
-    fs::write(&file_path, &body.content)
-        .await
-        ?;
-
-    // Configure git user
-    let _ = Command::new("git")
-        .args(["config", "user.email", "webapp@git-server.local"])
-        .current_dir(&temp_dir)
-        .output()
-        .await;
-
-    let _ = Command::new("git")
-        .args(["config", "user.name", "Git Server Webapp"])
-        .current_dir(&temp_dir)
-        .output()
-        .await;
-
-    // Add the file
-    let output = Command::new("git")
-        .args(["add", &body.path])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let _ = fs::remove_dir_all(&temp_dir).await;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to add file: {}", stderr)));
-    }
-
-    // Commit
-    let output = Command::new("git")
-        .args(["commit", "-m", &body.message])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let _ = fs::remove_dir_all(&temp_dir).await;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to commit: {}", stderr)));
-    }
-
-    // Push to the bare repo
-    let output = Command::new("git")
-        .args(["push", "origin", "HEAD:main"])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let output = Command::new("git")
-            .args(["push", "origin", "HEAD:master"])
-            .current_dir(&temp_dir)
-            .output()
-            .await
-            ?;
-
-        if !output.status.success() {
-            let _ = fs::remove_dir_all(&temp_dir).await;
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AppError::internal(format!("Failed to push: {}", stderr)));
-        }
-    }
-
-    let _ = fs::remove_dir_all(&temp_dir).await;
     Ok(())
 }
 
@@ -2861,83 +2199,10 @@ async fn delete_file_impl(
 
     let repo_path = state.repos_path.join(&repo.path);
 
-    let temp_dir = std::env::temp_dir().join(format!("git-server-{}-{}", repo.name, std::process::id()));
+    // Use git2 to delete the file directly in the bare repository
+    git_ops::delete_file_and_commit(&repo_path, &body.path, &body.message)
+        .map_err(|e| AppError::internal(format!("Failed to delete file: {}", e)))?;
 
-    let output = Command::new("git")
-        .args(["clone", "--local"])
-        .arg(&repo_path)
-        .arg(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let _ = fs::remove_dir_all(&temp_dir).await;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to clone: {}", stderr)));
-    }
-
-    let _ = Command::new("git")
-        .args(["config", "user.email", "webapp@git-server.local"])
-        .current_dir(&temp_dir)
-        .output()
-        .await;
-
-    let _ = Command::new("git")
-        .args(["config", "user.name", "Git Server Webapp"])
-        .current_dir(&temp_dir)
-        .output()
-        .await;
-
-    let output = Command::new("git")
-        .args(["rm", &body.path])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let _ = fs::remove_dir_all(&temp_dir).await;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to remove file: {}", stderr)));
-    }
-
-    let output = Command::new("git")
-        .args(["commit", "-m", &body.message])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let _ = fs::remove_dir_all(&temp_dir).await;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(format!("Failed to commit: {}", stderr)));
-    }
-
-    let output = Command::new("git")
-        .args(["push", "origin", "HEAD:main"])
-        .current_dir(&temp_dir)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let output = Command::new("git")
-            .args(["push", "origin", "HEAD:master"])
-            .current_dir(&temp_dir)
-            .output()
-            .await
-            ?;
-
-        if !output.status.success() {
-            let _ = fs::remove_dir_all(&temp_dir).await;
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(AppError::internal(format!("Failed to push: {}", stderr)));
-        }
-    }
-
-    let _ = fs::remove_dir_all(&temp_dir).await;
     Ok(())
 }
 
