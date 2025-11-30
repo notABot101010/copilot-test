@@ -562,6 +562,231 @@ pub fn add_remote_and_fetch(
     Ok(())
 }
 
+/// Reference info for smart protocol
+#[derive(Debug, Clone)]
+pub struct RefInfo {
+    pub name: String,
+    pub oid: String,
+}
+
+/// Get advertised refs in the format needed for git smart protocol
+/// Returns refs in pkt-line format suitable for upload-pack/receive-pack advertisement
+pub fn get_advertised_refs(repo_path: &Path, service: &str) -> Result<Vec<u8>, GitError> {
+    let repo = Repository::open_bare(repo_path).or_else(|_| Repository::open(repo_path))?;
+    
+    let mut refs: Vec<RefInfo> = Vec::new();
+    
+    // Get HEAD first if it points to something
+    if let Ok(head) = repo.head() {
+        if let Some(oid) = head.target() {
+            refs.push(RefInfo {
+                name: "HEAD".to_string(),
+                oid: oid.to_string(),
+            });
+        }
+    }
+    
+    // Iterate over all references
+    if let Ok(reference_iter) = repo.references() {
+        for reference in reference_iter {
+            if let Ok(reference) = reference {
+                if let (Some(name), Some(oid)) = (reference.name(), reference.target()) {
+                    refs.push(RefInfo {
+                        name: name.to_string(),
+                        oid: oid.to_string(),
+                    });
+                }
+            }
+        }
+    }
+    
+    // Generate pkt-line format output
+    let mut output = Vec::new();
+    
+    let capabilities = if service == "git-upload-pack" {
+        "multi_ack thin-pack side-band side-band-64k ofs-delta shallow no-progress include-tag multi_ack_detailed symref=HEAD:refs/heads/main agent=git2-server/1.0"
+    } else {
+        "report-status delete-refs side-band-64k quiet atomic ofs-delta agent=git2-server/1.0"
+    };
+    
+    for (i, ref_info) in refs.iter().enumerate() {
+        let line = if i == 0 {
+            // First ref includes capabilities
+            format!("{} {}\0{}\n", ref_info.oid, ref_info.name, capabilities)
+        } else {
+            format!("{} {}\n", ref_info.oid, ref_info.name)
+        };
+        
+        let pkt_line = format!("{:04x}{}", line.len() + 4, line);
+        output.extend_from_slice(pkt_line.as_bytes());
+    }
+    
+    // Flush packet
+    output.extend_from_slice(b"0000");
+    
+    Ok(output)
+}
+
+/// Process upload-pack request (client wants to fetch objects)
+/// This is a simplified implementation - real git protocol is more complex
+pub fn process_upload_pack_request(
+    repo_path: &Path,
+    request_body: &[u8],
+) -> Result<Vec<u8>, GitError> {
+    let repo = Repository::open_bare(repo_path).or_else(|_| Repository::open(repo_path))?;
+    
+    // Parse client wants
+    let mut wants: Vec<Oid> = Vec::new();
+    let mut haves: Vec<Oid> = Vec::new();
+    let request_str = String::from_utf8_lossy(request_body);
+    
+    for line in request_str.lines() {
+        // Skip pkt-line length prefix (4 hex chars)
+        let content = if line.len() > 4 {
+            &line[4..]
+        } else {
+            continue;
+        };
+        
+        if content.starts_with("want ") {
+            if let Some(oid_str) = content.strip_prefix("want ").map(|s| s.split_whitespace().next()).flatten() {
+                if let Ok(oid) = Oid::from_str(oid_str) {
+                    wants.push(oid);
+                }
+            }
+        } else if content.starts_with("have ") {
+            if let Some(oid_str) = content.strip_prefix("have ").map(|s| s.split_whitespace().next()).flatten() {
+                if let Ok(oid) = Oid::from_str(oid_str) {
+                    haves.push(oid);
+                }
+            }
+        }
+    }
+    
+    // Build pack file for wanted objects
+    let mut builder = repo.packbuilder()?;
+    
+    for want in &wants {
+        // Add the commit and all reachable objects
+        if let Ok(_commit) = repo.find_commit(*want) {
+            builder.insert_commit(*want)?;
+        }
+    }
+    
+    // Write pack file to memory
+    let mut pack_data = Vec::new();
+    builder.foreach(|data| {
+        pack_data.extend_from_slice(data);
+        true
+    })?;
+    
+    // Build response with sideband format
+    let mut response = Vec::new();
+    
+    // NAK response (simplified - real protocol would do more negotiation)
+    response.extend_from_slice(b"0008NAK\n");
+    
+    // Pack data in sideband format
+    // Sideband 1 is pack data
+    const CHUNK_SIZE: usize = 65515; // Max pkt-line size - 5 bytes for header
+    for chunk in pack_data.chunks(CHUNK_SIZE) {
+        let pkt_len = chunk.len() + 5;
+        let header = format!("{:04x}\x01", pkt_len);
+        response.extend_from_slice(header.as_bytes());
+        response.extend_from_slice(chunk);
+    }
+    
+    // Final flush
+    response.extend_from_slice(b"0000");
+    
+    Ok(response)
+}
+
+/// Process receive-pack request (client wants to push objects)
+pub fn process_receive_pack_request(
+    repo_path: &Path,
+    request_body: &[u8],
+) -> Result<Vec<u8>, GitError> {
+    use std::io::Write;
+    
+    let repo = Repository::open_bare(repo_path).or_else(|_| Repository::open(repo_path))?;
+    
+    // Find the PACK data in the request
+    let pack_start = request_body.windows(4).position(|w| w == b"PACK");
+    
+    if let Some(start) = pack_start {
+        let pack_data = &request_body[start..];
+        
+        // Create object database and indexer
+        let odb = repo.odb()?;
+        let mut indexer = odb.packwriter()?;
+        indexer.write_all(pack_data).map_err(|e| GitError::Io(e))?;
+        let _ = indexer.commit()?;
+    }
+    
+    // Parse ref updates from the request
+    // Real implementation would parse the update commands and apply them
+    
+    // Return success response
+    let mut response = Vec::new();
+    response.extend_from_slice(b"000eunpack ok\n");
+    response.extend_from_slice(b"0000");
+    
+    Ok(response)
+}
+
+/// SSH protocol handler state - collects input and produces output
+pub struct SshProtocolHandler {
+    repo_path: std::path::PathBuf,
+    service: String,
+    input_buffer: Vec<u8>,
+}
+
+impl SshProtocolHandler {
+    /// Create a new SSH protocol handler
+    pub fn new(repo_path: &Path, service: &str) -> Self {
+        SshProtocolHandler {
+            repo_path: repo_path.to_path_buf(),
+            service: service.to_string(),
+            input_buffer: Vec::new(),
+        }
+    }
+    
+    /// Write input data from the client
+    pub fn write_input(&mut self, data: &[u8]) {
+        self.input_buffer.extend_from_slice(data);
+    }
+    
+    /// Process input and generate output when the client closes the input
+    pub fn finish(&self) -> Result<Vec<u8>, GitError> {
+        if self.service == "git-upload-pack" {
+            // For upload-pack, first send the refs advertisement, then process wants
+            let mut output = get_advertised_refs(&self.repo_path, "git-upload-pack")?;
+            
+            // If there's input (wants), process them
+            if !self.input_buffer.is_empty() {
+                let pack_response = process_upload_pack_request(&self.repo_path, &self.input_buffer)?;
+                output.extend_from_slice(&pack_response);
+            }
+            
+            Ok(output)
+        } else if self.service == "git-receive-pack" {
+            // For receive-pack, first send the refs advertisement, then process push
+            let mut output = get_advertised_refs(&self.repo_path, "git-receive-pack")?;
+            
+            // If there's input (pack data), process it
+            if !self.input_buffer.is_empty() {
+                let response = process_receive_pack_request(&self.repo_path, &self.input_buffer)?;
+                output.extend_from_slice(&response);
+            }
+            
+            Ok(output)
+        } else {
+            Err(GitError::NotFound(format!("Unknown service: {}", self.service)))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

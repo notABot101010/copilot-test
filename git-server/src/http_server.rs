@@ -13,7 +13,6 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
 use tokio::fs;
-use tokio::process::Command;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 use tracing::info;
@@ -1506,21 +1505,9 @@ async fn git_info_refs(
 
     let repo_path = state.repos_path.join(&repo.path);
 
-    // Service name comes with git- prefix, but the git command needs it without
-    let git_cmd = service.strip_prefix("git-").unwrap_or(service);
-
-    // Run git command
-    let output = Command::new("git")
-        .args([git_cmd, "--stateless-rpc", "--advertise-refs", "."])
-        .current_dir(&repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(stderr.to_string()));
-    }
+    // Get advertised refs using git2
+    let refs_output = git_ops::get_advertised_refs(&repo_path, service)
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
     // Build response with proper git smart protocol format
     let pkt_line = format!("# service={}\n", service);
@@ -1530,7 +1517,7 @@ async fn git_info_refs(
     body.extend_from_slice(pkt_len.as_bytes());
     body.extend_from_slice(pkt_line.as_bytes());
     body.extend_from_slice(b"0000"); // flush packet
-    body.extend_from_slice(&output.stdout);
+    body.extend_from_slice(&refs_output);
 
     let content_type = format!("application/x-{}-advertisement", service);
 
@@ -1560,35 +1547,15 @@ async fn git_upload_pack(
 
     let repo_path = state.repos_path.join(&repo.path);
 
-    // Create a child process
-    let mut child = tokio::process::Command::new("git")
-        .args(["upload-pack", "--stateless-rpc", "."])
-        .current_dir(&repo_path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        ?;
-
-    // Write request body to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(&body).await?;
-    }
-
-    // Read output
-    let output = child.wait_with_output().await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(stderr.to_string()));
-    }
+    // Process upload-pack request using git2
+    let response_data = git_ops::process_upload_pack_request(&repo_path, &body)
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/x-git-upload-pack-result")
         .header("Cache-Control", "no-cache")
-        .body(Body::from(output.stdout))
+        .body(Body::from(response_data))
         .unwrap())
 }
 
@@ -1610,35 +1577,15 @@ async fn git_receive_pack(
 
     let repo_path = state.repos_path.join(&repo.path);
 
-    // Create a child process
-    let mut child = tokio::process::Command::new("git")
-        .args(["receive-pack", "--stateless-rpc", "."])
-        .current_dir(&repo_path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        ?;
-
-    // Write request body to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(&body).await?;
-    }
-
-    // Read output
-    let output = child.wait_with_output().await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(stderr.to_string()));
-    }
+    // Process receive-pack request using git2
+    let response_data = git_ops::process_receive_pack_request(&repo_path, &body)
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/x-git-receive-pack-result")
         .header("Cache-Control", "no-cache")
-        .body(Body::from(output.stdout))
+        .body(Body::from(response_data))
         .unwrap())
 }
 
@@ -2138,19 +2085,9 @@ async fn project_git_info_refs(
     let repo = get_project_repo(&state, &org, project_name).await?;
     let repo_path = state.repos_path.join(&repo.path);
 
-    let git_cmd = service.strip_prefix("git-").unwrap_or(service);
-
-    let output = Command::new("git")
-        .args([git_cmd, "--stateless-rpc", "--advertise-refs", "."])
-        .current_dir(&repo_path)
-        .output()
-        .await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(stderr.to_string()));
-    }
+    // Get advertised refs using git2
+    let refs_output = git_ops::get_advertised_refs(&repo_path, service)
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
     let pkt_line = format!("# service={}\n", service);
     let pkt_len = format!("{:04x}", pkt_line.len() + 4);
@@ -2159,7 +2096,7 @@ async fn project_git_info_refs(
     body.extend_from_slice(pkt_len.as_bytes());
     body.extend_from_slice(pkt_line.as_bytes());
     body.extend_from_slice(b"0000");
-    body.extend_from_slice(&output.stdout);
+    body.extend_from_slice(&refs_output);
 
     let content_type = format!("application/x-{}-advertisement", service);
 
@@ -2181,32 +2118,15 @@ async fn project_git_upload_pack(
     let repo = get_project_repo(&state, &org, project_name).await?;
     let repo_path = state.repos_path.join(&repo.path);
 
-    let mut child = tokio::process::Command::new("git")
-        .args(["upload-pack", "--stateless-rpc", "."])
-        .current_dir(&repo_path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        ?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(&body).await?;
-    }
-
-    let output = child.wait_with_output().await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(stderr.to_string()));
-    }
+    // Process upload-pack request using git2
+    let response_data = git_ops::process_upload_pack_request(&repo_path, &body)
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/x-git-upload-pack-result")
         .header("Cache-Control", "no-cache")
-        .body(Body::from(output.stdout))
+        .body(Body::from(response_data))
         .unwrap())
 }
 
@@ -2220,32 +2140,15 @@ async fn project_git_receive_pack(
     let repo = get_project_repo(&state, &org, project_name).await?;
     let repo_path = state.repos_path.join(&repo.path);
 
-    let mut child = tokio::process::Command::new("git")
-        .args(["receive-pack", "--stateless-rpc", "."])
-        .current_dir(&repo_path)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        ?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(&body).await?;
-    }
-
-    let output = child.wait_with_output().await
-        ?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::internal(stderr.to_string()));
-    }
+    // Process receive-pack request using git2
+    let response_data = git_ops::process_receive_pack_request(&repo_path, &body)
+        .map_err(|e| AppError::internal(e.to_string()))?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/x-git-receive-pack-result")
         .header("Cache-Control", "no-cache")
-        .body(Body::from(output.stdout))
+        .body(Body::from(response_data))
         .unwrap())
 }
 

@@ -6,14 +6,13 @@ use rand_core::OsRng;
 use russh::keys::ssh_key::PublicKey;
 use russh::server::{Auth, Msg, Server as _, Session};
 use russh::{Channel, ChannelId, CryptoVec};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
 use crate::database::Database;
+use crate::git_ops;
 
 /// SSH server for git operations
 pub struct GitServer {
@@ -82,7 +81,7 @@ impl russh::server::Server for GitServerInstance {
             db: self.db.clone(),
             repos_path: self.repos_path.clone(),
             authorized_keys: self.authorized_keys.clone(),
-            processes: Arc::new(Mutex::new(HashMap::new())),
+            handlers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -91,7 +90,7 @@ struct GitSessionHandler {
     db: Arc<Database>,
     repos_path: PathBuf,
     authorized_keys: Arc<Vec<PublicKey>>,
-    processes: Arc<Mutex<HashMap<ChannelId, Child>>>,
+    handlers: Arc<Mutex<HashMap<ChannelId, git_ops::SshProtocolHandler>>>,
 }
 
 impl russh::server::Handler for GitSessionHandler {
@@ -223,24 +222,10 @@ impl russh::server::Handler for GitSessionHandler {
             return Ok(());
         }
 
-        // Spawn git process
-        let child = Command::new(git_cmd)
-            .arg(&canonical_repo)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn();
-
-        match child {
-            Ok(child) => {
-                self.processes.lock().await.insert(channel, child);
-                session.channel_success(channel)?;
-            }
-            Err(e) => {
-                error!("Failed to spawn git process: {}", e);
-                session.channel_failure(channel)?;
-            }
-        }
+        // Create git2 protocol handler
+        let handler = git_ops::SshProtocolHandler::new(&canonical_repo, git_cmd);
+        self.handlers.lock().await.insert(channel, handler);
+        session.channel_success(channel)?;
 
         Ok(())
     }
@@ -251,15 +236,12 @@ impl russh::server::Handler for GitSessionHandler {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
-        let mut processes = self.processes.lock().await;
+        let mut handlers = self.handlers.lock().await;
 
-        if let Some(child) = processes.get_mut(&channel) {
-            if let Some(stdin) = child.stdin.as_mut() {
-                if let Err(e) = stdin.write_all(data).await {
-                    error!("Failed to write to git process stdin: {}", e);
-                    session.channel_failure(channel)?;
-                }
-            }
+        if let Some(handler) = handlers.get_mut(&channel) {
+            handler.write_input(data);
+        } else {
+            session.channel_failure(channel)?;
         }
 
         Ok(())
@@ -270,44 +252,27 @@ impl russh::server::Handler for GitSessionHandler {
         channel: ChannelId,
         session: &mut Session,
     ) -> Result<(), Self::Error> {
-        let mut processes = self.processes.lock().await;
+        let mut handlers = self.handlers.lock().await;
 
-        if let Some(mut child) = processes.remove(&channel) {
-            // Close stdin to signal end of input
-            drop(child.stdin.take());
-
-            // Read stdout and send to client in chunks to handle large repositories
-            if let Some(mut stdout) = child.stdout.take() {
-                const CHUNK_SIZE: usize = 32768; // 32KB chunks
-                let mut buffer = vec![0u8; CHUNK_SIZE];
-                loop {
-                    match stdout.read(&mut buffer).await {
-                        Ok(0) => break, // EOF
-                        Ok(n) => {
-                            session.data(channel, CryptoVec::from(&buffer[..n]))?;
-                        }
-                        Err(e) => {
-                            error!("Failed to read git process stdout: {}", e);
-                            break;
-                        }
+        if let Some(handler) = handlers.remove(&channel) {
+            // Process the git protocol and get output
+            match handler.finish() {
+                Ok(output) => {
+                    // Send output in chunks
+                    const CHUNK_SIZE: usize = 32768; // 32KB chunks
+                    for chunk in output.chunks(CHUNK_SIZE) {
+                        session.data(channel, CryptoVec::from(chunk))?;
                     }
+                    
+                    // Exit with success
+                    session.exit_status_request(channel, 0)?;
+                }
+                Err(e) => {
+                    error!("Git protocol error: {}", e);
+                    session.exit_status_request(channel, 1)?;
                 }
             }
-
-            // Wait for process to finish
-            let status = child.wait().await;
-            let exit_code = match status {
-                Ok(s) => s.code().unwrap_or_else(|| {
-                    // Process was terminated by signal
-                    if s.success() { 0 } else { 1 }
-                }) as u32,
-                Err(e) => {
-                    error!("Failed to wait for git process: {}", e);
-                    1
-                }
-            };
-
-            session.exit_status_request(channel, exit_code)?;
+            
             session.close(channel)?;
         }
 
