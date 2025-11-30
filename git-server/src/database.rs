@@ -107,6 +107,10 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
+        // Migrations: These ALTER TABLE statements add columns if they don't exist.
+        // We use `let _ = ...` to ignore errors (e.g., "duplicate column name")
+        // which occurs when the column already exists from CREATE TABLE.
+        
         // Migration: add due_date column if it doesn't exist
         let _ = sqlx::query("ALTER TABLE issues ADD COLUMN due_date TEXT")
             .execute(&self.pool)
