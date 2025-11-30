@@ -191,10 +191,6 @@ export function KanbanPage() {
   const error = useSignal<string | null>(null);
   const activeIssue = useSignal<Issue | null>(null);
 
-  const params = route.value.params;
-  const orgName = params.org as string;
-  const projectName = params.project as string;
-
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -206,10 +202,19 @@ export function KanbanPage() {
   );
 
   useSignalEffect(() => {
-    loadIssues();
+    // Access route.value inside the effect to track signal changes
+    const params = route.value.params;
+    const orgName = params.org as string;
+    const projectName = params.project as string;
+
+    if (!orgName || !projectName) {
+      return;
+    }
+
+    loadIssues(orgName, projectName);
   });
 
-  async function loadIssues() {
+  async function loadIssues(orgName: string, projectName: string) {
     try {
       loading.value = true;
       error.value = null;
@@ -221,6 +226,11 @@ export function KanbanPage() {
       loading.value = false;
     }
   }
+
+  // Get current route params for rendering
+  const params = route.value.params;
+  const orgName = params.org as string;
+  const projectName = params.project as string;
 
   function handleDragStart(event: DragStartEvent) {
     const { active } = event;

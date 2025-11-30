@@ -10,26 +10,36 @@ export function IssuesPage() {
   const loading = useSignal(true);
   const error = useSignal<string | null>(null);
 
-  const params = route.value.params;
-  const orgName = params.org as string;
-  const projectName = params.project as string;
-
   useSignalEffect(() => {
-    loadIssues();
+    // Access route.value inside the effect to track signal changes
+    const params = route.value.params;
+    const orgName = params.org as string;
+    const projectName = params.project as string;
+
+    if (!orgName || !projectName) {
+      return;
+    }
+
+    loadIssues(orgName, projectName);
   });
 
-  async function loadIssues() {
+  async function loadIssues(orgName: string, projectName: string) {
     try {
       loading.value = true;
       error.value = null;
       const data = await listProjectIssues(orgName, projectName);
       issues.value = data;
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load issues';
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to load issues';
     } finally {
       loading.value = false;
     }
   }
+
+  // Get current route params for rendering
+  const params = route.value.params;
+  const orgName = params.org as string;
+  const projectName = params.project as string;
 
   if (loading.value) {
     return (
