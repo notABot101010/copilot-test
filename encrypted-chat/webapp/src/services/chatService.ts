@@ -24,7 +24,6 @@ export interface DecryptedMessage {
 export interface Conversation {
   peerUsername: string;
   messages: DecryptedMessage[];
-  ratchetState?: crypto.RatchetState;
   peerIdentityPublicKey?: string;
   unread: number;
 }
@@ -133,31 +132,44 @@ export async function login(username: string, password: string): Promise<void> {
     salt: userData.salt
   };
   
-  // Fetch and decrypt signed prekey private for receiving messages
-  // We need to regenerate prekeys since we don't have the private key stored locally
-  const preKeyData = await crypto.generatePreKeyBundle(
-    { privateKey: identityPrivateKey, publicKey: identityPublicKey },
-    masterKey,
-    10
-  );
-  
-  await api.uploadPreKeyBundle(username, {
-    signed_prekey_public: preKeyData.bundle.signedPrekeyPublic,
-    signed_prekey_signature: preKeyData.bundle.signedPrekeySignature,
-    encrypted_signed_prekey_private: preKeyData.signedPrekeyPrivateEncrypted,
-    signed_prekey_iv: preKeyData.signedPrekeyIv,
-    one_time_prekeys: preKeyData.oneTimePrekeyPublics,
-    encrypted_one_time_prekey_privates: preKeyData.oneTimePrekeyPrivatesEncrypted,
-    one_time_prekey_ivs: preKeyData.oneTimePrekeyIvs
-  });
-  
-  const signedPrekeyIvBuffer = new Uint8Array(crypto.base64ToArrayBuffer(preKeyData.signedPrekeyIv));
-  const encryptedSignedPrekeyPrivate = crypto.base64ToArrayBuffer(preKeyData.signedPrekeyPrivateEncrypted);
-  signedPrekeyPrivate = await crypto.decryptExchangePrivateKey(
-    masterKey,
-    encryptedSignedPrekeyPrivate,
-    signedPrekeyIvBuffer
-  );
+  // Fetch existing prekey private key from server
+  // This allows us to decrypt messages sent before this login
+  try {
+    const myPreKeys = await api.getMyPreKeys(username);
+    const signedPrekeyIvBuffer = new Uint8Array(crypto.base64ToArrayBuffer(myPreKeys.signed_prekey_iv));
+    const encryptedSignedPrekeyPrivate = crypto.base64ToArrayBuffer(myPreKeys.encrypted_signed_prekey_private);
+    signedPrekeyPrivate = await crypto.decryptExchangePrivateKey(
+      masterKey,
+      encryptedSignedPrekeyPrivate,
+      signedPrekeyIvBuffer
+    );
+  } catch (err) {
+    // If no prekeys exist yet (e.g., new account), generate new ones
+    console.log('No existing prekeys found, generating new ones');
+    const preKeyData = await crypto.generatePreKeyBundle(
+      { privateKey: identityPrivateKey, publicKey: identityPublicKey },
+      masterKey,
+      10
+    );
+    
+    await api.uploadPreKeyBundle(username, {
+      signed_prekey_public: preKeyData.bundle.signedPrekeyPublic,
+      signed_prekey_signature: preKeyData.bundle.signedPrekeySignature,
+      encrypted_signed_prekey_private: preKeyData.signedPrekeyPrivateEncrypted,
+      signed_prekey_iv: preKeyData.signedPrekeyIv,
+      one_time_prekeys: preKeyData.oneTimePrekeyPublics,
+      encrypted_one_time_prekey_privates: preKeyData.oneTimePrekeyPrivatesEncrypted,
+      one_time_prekey_ivs: preKeyData.oneTimePrekeyIvs
+    });
+    
+    const signedPrekeyIvBuffer = new Uint8Array(crypto.base64ToArrayBuffer(preKeyData.signedPrekeyIv));
+    const encryptedSignedPrekeyPrivate = crypto.base64ToArrayBuffer(preKeyData.signedPrekeyPrivateEncrypted);
+    signedPrekeyPrivate = await crypto.decryptExchangePrivateKey(
+      masterKey,
+      encryptedSignedPrekeyPrivate,
+      signedPrekeyIvBuffer
+    );
+  }
   
   // Start polling for messages
   startPolling();
@@ -181,94 +193,36 @@ export async function sendMessage(recipientUsername: string, content: string): P
     throw new Error('Not logged in');
   }
   
-  // Get or create conversation
-  let conversation = conversations.value.get(recipientUsername);
-  
-  if (!conversation) {
-    // Fetch recipient's pre-key bundle
-    const preKeyBundle = await api.getPreKeyBundle(recipientUsername);
-    
-    // Verify signature
-    const bundle: crypto.PreKeyBundle = {
-      identityPublicKey: preKeyBundle.identity_public_key,
-      signedPrekeyPublic: preKeyBundle.signed_prekey_public,
-      signedPrekeySignature: preKeyBundle.signed_prekey_signature,
-      oneTimePrekey: preKeyBundle.one_time_prekey
-    };
-    
-    const isValid = await crypto.verifyPreKeyBundle(bundle);
-    if (!isValid) {
-      throw new Error('Invalid pre-key bundle signature');
-    }
-    
-    // Import keys
-    const recipientSignedPrekey = await crypto.importExchangePublicKey(
-      crypto.base64ToArrayBuffer(preKeyBundle.signed_prekey_public)
-    );
-    
-    const recipientOneTimePrekey = preKeyBundle.one_time_prekey
-      ? await crypto.importExchangePublicKey(crypto.base64ToArrayBuffer(preKeyBundle.one_time_prekey))
-      : undefined;
-    
-    // Initialize ratchet
-    const { state, initialMessage } = await crypto.initRatchetAsSender(
-      user.identityKeyPair.publicKey,
-      recipientSignedPrekey,
-      recipientOneTimePrekey
-    );
-    
-    conversation = {
-      peerUsername: recipientUsername,
-      messages: [],
-      ratchetState: state,
-      peerIdentityPublicKey: preKeyBundle.identity_public_key,
-      unread: 0
-    };
-    
-    // Store initial message as first "message" (key exchange info)
-    // This will be included in the first real message
-    (conversation as { initialMessage?: Uint8Array }).initialMessage = initialMessage;
-  }
-  
-  if (!conversation.ratchetState) {
-    throw new Error('Ratchet state not initialized');
-  }
-  
-  // Encrypt message with ratchet
-  const { ciphertext, header, newState } = await crypto.ratchetEncrypt(
-    conversation.ratchetState,
-    content
-  );
-  
-  // Fetch recipient's pre-key for sealed sender
+  // Fetch recipient's pre-key bundle
   const preKeyBundle = await api.getPreKeyBundle(recipientUsername);
+  
+  // Verify signature
+  const bundle: crypto.PreKeyBundle = {
+    identityPublicKey: preKeyBundle.identity_public_key,
+    signedPrekeyPublic: preKeyBundle.signed_prekey_public,
+    signedPrekeySignature: preKeyBundle.signed_prekey_signature,
+    oneTimePrekey: preKeyBundle.one_time_prekey
+  };
+  
+  const isValid = await crypto.verifyPreKeyBundle(bundle);
+  if (!isValid) {
+    throw new Error('Invalid pre-key bundle signature');
+  }
+  
+  // Import recipient's signed prekey
   const recipientSignedPrekey = await crypto.importExchangePublicKey(
     crypto.base64ToArrayBuffer(preKeyBundle.signed_prekey_public)
   );
   
-  // Create sealed sender envelope
-  // If this is the first message, prepend initial message to header
-  let finalHeader = header;
-  const initialMessage = (conversation as { initialMessage?: Uint8Array }).initialMessage;
-  if (initialMessage) {
-    finalHeader = new Uint8Array(1 + initialMessage.length + header.length);
-    finalHeader[0] = 1; // Flag: has initial message
-    finalHeader.set(initialMessage, 1);
-    finalHeader.set(header, 1 + initialMessage.length);
-    delete (conversation as { initialMessage?: Uint8Array }).initialMessage;
-  } else {
-    const headerWithFlag = new Uint8Array(1 + header.length);
-    headerWithFlag[0] = 0; // Flag: no initial message
-    headerWithFlag.set(header, 1);
-    finalHeader = headerWithFlag;
-  }
+  // Encrypt message using ephemeral ECDH (no ratcheting)
+  const encryptedMessage = await crypto.encryptMessage(recipientSignedPrekey, content);
   
+  // Create sealed sender envelope
   const envelope = await crypto.createSealedSenderEnvelope(
     user.username,
     user.identityKeyPair.publicKey,
     recipientSignedPrekey,
-    finalHeader,
-    ciphertext
+    encryptedMessage
   );
   
   // Send message
@@ -280,8 +234,19 @@ export async function sendMessage(recipientUsername: string, content: string): P
   // Track sent message to prevent duplicate display
   sentMessageIds.add(response.id);
   
+  // Get or create conversation
+  let conversation = conversations.value.get(recipientUsername);
+  
+  if (!conversation) {
+    conversation = {
+      peerUsername: recipientUsername,
+      messages: [],
+      peerIdentityPublicKey: preKeyBundle.identity_public_key,
+      unread: 0
+    };
+  }
+  
   // Update conversation
-  conversation.ratchetState = newState;
   conversation.messages.push({
     id: response.id,
     senderUsername: user.username,
@@ -318,54 +283,22 @@ async function processIncomingMessage(encryptedMsg: ApiEncryptedMessage): Promis
     
     const senderUsername = inner.senderUsername;
     
+    // Decrypt message using ephemeral ECDH (no ratcheting)
+    const plaintext = await crypto.decryptMessage(signedPrekeyPrivate, inner.encryptedMessage);
+    
     // Get or create conversation
     let conversation = conversations.value.get(senderUsername);
     
-    // Parse header
-    const headerWithFlag = new Uint8Array(crypto.base64ToArrayBuffer(inner.messageHeader));
-    const hasInitialMessage = headerWithFlag[0] === 1;
-    
-    let header: Uint8Array;
-    
-    if (hasInitialMessage) {
-      // Extract initial message (162 bytes) and actual header
-      const initialMessage = headerWithFlag.slice(1, 163);
-      header = headerWithFlag.slice(163);
-      
-      // Initialize ratchet as receiver
-      const ratchetState = await crypto.initRatchetAsReceiver(signedPrekeyPrivate, initialMessage);
-      
+    if (!conversation) {
       conversation = {
         peerUsername: senderUsername,
         messages: [],
-        ratchetState,
         peerIdentityPublicKey: inner.senderIdentityPublicKey,
         unread: 0
       };
-    } else {
-      header = headerWithFlag.slice(1);
-      
-      if (!conversation || !conversation.ratchetState) {
-        console.error('Received message but no ratchet state exists');
-        return;
-      }
     }
     
-    if (!conversation || !conversation.ratchetState) {
-      console.error('No conversation found for decryption');
-      return;
-    }
-    
-    // Decrypt message
-    const ciphertext = crypto.base64ToArrayBuffer(inner.ciphertext);
-    const { plaintext, newState } = await crypto.ratchetDecrypt(
-      conversation.ratchetState,
-      header,
-      ciphertext
-    );
-    
-    // Update conversation
-    conversation.ratchetState = newState;
+    // Add message to conversation
     conversation.messages.push({
       id: encryptedMsg.id,
       senderUsername,

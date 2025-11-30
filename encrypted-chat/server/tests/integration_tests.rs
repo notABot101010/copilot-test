@@ -362,3 +362,123 @@ async fn test_duplicate_user_registration() {
     // Should return conflict
     assert_eq!(response.status(), 409);
 }
+
+#[tokio::test]
+async fn test_bidirectional_messaging() {
+    wait_for_server().await;
+    
+    let client = Client::new();
+    // Use unique IDs to avoid conflicts with other tests
+    let unique_id = uuid::Uuid::new_v4().to_string();
+    let user1 = format!("user1_{}", &unique_id[..8]);
+    let user2 = format!("user2_{}", &unique_id[..8]);
+    
+    // Register both users
+    for username in [&user1, &user2] {
+        let response = client.post(format!("{}/api/register", BASE_URL))
+            .json(&json!({
+                "username": username,
+                "identity_public_key": "dGVzdF9wdWJsaWNfa2V5",
+                "salt": "dGVzdF9zYWx0",
+                "encrypted_identity_private_key": "dGVzdF9wcml2YXRlX2tleQ==",
+                "identity_key_iv": "dGVzdF9pdg=="
+            }))
+            .send()
+            .await
+            .expect("Failed to register user");
+        assert!(response.status().is_success() || response.status() == 409);
+    }
+    
+    // User1 sends message to User2
+    let response1 = client.post(format!("{}/api/users/{}/messages", BASE_URL, user1))
+        .json(&json!({
+            "recipient_username": user2,
+            "sealed_sender_envelope": "{\"type\": \"message\", \"content\": \"Hello User2!\"}"
+        }))
+        .send()
+        .await
+        .expect("Failed to send message");
+    
+    assert!(response1.status().is_success());
+    let body1: serde_json::Value = response1.json().await.expect("Failed to parse response");
+    let msg1_id = body1["id"].as_str().expect("Missing message id").to_string();
+    
+    // Small delay to let the message be stored
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    
+    // User2 polls and receives message from User1
+    let poll_response1 = client.get(format!("{}/api/users/{}/messages/poll?timeout_secs=1", BASE_URL, user2))
+        .send()
+        .await
+        .expect("Failed to poll");
+    
+    assert!(poll_response1.status().is_success());
+    let poll_body1: serde_json::Value = poll_response1.json().await.expect("Failed to parse poll response");
+    let messages1 = poll_body1["messages"].as_array().expect("Missing messages array");
+    
+    // Verify User2 received the message from User1
+    let has_msg1 = messages1.iter().any(|m| m["id"].as_str() == Some(&msg1_id));
+    assert!(has_msg1, "User2 should receive message from User1");
+    
+    // User2 sends reply to User1
+    let response2 = client.post(format!("{}/api/users/{}/messages", BASE_URL, user2))
+        .json(&json!({
+            "recipient_username": user1,
+            "sealed_sender_envelope": "{\"type\": \"message\", \"content\": \"Hello User1! Got your message.\"}"
+        }))
+        .send()
+        .await
+        .expect("Failed to send reply");
+    
+    assert!(response2.status().is_success());
+    let body2: serde_json::Value = response2.json().await.expect("Failed to parse response");
+    let msg2_id = body2["id"].as_str().expect("Missing message id").to_string();
+    
+    // Small delay
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    
+    // User1 polls and receives reply from User2
+    let poll_response2 = client.get(format!("{}/api/users/{}/messages/poll?timeout_secs=1", BASE_URL, user1))
+        .send()
+        .await
+        .expect("Failed to poll");
+    
+    assert!(poll_response2.status().is_success());
+    let poll_body2: serde_json::Value = poll_response2.json().await.expect("Failed to parse poll response");
+    let messages2 = poll_body2["messages"].as_array().expect("Missing messages array");
+    
+    // Verify User1 received the reply from User2
+    let has_msg2 = messages2.iter().any(|m| m["id"].as_str() == Some(&msg2_id));
+    assert!(has_msg2, "User1 should receive reply from User2");
+    
+    // User1 sends another message to User2
+    let response3 = client.post(format!("{}/api/users/{}/messages", BASE_URL, user1))
+        .json(&json!({
+            "recipient_username": user2,
+            "sealed_sender_envelope": "{\"type\": \"message\", \"content\": \"Thanks for replying!\"}"
+        }))
+        .send()
+        .await
+        .expect("Failed to send second message");
+    
+    assert!(response3.status().is_success());
+    let body3: serde_json::Value = response3.json().await.expect("Failed to parse response");
+    let msg3_id = body3["id"].as_str().expect("Missing message id").to_string();
+    
+    // Small delay
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    
+    // User2 polls and receives second message from User1
+    let poll_response3 = client.get(format!("{}/api/users/{}/messages/poll?timeout_secs=1", BASE_URL, user2))
+        .send()
+        .await
+        .expect("Failed to poll");
+    
+    assert!(poll_response3.status().is_success());
+    let poll_body3: serde_json::Value = poll_response3.json().await.expect("Failed to parse poll response");
+    let messages3 = poll_body3["messages"].as_array().expect("Missing messages array");
+    
+    // Verify User2 received the second message from User1
+    let has_msg3 = messages3.iter().any(|m| m["id"].as_str() == Some(&msg3_id));
+    assert!(has_msg3, "User2 should receive second message from User1");
+}

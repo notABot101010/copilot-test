@@ -46,6 +46,11 @@ export interface PreKeyBundleResponse {
   one_time_prekey?: string;
 }
 
+export interface MyPreKeysResponse {
+  encrypted_signed_prekey_private: string;
+  signed_prekey_iv: string;
+}
+
 export interface SendMessageRequest {
   recipient_username: string;
   sealed_sender_envelope: string;
@@ -130,6 +135,11 @@ export const api = {
   async getPreKeyBundle(username: string): Promise<PreKeyBundleResponse> {
     const response = await fetch(`${API_BASE}/users/${encodeURIComponent(username)}/prekeys`);
     return handleResponse<PreKeyBundleResponse>(response);
+  },
+  
+  async getMyPreKeys(username: string): Promise<MyPreKeysResponse> {
+    const response = await fetch(`${API_BASE}/users/${encodeURIComponent(username)}/myprekeys`);
+    return handleResponse<MyPreKeysResponse>(response);
   },
   
   async sendMessage(senderUsername: string, data: SendMessageRequest): Promise<SendMessageResponse> {

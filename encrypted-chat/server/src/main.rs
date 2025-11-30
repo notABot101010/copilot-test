@@ -114,6 +114,12 @@ struct PreKeyBundleResponse {
     one_time_prekey: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct MyPreKeyBundleResponse {
+    encrypted_signed_prekey_private: String,
+    signed_prekey_iv: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct EncryptedMessage {
     id: String,
@@ -470,6 +476,39 @@ async fn get_prekey_bundle(
     }))
 }
 
+// Fetch user's own prekey bundle (for logging in and decrypting)
+async fn get_my_prekeys(
+    Path(username): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<MyPreKeyBundleResponse>, StatusCode> {
+    // Verify user exists
+    let _user: User = sqlx::query_as("SELECT * FROM users WHERE username = ?")
+        .bind(&username)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|err| {
+            tracing::error!("Failed to get user: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let bundle: PreKeyBundle =
+        sqlx::query_as("SELECT * FROM prekey_bundles WHERE username = ? ORDER BY created_at DESC LIMIT 1")
+            .bind(&username)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|err| {
+                tracing::error!("Failed to get prekey bundle: {:?}", err);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .ok_or(StatusCode::NOT_FOUND)?;
+
+    Ok(Json(MyPreKeyBundleResponse {
+        encrypted_signed_prekey_private: bundle.encrypted_signed_prekey_private,
+        signed_prekey_iv: bundle.signed_prekey_iv,
+    }))
+}
+
 // Send encrypted message (sealed sender)
 async fn send_message(
     Path(sender_username): Path<String>,
@@ -685,6 +724,7 @@ async fn main() {
         // Pre-key bundles
         .route("/api/users/{username}/prekeys", post(upload_prekey_bundle))
         .route("/api/users/{username}/prekeys", get(get_prekey_bundle))
+        .route("/api/users/{username}/myprekeys", get(get_my_prekeys))
         // Messaging
         .route("/api/users/{username}/messages", post(send_message))
         .route("/api/users/{username}/messages/poll", get(poll_messages))

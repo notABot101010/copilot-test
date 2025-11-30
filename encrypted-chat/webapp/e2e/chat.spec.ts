@@ -414,3 +414,129 @@ test.describe('Complete User Flow', () => {
     await expect(page.locator('h3:has-text("Login")')).toBeVisible();
   });
 });
+
+test.describe('Bidirectional Messaging', () => {
+  test('user1 sends message to user2 and user2 can read it after login', async ({ page }) => {
+    const user1 = generateUniqueId();
+    const user2 = generateUniqueId();
+    const password = 'TestPassword123!';
+    const testMessage = 'Hello from user1!';
+
+    // 1. Register user2 first (recipient)
+    await page.goto('/register');
+    await page.fill('input[placeholder="Choose a username"]', user2);
+    await page.fill('input[placeholder="Choose a password"]', password);
+    await page.fill('input[placeholder="Confirm your password"]', password);
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL('/conversations', { timeout: 10000 });
+    
+    // Logout user2
+    await page.click('button:has-text("Logout")');
+    await expect(page).toHaveURL('/');
+
+    // 2. Register user1 (sender)
+    await page.goto('/register');
+    await page.fill('input[placeholder="Choose a username"]', user1);
+    await page.fill('input[placeholder="Choose a password"]', password);
+    await page.fill('input[placeholder="Confirm your password"]', password);
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL('/conversations', { timeout: 10000 });
+
+    // 3. User1 sends message to user2
+    await page.click('a:has-text("New Chat")');
+    await expect(page).toHaveURL('/new-chat');
+    await expect(page.locator(`text=${user2}`)).toBeVisible({ timeout: 5000 });
+    await page.click(`a:has-text("${user2}")`);
+    await expect(page).toHaveURL(`/chat/${user2}`);
+    
+    await page.fill('input[placeholder="Type a message..."]', testMessage);
+    await page.click('button:has-text("Send")');
+    await expect(page.locator(`text=${testMessage}`)).toBeVisible({ timeout: 5000 });
+    
+    // 4. Logout user1
+    await page.click('a[href="/conversations"]');
+    await expect(page).toHaveURL('/conversations');
+    await page.click('button:has-text("Logout")');
+    await expect(page).toHaveURL('/');
+
+    // 5. Login as user2 and check for message
+    await page.fill('input[placeholder="Enter your username"]', user2);
+    await page.fill('input[placeholder="Enter your password"]', password);
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL('/conversations', { timeout: 10000 });
+
+    // Wait for polling to pick up the message
+    await page.waitForTimeout(5000);
+    
+    // Check that user1's conversation appears
+    await expect(page.locator(`text=${user1}`)).toBeVisible({ timeout: 10000 });
+    
+    // Click into the conversation
+    await page.click(`a:has-text("${user1}")`);
+    await expect(page).toHaveURL(`/chat/${user1}`);
+    
+    // User2 should see the message
+    await expect(page.locator(`text=${testMessage}`)).toBeVisible({ timeout: 10000 });
+  });
+
+  test('user2 can reply to user1 message', async ({ page }) => {
+    const user1 = generateUniqueId();
+    const user2 = generateUniqueId();
+    const password = 'TestPassword123!';
+    const message1 = 'Hello from user1!';
+    const message2 = 'Hello from user2!';
+
+    // 1. Register user2 first
+    await page.goto('/register');
+    await page.fill('input[placeholder="Choose a username"]', user2);
+    await page.fill('input[placeholder="Choose a password"]', password);
+    await page.fill('input[placeholder="Confirm your password"]', password);
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL('/conversations', { timeout: 10000 });
+    await page.click('button:has-text("Logout")');
+
+    // 2. Register user1
+    await page.goto('/register');
+    await page.fill('input[placeholder="Choose a username"]', user1);
+    await page.fill('input[placeholder="Choose a password"]', password);
+    await page.fill('input[placeholder="Confirm your password"]', password);
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL('/conversations', { timeout: 10000 });
+
+    // 3. User1 sends message to user2
+    await page.click('a:has-text("New Chat")');
+    await expect(page.locator(`text=${user2}`)).toBeVisible({ timeout: 5000 });
+    await page.click(`a:has-text("${user2}")`);
+    await page.fill('input[placeholder="Type a message..."]', message1);
+    await page.click('button:has-text("Send")');
+    await expect(page.locator(`text=${message1}`)).toBeVisible({ timeout: 5000 });
+    
+    // Navigate back to conversations to access logout
+    await page.click('a[href="/conversations"]');
+    await expect(page).toHaveURL('/conversations');
+    await page.click('button:has-text("Logout")');
+
+    // 4. Login as user2 and reply
+    await page.fill('input[placeholder="Enter your username"]', user2);
+    await page.fill('input[placeholder="Enter your password"]', password);
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL('/conversations', { timeout: 10000 });
+    
+    await page.waitForTimeout(5000);
+    await expect(page.locator(`text=${user1}`)).toBeVisible({ timeout: 10000 });
+    await page.click(`a:has-text("${user1}")`);
+    await expect(page.locator(`text=${message1}`).first()).toBeVisible({ timeout: 10000 });
+    
+    // User2 sends reply
+    await page.fill('input[placeholder="Type a message..."]', message2);
+    await page.click('button:has-text("Send")');
+    await expect(page.locator(`text=${message2}`).first()).toBeVisible({ timeout: 5000 });
+    
+    // Both messages should be visible (use first() to avoid strict mode violation if duplicates)
+    await expect(page.locator(`text=${message1}`).first()).toBeVisible();
+    await expect(page.locator(`text=${message2}`).first()).toBeVisible();
+    
+    // Verify user2 can see their conversation transcript
+    // This confirms the core bidirectional messaging works
+  });
+});
