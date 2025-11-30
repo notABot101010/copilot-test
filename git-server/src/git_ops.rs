@@ -1,5 +1,5 @@
-//! Git operations using the git2 crate instead of subprocess calls.
-//! This module provides all git functionality without spawning external processes.
+//! Git operations using the git2 crate and git commands for HTTP protocol.
+//! This module provides all git functionality, using subprocess for HTTP smart protocol.
 
 use git2::{
     BranchType, Commit, DiffFormat, DiffOptions, ObjectType, Oid, Repository,
@@ -569,9 +569,30 @@ pub struct RefInfo {
     pub oid: String,
 }
 
-/// Get advertised refs in the format needed for git smart protocol
-/// Returns refs in pkt-line format suitable for upload-pack/receive-pack advertisement
+/// Get advertised refs using git command (more reliable for HTTP protocol)
 pub fn get_advertised_refs(repo_path: &Path, service: &str) -> Result<Vec<u8>, GitError> {
+    use std::process::{Command, Stdio};
+    
+    let output = Command::new("git")
+        .arg(service)
+        .arg("--stateless-rpc")
+        .arg("--advertise-refs")
+        .arg(repo_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| GitError::Io(e))?;
+    
+    if !output.status.success() {
+        // If git command fails (e.g., empty repo), fall back to git2 implementation
+        return get_advertised_refs_git2(repo_path, service);
+    }
+    
+    Ok(output.stdout)
+}
+
+/// Fallback implementation using git2 for when git command fails
+fn get_advertised_refs_git2(repo_path: &Path, service: &str) -> Result<Vec<u8>, GitError> {
     let repo = Repository::open_bare(repo_path).or_else(|_| Repository::open(repo_path))?;
     
     let mut refs: Vec<RefInfo> = Vec::new();
@@ -628,111 +649,71 @@ pub fn get_advertised_refs(repo_path: &Path, service: &str) -> Result<Vec<u8>, G
 }
 
 /// Process upload-pack request (client wants to fetch objects)
-/// This is a simplified implementation - real git protocol is more complex
+/// Uses git command for proper HTTP protocol handling
 pub fn process_upload_pack_request(
     repo_path: &Path,
     request_body: &[u8],
 ) -> Result<Vec<u8>, GitError> {
-    let repo = Repository::open_bare(repo_path).or_else(|_| Repository::open(repo_path))?;
+    use std::process::{Command, Stdio};
+    use std::io::Write;
     
-    // Parse client wants
-    let mut wants: Vec<Oid> = Vec::new();
-    let mut haves: Vec<Oid> = Vec::new();
-    let request_str = String::from_utf8_lossy(request_body);
+    let mut child = Command::new("git")
+        .arg("upload-pack")
+        .arg("--stateless-rpc")
+        .arg(repo_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| GitError::Io(e))?;
     
-    for line in request_str.lines() {
-        // Skip pkt-line length prefix (4 hex chars)
-        let content = if line.len() > 4 {
-            &line[4..]
-        } else {
-            continue;
-        };
-        
-        if content.starts_with("want ") {
-            if let Some(oid_str) = content.strip_prefix("want ").map(|s| s.split_whitespace().next()).flatten() {
-                if let Ok(oid) = Oid::from_str(oid_str) {
-                    wants.push(oid);
-                }
-            }
-        } else if content.starts_with("have ") {
-            if let Some(oid_str) = content.strip_prefix("have ").map(|s| s.split_whitespace().next()).flatten() {
-                if let Ok(oid) = Oid::from_str(oid_str) {
-                    haves.push(oid);
-                }
-            }
-        }
+    // Write request body to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(request_body).map_err(|e| GitError::Io(e))?;
     }
     
-    // Build pack file for wanted objects
-    let mut builder = repo.packbuilder()?;
+    let output = child.wait_with_output().map_err(|e| GitError::Io(e))?;
     
-    for want in &wants {
-        // Add the commit and all reachable objects
-        if let Ok(_commit) = repo.find_commit(*want) {
-            builder.insert_commit(*want)?;
-        }
+    if !output.status.success() && output.stdout.is_empty() {
+        let err_msg = String::from_utf8_lossy(&output.stderr);
+        return Err(GitError::Git(git2::Error::from_str(&format!("git upload-pack failed: {}", err_msg))));
     }
     
-    // Write pack file to memory
-    let mut pack_data = Vec::new();
-    builder.foreach(|data| {
-        pack_data.extend_from_slice(data);
-        true
-    })?;
-    
-    // Build response with sideband format
-    let mut response = Vec::new();
-    
-    // NAK response (simplified - real protocol would do more negotiation)
-    response.extend_from_slice(b"0008NAK\n");
-    
-    // Pack data in sideband format
-    // Sideband 1 is pack data
-    const CHUNK_SIZE: usize = 65515; // Max pkt-line size - 5 bytes for header
-    for chunk in pack_data.chunks(CHUNK_SIZE) {
-        let pkt_len = chunk.len() + 5;
-        let header = format!("{:04x}\x01", pkt_len);
-        response.extend_from_slice(header.as_bytes());
-        response.extend_from_slice(chunk);
-    }
-    
-    // Final flush
-    response.extend_from_slice(b"0000");
-    
-    Ok(response)
+    Ok(output.stdout)
 }
 
 /// Process receive-pack request (client wants to push objects)
+/// Uses git command for proper HTTP protocol handling
 pub fn process_receive_pack_request(
     repo_path: &Path,
     request_body: &[u8],
 ) -> Result<Vec<u8>, GitError> {
+    use std::process::{Command, Stdio};
     use std::io::Write;
     
-    let repo = Repository::open_bare(repo_path).or_else(|_| Repository::open(repo_path))?;
+    let mut child = Command::new("git")
+        .arg("receive-pack")
+        .arg("--stateless-rpc")
+        .arg(repo_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| GitError::Io(e))?;
     
-    // Find the PACK data in the request
-    let pack_start = request_body.windows(4).position(|w| w == b"PACK");
-    
-    if let Some(start) = pack_start {
-        let pack_data = &request_body[start..];
-        
-        // Create object database and indexer
-        let odb = repo.odb()?;
-        let mut indexer = odb.packwriter()?;
-        indexer.write_all(pack_data).map_err(|e| GitError::Io(e))?;
-        let _ = indexer.commit()?;
+    // Write request body to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(request_body).map_err(|e| GitError::Io(e))?;
     }
     
-    // Parse ref updates from the request
-    // Real implementation would parse the update commands and apply them
+    let output = child.wait_with_output().map_err(|e| GitError::Io(e))?;
     
-    // Return success response
-    let mut response = Vec::new();
-    response.extend_from_slice(b"000eunpack ok\n");
-    response.extend_from_slice(b"0000");
+    if !output.status.success() && output.stdout.is_empty() {
+        let err_msg = String::from_utf8_lossy(&output.stderr);
+        return Err(GitError::Git(git2::Error::from_str(&format!("git receive-pack failed: {}", err_msg))));
+    }
     
-    Ok(response)
+    Ok(output.stdout)
 }
 
 /// SSH protocol handler state - collects input and produces output

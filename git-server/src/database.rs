@@ -95,6 +95,8 @@ impl Database {
                 title TEXT NOT NULL,
                 body TEXT NOT NULL DEFAULT '',
                 state TEXT NOT NULL DEFAULT 'open',
+                status TEXT NOT NULL DEFAULT 'todo',
+                due_date TEXT,
                 author TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -105,6 +107,16 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
+        // Migration: add due_date column if it doesn't exist
+        let _ = sqlx::query("ALTER TABLE issues ADD COLUMN due_date TEXT")
+            .execute(&self.pool)
+            .await;
+
+        // Migration: add status column if it doesn't exist
+        let _ = sqlx::query("ALTER TABLE issues ADD COLUMN status TEXT NOT NULL DEFAULT 'todo'")
+            .execute(&self.pool)
+            .await;
+
         // Issue comments table
         sqlx::query(
             r#"
@@ -114,12 +126,18 @@ impl Database {
                 body TEXT NOT NULL,
                 author TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (issue_id) REFERENCES issues(id)
             )
             "#,
         )
         .execute(&self.pool)
         .await?;
+
+        // Migration: add updated_at column to issue_comments if it doesn't exist
+        let _ = sqlx::query("ALTER TABLE issue_comments ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP")
+            .execute(&self.pool)
+            .await;
 
         // Pull requests table
         sqlx::query(
@@ -378,17 +396,18 @@ impl Database {
     }
 
     /// Create a new issue
-    pub async fn create_issue(&self, repo_name: &str, title: &str, body: &str, author: &str) -> Result<IssueInfo, sqlx::Error> {
+    pub async fn create_issue(&self, repo_name: &str, title: &str, body: &str, author: &str, due_date: Option<&str>) -> Result<IssueInfo, sqlx::Error> {
         let number = self.next_issue_number(repo_name).await?;
         
         let result = sqlx::query(
-            "INSERT INTO issues (repo_name, number, title, body, author) VALUES (?, ?, ?, ?, ?)"
+            "INSERT INTO issues (repo_name, number, title, body, author, due_date, status) VALUES (?, ?, ?, ?, ?, ?, 'todo')"
         )
         .bind(repo_name)
         .bind(number)
         .bind(title)
         .bind(body)
         .bind(author)
+        .bind(due_date)
         .execute(&self.pool)
         .await?;
 
@@ -401,6 +420,8 @@ impl Database {
             title: title.to_string(),
             body: body.to_string(),
             state: "open".to_string(),
+            status: "todo".to_string(),
+            due_date: due_date.map(|d| d.to_string()),
             author: author.to_string(),
             created_at: chrono_now(),
             updated_at: chrono_now(),
@@ -410,7 +431,7 @@ impl Database {
     /// Get issue by repo and number
     pub async fn get_issue(&self, repo_name: &str, number: i64) -> Result<Option<IssueInfo>, sqlx::Error> {
         sqlx::query_as::<_, IssueInfo>(
-            "SELECT id, repo_name, number, title, body, state, author, created_at, updated_at FROM issues WHERE repo_name = ? AND number = ?"
+            "SELECT id, repo_name, number, title, body, state, status, due_date, author, created_at, updated_at FROM issues WHERE repo_name = ? AND number = ?"
         )
         .bind(repo_name)
         .bind(number)
@@ -421,7 +442,7 @@ impl Database {
     /// List issues for a repository
     pub async fn list_issues(&self, repo_name: &str) -> Result<Vec<IssueInfo>, sqlx::Error> {
         sqlx::query_as::<_, IssueInfo>(
-            "SELECT id, repo_name, number, title, body, state, author, created_at, updated_at FROM issues WHERE repo_name = ? ORDER BY number DESC"
+            "SELECT id, repo_name, number, title, body, state, status, due_date, author, created_at, updated_at FROM issues WHERE repo_name = ? ORDER BY number DESC"
         )
         .bind(repo_name)
         .fetch_all(&self.pool)
@@ -436,6 +457,8 @@ impl Database {
         title: Option<&str>,
         body: Option<&str>,
         state: Option<&str>,
+        status: Option<&str>,
+        due_date: Option<&str>,
     ) -> Result<Option<IssueInfo>, sqlx::Error> {
         // Build dynamic update query
         let mut updates = Vec::new();
@@ -447,6 +470,12 @@ impl Database {
         }
         if state.is_some() {
             updates.push("state = ?");
+        }
+        if status.is_some() {
+            updates.push("status = ?");
+        }
+        if due_date.is_some() {
+            updates.push("due_date = ?");
         }
         
         if updates.is_empty() {
@@ -469,6 +498,12 @@ impl Database {
         if let Some(s) = state {
             q = q.bind(s);
         }
+        if let Some(st) = status {
+            q = q.bind(st);
+        }
+        if let Some(dd) = due_date {
+            q = q.bind(dd);
+        }
         q = q.bind(repo_name).bind(number);
         q.execute(&self.pool).await?;
 
@@ -478,7 +513,7 @@ impl Database {
     /// List comments for an issue
     pub async fn list_issue_comments(&self, issue_id: i64) -> Result<Vec<IssueCommentInfo>, sqlx::Error> {
         sqlx::query_as::<_, IssueCommentInfo>(
-            "SELECT id, issue_id, body, author, created_at FROM issue_comments WHERE issue_id = ? ORDER BY created_at ASC"
+            "SELECT id, issue_id, body, author, created_at, updated_at FROM issue_comments WHERE issue_id = ? ORDER BY created_at ASC"
         )
         .bind(issue_id)
         .fetch_all(&self.pool)
@@ -504,7 +539,36 @@ impl Database {
             body: body.to_string(),
             author: author.to_string(),
             created_at: chrono_now(),
+            updated_at: chrono_now(),
         })
+    }
+
+    /// Update a comment on an issue
+    pub async fn update_issue_comment(&self, comment_id: i64, body: &str) -> Result<Option<IssueCommentInfo>, sqlx::Error> {
+        sqlx::query(
+            "UPDATE issue_comments SET body = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        )
+        .bind(body)
+        .bind(comment_id)
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query_as::<_, IssueCommentInfo>(
+            "SELECT id, issue_id, body, author, created_at, updated_at FROM issue_comments WHERE id = ?"
+        )
+        .bind(comment_id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    /// Get a single comment by ID
+    pub async fn get_issue_comment(&self, comment_id: i64) -> Result<Option<IssueCommentInfo>, sqlx::Error> {
+        sqlx::query_as::<_, IssueCommentInfo>(
+            "SELECT id, issue_id, body, author, created_at, updated_at FROM issue_comments WHERE id = ?"
+        )
+        .bind(comment_id)
+        .fetch_optional(&self.pool)
+        .await
     }
 
     // ============ Pull Request Methods ============

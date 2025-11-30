@@ -47,6 +47,8 @@ export interface Issue {
   title: string;
   body: string;
   state: 'open' | 'closed';
+  status: 'todo' | 'doing' | 'done';
+  due_date: string | null;
   author: string;
   created_at: string;
   updated_at: string;
@@ -58,6 +60,7 @@ export interface IssueComment {
   body: string;
   author: string;
   created_at: string;
+  updated_at: string;
 }
 
 export interface PullRequest {
@@ -262,11 +265,12 @@ export async function createProjectIssue(
   orgName: string,
   projectName: string,
   title: string,
-  body: string
+  body: string,
+  dueDate?: string
 ): Promise<Issue> {
   return api<Issue>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues`, {
     method: 'POST',
-    body: JSON.stringify({ title, body }),
+    body: JSON.stringify({ title, body, due_date: dueDate }),
   });
 }
 
@@ -274,7 +278,7 @@ export async function updateProjectIssue(
   orgName: string,
   projectName: string,
   issueNumber: number,
-  updates: { title?: string; body?: string; state?: 'open' | 'closed' }
+  updates: { title?: string; body?: string; state?: 'open' | 'closed'; status?: 'todo' | 'doing' | 'done'; due_date?: string | null }
 ): Promise<Issue> {
   return api<Issue>(`/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues/${issueNumber}`, {
     method: 'PATCH',
@@ -302,6 +306,22 @@ export async function createProjectIssueComment(
     `/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues/${issueNumber}/comments`,
     {
       method: 'POST',
+      body: JSON.stringify({ body }),
+    }
+  );
+}
+
+export async function updateProjectIssueComment(
+  orgName: string,
+  projectName: string,
+  issueNumber: number,
+  commentId: number,
+  body: string
+): Promise<IssueComment> {
+  return api<IssueComment>(
+    `/orgs/${encodeURIComponent(orgName)}/projects/${encodeURIComponent(projectName)}/issues/${issueNumber}/comments/${commentId}`,
+    {
+      method: 'PATCH',
       body: JSON.stringify({ body }),
     }
   );

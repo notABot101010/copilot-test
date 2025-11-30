@@ -8,6 +8,7 @@ export function CreateIssuePage() {
   const router = useRouter();
   const title = useSignal('');
   const body = useSignal('');
+  const dueDate = useSignal('');
   const loading = useSignal(false);
   const error = useSignal<string | null>(null);
 
@@ -26,10 +27,16 @@ export function CreateIssuePage() {
     try {
       loading.value = true;
       error.value = null;
-      const issue = await createProjectIssue(orgName, projectName, title.value.trim(), body.value.trim());
+      const issue = await createProjectIssue(
+        orgName, 
+        projectName, 
+        title.value.trim(), 
+        body.value.trim(),
+        dueDate.value || undefined
+      );
       router.push(`/${orgName}/${projectName}/issues/${issue.number}`);
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to create issue';
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to create issue';
       loading.value = false;
     }
   }
@@ -37,7 +44,7 @@ export function CreateIssuePage() {
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
       <Text size="xl" fw={600} mb="lg">
-        🐛 Create a new issue
+        Create a new issue
       </Text>
 
       {error.value && (
@@ -62,6 +69,15 @@ export function CreateIssuePage() {
           value={body.value}
           onChange={(e: Event) => (body.value = (e.target as HTMLTextAreaElement).value)}
           minRows={6}
+          mb="lg"
+        />
+
+        <TextInput
+          label="Due Date"
+          type="date"
+          placeholder="YYYY-MM-DD"
+          value={dueDate.value}
+          onChange={(e: Event) => (dueDate.value = (e.target as HTMLInputElement).value)}
           mb="lg"
         />
 
