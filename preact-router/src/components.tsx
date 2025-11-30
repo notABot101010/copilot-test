@@ -149,9 +149,17 @@ export function RouterView({ name, props: additionalProps, notFound: NotFoundCom
   const router = useRouter();
   const route = useRoute();
 
-  const [Component, setComponent] = useState<ComponentType<RouteComponentProps> | null>(null);
+  // Compute initial state based on current route
+  const initialMatched = router.currentRoute.value.matched;
+  const initialIsNotFound = initialMatched.length === 0;
+  const initialMatchedRoute = name 
+    ? initialMatched.find(r => r.name === name) 
+    : initialMatched[initialMatched.length - 1];
+  const initialComponent = initialMatchedRoute?.component || null;
+
+  const [Component, setComponent] = useState<ComponentType<RouteComponentProps> | null>(initialComponent);
   const [loading, setLoading] = useState(false);
-  const [isNotFound, setIsNotFound] = useState(false);
+  const [isNotFound, setIsNotFound] = useState(initialIsNotFound);
 
   // Subscribe to route changes using signals
   useSignalEffect(() => {
