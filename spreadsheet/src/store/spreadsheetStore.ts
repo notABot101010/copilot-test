@@ -48,7 +48,8 @@ initSync(
 // Handle remote sync updates from other tabs
 function handleRemoteSync(spreadsheetId: string, remoteBinary: Uint8Array): void {
   const doc = currentSpreadsheetDoc.value;
-  if (!doc || doc.id !== spreadsheetId) return;
+  // Note: String() cast is required because Automerge returns CRDT wrapper objects
+  if (!doc || String(doc.id) !== spreadsheetId) return;
   
   try {
     const remoteDoc = Automerge.load<AutomergeSpreadsheet>(remoteBinary);
@@ -376,7 +377,7 @@ function updateSpreadsheetListItemInternal(): void {
   if (!doc) return;
   
   spreadsheetList.value = spreadsheetList.value.map((item) =>
-    item.id === doc.id
+    item.id === String(doc.id)
       ? { ...item, name: doc.name, updatedAt: doc.updatedAt }
       : item
   );
@@ -385,7 +386,8 @@ function updateSpreadsheetListItemInternal(): void {
 // Save and broadcast changes to other tabs (server sync handles persistence)
 function saveAndBroadcast(oldDoc: Automerge.Doc<AutomergeSpreadsheet>, newDoc: Automerge.Doc<AutomergeSpreadsheet>): void {
   updateSpreadsheetListItemInternal();
-  broadcastChanges(newDoc.id, oldDoc, newDoc);
+  // Note: String() cast is required because Automerge returns CRDT wrapper objects
+  broadcastChanges(String(newDoc.id), oldDoc, newDoc);
 }
 
 // Get the Automerge binary for current spreadsheet
@@ -398,7 +400,8 @@ export function getSpreadsheetBinary(): Uint8Array | null {
 // Merge remote changes into the spreadsheet
 export function mergeRemoteChanges(id: string, remoteBinary: Uint8Array): void {
   const doc = currentSpreadsheetDoc.value;
-  if (!doc || doc.id !== id) return;
+  // Note: String() cast is required because Automerge returns CRDT wrapper objects
+  if (!doc || String(doc.id) !== id) return;
   
   const remoteDoc = Automerge.load<AutomergeSpreadsheet>(remoteBinary);
   const mergedDoc = Automerge.merge(doc, remoteDoc);
