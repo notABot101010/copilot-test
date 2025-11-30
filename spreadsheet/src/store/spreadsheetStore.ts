@@ -86,6 +86,16 @@ function pushToUndoStack(doc: Automerge.Doc<AutomergeSpreadsheet>): void {
   canRedoSignal.value = false;
 }
 
+/**
+ * Get the latest document from the signal and clone it to avoid outdated document errors.
+ * Returns null if no document is available.
+ */
+function getLatestClonedDoc(): Automerge.Doc<AutomergeSpreadsheet> | null {
+  const doc = currentSpreadsheetDoc.value;
+  if (!doc) return null;
+  return Automerge.clone(doc);
+}
+
 export function canUndo(): boolean {
   return undoStack.length > 0;
 }
@@ -272,10 +282,9 @@ export function updateCell(row: number, col: number, value: string): void {
     pushToUndoStack(doc);
   }
   
-  // Re-fetch doc to get the latest version and clone it to avoid outdated document errors
-  doc = currentSpreadsheetDoc.value;
-  if (!doc) return;
-  const clonedDoc = Automerge.clone(doc);
+  // Get latest cloned doc to avoid outdated document errors
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
   
   const newDoc = Automerge.change(clonedDoc, `Update cell ${row}:${col}`, (d) => {
     if (!d.cells[key]) {
@@ -294,7 +303,7 @@ export function updateCell(row: number, col: number, value: string): void {
 // On the first call of an edit session, it saves the pre-edit state for undo
 export function updateCellLive(row: number, col: number, value: string): void {
   // Always get the latest doc reference to avoid race conditions
-  let doc = currentSpreadsheetDoc.value;
+  const doc = currentSpreadsheetDoc.value;
   if (!doc) return;
   
   // Check if value actually changed
@@ -307,10 +316,9 @@ export function updateCellLive(row: number, col: number, value: string): void {
     preEditDoc = doc;
   }
   
-  // Re-fetch doc to get the latest version and clone it to avoid outdated document errors
-  doc = currentSpreadsheetDoc.value;
-  if (!doc) return;
-  const clonedDoc = Automerge.clone(doc);
+  // Get latest cloned doc to avoid outdated document errors
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
   
   const newDoc = Automerge.change(clonedDoc, `Live update cell ${row}:${col}`, (d) => {
     if (!d.cells[key]) {
@@ -354,10 +362,9 @@ export function updateMultipleCells(updates: { row: number; col: number; value: 
   // Save to undo stack before making changes
   pushToUndoStack(initialDoc);
   
-  // Re-fetch doc to get the latest version and clone it to avoid outdated document errors
-  const doc = currentSpreadsheetDoc.value;
-  if (!doc) return;
-  const clonedDoc = Automerge.clone(doc);
+  // Get latest cloned doc to avoid outdated document errors
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
   
   const newDoc = Automerge.change(clonedDoc, `Update ${changedUpdates.length} cells`, (d) => {
     for (const { row, col, value } of changedUpdates) {
@@ -376,11 +383,9 @@ export function updateMultipleCells(updates: { row: number; col: number; value: 
 
 // Rename spreadsheet
 export function renameSpreadsheet(name: string): void {
-  let doc = currentSpreadsheetDoc.value;
-  if (!doc) return;
-  
-  // Clone to avoid outdated document errors
-  const clonedDoc = Automerge.clone(doc);
+  // Get latest cloned doc to avoid outdated document errors
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
   
   const newDoc = Automerge.change(clonedDoc, 'Rename spreadsheet', (d) => {
     d.name = name;
