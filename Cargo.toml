@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["base64", "hex", "base32",  "digital_ocean", "scaleway", "git-server", "spreadsheet-server", "s3server", "customer-support/server"]
+members = ["base64", "hex", "base32",  "digital_ocean", "scaleway", "git-server", "spreadsheet-server", "s3server", "customer-support/server", "encrypted-chat/server"]
 
 [workspace.dependencies]
 criterion = { version = "0.7", features = ["html_reports"] }
