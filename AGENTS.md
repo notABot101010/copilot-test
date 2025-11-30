@@ -24,6 +24,7 @@
 
 * When asked to create a web application, always create a single page app with vite and preact, starting from the preact-ts template.
 * Use only tailwindcss for design and mantine for components. Unless strictly necessary, never use css-in-js libraries, don't use inline styles, don't use separate CSS files
+* Use `@tailwindcss/vite` to setup tailwindcss with vite.
 * Always use our own preact-router from this repo for routing.
 * Always make sure that the webapp compiles.
 * ALWAYS use preact signals for state management. NEVER use hooks for state management.
