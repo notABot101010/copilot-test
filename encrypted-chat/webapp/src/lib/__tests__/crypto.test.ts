@@ -313,4 +313,146 @@ describe('Crypto utilities', () => {
       expect(preKeyData.oneTimePrekeyIvs.length).toBe(5);
     });
   });
+
+  describe('per-message encryption (ephemeral ECDH)', () => {
+    it('should encrypt and decrypt a message', async () => {
+      // Generate recipient's prekey pair
+      const recipientPrekeyPair = await crypto.generateExchangeKeyPair();
+      
+      const message = 'Hello, this is a secret message!';
+      
+      // Encrypt using recipient's public key
+      const encryptedData = await crypto.encryptMessage(recipientPrekeyPair.publicKey, message);
+      
+      // Verify encrypted data structure
+      expect(encryptedData.ephemeralPublicKey).toBeDefined();
+      expect(encryptedData.iv).toBeDefined();
+      expect(encryptedData.ciphertext).toBeDefined();
+      
+      // Decrypt using recipient's private key
+      const decrypted = await crypto.decryptMessage(recipientPrekeyPair.privateKey, encryptedData);
+      
+      expect(decrypted).toBe(message);
+    });
+    
+    it('should use different ephemeral keys for each message', async () => {
+      const recipientPrekeyPair = await crypto.generateExchangeKeyPair();
+      
+      const message1 = 'First message';
+      const message2 = 'Second message';
+      
+      const encrypted1 = await crypto.encryptMessage(recipientPrekeyPair.publicKey, message1);
+      const encrypted2 = await crypto.encryptMessage(recipientPrekeyPair.publicKey, message2);
+      
+      // Ephemeral public keys should be different
+      expect(encrypted1.ephemeralPublicKey).not.toBe(encrypted2.ephemeralPublicKey);
+      
+      // Both should decrypt correctly
+      const decrypted1 = await crypto.decryptMessage(recipientPrekeyPair.privateKey, encrypted1);
+      const decrypted2 = await crypto.decryptMessage(recipientPrekeyPair.privateKey, encrypted2);
+      
+      expect(decrypted1).toBe(message1);
+      expect(decrypted2).toBe(message2);
+    });
+    
+    it('should fail to decrypt with wrong private key', async () => {
+      const recipientPrekeyPair = await crypto.generateExchangeKeyPair();
+      const wrongKeyPair = await crypto.generateExchangeKeyPair();
+      
+      const message = 'Secret message';
+      const encryptedData = await crypto.encryptMessage(recipientPrekeyPair.publicKey, message);
+      
+      await expect(crypto.decryptMessage(wrongKeyPair.privateKey, encryptedData)).rejects.toThrow();
+    });
+    
+    it('should handle empty message', async () => {
+      const recipientPrekeyPair = await crypto.generateExchangeKeyPair();
+      
+      const message = '';
+      const encryptedData = await crypto.encryptMessage(recipientPrekeyPair.publicKey, message);
+      const decrypted = await crypto.decryptMessage(recipientPrekeyPair.privateKey, encryptedData);
+      
+      expect(decrypted).toBe('');
+    });
+    
+    it('should handle unicode message', async () => {
+      const recipientPrekeyPair = await crypto.generateExchangeKeyPair();
+      
+      const message = '你好世界! 🌍 Привет мир!';
+      const encryptedData = await crypto.encryptMessage(recipientPrekeyPair.publicKey, message);
+      const decrypted = await crypto.decryptMessage(recipientPrekeyPair.privateKey, encryptedData);
+      
+      expect(decrypted).toBe(message);
+    });
+    
+    it('should handle long message', async () => {
+      const recipientPrekeyPair = await crypto.generateExchangeKeyPair();
+      
+      const message = 'A'.repeat(10000); // 10KB message
+      const encryptedData = await crypto.encryptMessage(recipientPrekeyPair.publicKey, message);
+      const decrypted = await crypto.decryptMessage(recipientPrekeyPair.privateKey, encryptedData);
+      
+      expect(decrypted).toBe(message);
+    });
+  });
+
+  describe('bidirectional messaging', () => {
+    it('should allow two users to exchange messages', async () => {
+      // Setup: Alice and Bob each have their own prekey pairs
+      const alicePrekeyPair = await crypto.generateExchangeKeyPair();
+      const bobPrekeyPair = await crypto.generateExchangeKeyPair();
+      
+      // Alice sends message to Bob
+      const aliceMessage = 'Hello Bob!';
+      const encryptedForBob = await crypto.encryptMessage(bobPrekeyPair.publicKey, aliceMessage);
+      const bobReceives = await crypto.decryptMessage(bobPrekeyPair.privateKey, encryptedForBob);
+      expect(bobReceives).toBe(aliceMessage);
+      
+      // Bob sends message to Alice
+      const bobMessage = 'Hi Alice!';
+      const encryptedForAlice = await crypto.encryptMessage(alicePrekeyPair.publicKey, bobMessage);
+      const aliceReceives = await crypto.decryptMessage(alicePrekeyPair.privateKey, encryptedForAlice);
+      expect(aliceReceives).toBe(bobMessage);
+      
+      // Alice sends another message to Bob
+      const aliceMessage2 = 'How are you?';
+      const encryptedForBob2 = await crypto.encryptMessage(bobPrekeyPair.publicKey, aliceMessage2);
+      const bobReceives2 = await crypto.decryptMessage(bobPrekeyPair.privateKey, encryptedForBob2);
+      expect(bobReceives2).toBe(aliceMessage2);
+      
+      // Bob sends another message to Alice
+      const bobMessage2 = "I'm doing great, thanks!";
+      const encryptedForAlice2 = await crypto.encryptMessage(alicePrekeyPair.publicKey, bobMessage2);
+      const aliceReceives2 = await crypto.decryptMessage(alicePrekeyPair.privateKey, encryptedForAlice2);
+      expect(aliceReceives2).toBe(bobMessage2);
+    });
+    
+    it('should work with full sealed sender envelope flow', async () => {
+      // Setup: Full user registration simulation
+      const aliceIdentityKeyPair = await crypto.generateIdentityKeyPair();
+      
+      const bobPrekeyPair = await crypto.generateExchangeKeyPair();
+      
+      // Alice sends message to Bob using sealed sender
+      const aliceMessage = 'Hello Bob! This is encrypted.';
+      const encryptedMessage = await crypto.encryptMessage(bobPrekeyPair.publicKey, aliceMessage);
+      
+      const sealedEnvelope = await crypto.createSealedSenderEnvelope(
+        'alice',
+        aliceIdentityKeyPair.publicKey,
+        bobPrekeyPair.publicKey,
+        encryptedMessage
+      );
+      
+      // Bob opens the sealed envelope
+      const inner = await crypto.openSealedSenderEnvelope(sealedEnvelope, bobPrekeyPair.privateKey);
+      
+      // Verify sender info
+      expect(inner.senderUsername).toBe('alice');
+      
+      // Decrypt the message
+      const decrypted = await crypto.decryptMessage(bobPrekeyPair.privateKey, inner.encryptedMessage);
+      expect(decrypted).toBe(aliceMessage);
+    });
+  });
 });

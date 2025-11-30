@@ -3,11 +3,14 @@
  * 
  * Features:
  * - PBKDF2 for master key derivation from password
- * - Ed25519 for identity keys (signed using identity key)
- * - X25519 for key exchange per message
+ * - ECDSA (P-256) for identity keys (signing)
+ * - ECDH (P-256) for ephemeral key exchange per message
  * - AES-256-GCM for message encryption
- * - Double ratchet for forward secrecy
  * - Sealed sender for metadata protection
+ * 
+ * Encryption model: Each message uses a fresh ephemeral ECDH key pair.
+ * The shared secret is derived from the ephemeral private key and the
+ * recipient's prekey. This provides forward secrecy without complex ratcheting.
  */
 
 // WebCrypto doesn't natively support Ed25519/X25519, so we need to use SubtleCrypto
@@ -145,9 +148,11 @@ export async function importIdentityPrivateKey(keyData: ArrayBuffer): Promise<Cr
 
 // Import ECDH public key from raw bytes
 export async function importExchangePublicKey(keyData: ArrayBuffer): Promise<CryptoKey> {
+  // Ensure we have a proper buffer by creating a new Uint8Array and using it directly
+  const bytes = new Uint8Array(keyData);
   return crypto.subtle.importKey(
     'raw',
-    keyData,
+    bytes,
     { name: 'ECDH', namedCurve: 'P-256' },
     true,
     []
@@ -212,10 +217,13 @@ export async function encrypt(key: CryptoKey, data: ArrayBuffer, iv: Uint8Array)
 
 // Decrypt data with AES-GCM
 export async function decrypt(key: CryptoKey, data: ArrayBuffer, iv: Uint8Array): Promise<ArrayBuffer> {
+  // Ensure we have proper Uint8Arrays for jsdom compatibility
+  const dataBytes = new Uint8Array(data);
+  const ivBytes = new Uint8Array(iv);
   return crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: new Uint8Array(iv) as BufferSource },
+    { name: 'AES-GCM', iv: ivBytes as BufferSource },
     key,
-    data
+    dataBytes
   );
 }
 
@@ -249,263 +257,75 @@ export async function decryptExchangePrivateKey(
   return importExchangePrivateKey(decrypted);
 }
 
-// Key Derivation Function for ratcheting (HKDF-like using PBKDF2)
-export async function deriveRatchetKey(
-  inputKey: CryptoKey,
-  salt: Uint8Array
-): Promise<{ chainKey: CryptoKey; messageKey: CryptoKey }> {
-  // Export the input key to use as base material
-  const keyMaterial = await crypto.subtle.exportKey('raw', inputKey);
-  
-  // Import as HKDF key
-  const hkdfKey = await crypto.subtle.importKey(
-    'raw',
-    keyMaterial,
-    'HKDF',
-    false,
-    ['deriveKey']
-  );
-  
-  // Derive chain key
-  const chainKey = await crypto.subtle.deriveKey(
-    {
-      name: 'HKDF',
-      salt: new Uint8Array(salt) as BufferSource,
-      info: new TextEncoder().encode('chain'),
-      hash: 'SHA-256'
-    },
-    hkdfKey,
-    { name: 'AES-GCM', length: KEY_LENGTH },
-    true,
-    ['encrypt', 'decrypt']
-  );
-  
-  // Derive message key
-  const messageKey = await crypto.subtle.deriveKey(
-    {
-      name: 'HKDF',
-      salt: new Uint8Array(salt) as BufferSource,
-      info: new TextEncoder().encode('message'),
-      hash: 'SHA-256'
-    },
-    hkdfKey,
-    { name: 'AES-GCM', length: KEY_LENGTH },
-    true,
-    ['encrypt', 'decrypt']
-  );
-  
-  return { chainKey, messageKey };
+// Simple per-message encryption result
+export interface EncryptedMessageData {
+  ephemeralPublicKey: string; // base64
+  iv: string; // base64
+  ciphertext: string; // base64
 }
 
-// Double Ratchet State
-export interface RatchetState {
-  // DH ratchet
-  dhKeyPair: CryptoKeyPair;
-  remoteDhPublicKey?: CryptoKey;
-  
-  // Chain keys
-  sendingChainKey?: CryptoKey;
-  receivingChainKey?: CryptoKey;
-  
-  // Message counters
-  sendingCounter: number;
-  receivingCounter: number;
-  previousChainLength: number;
-  
-  // Root key
-  rootKey: CryptoKey;
-}
-
-// Initialize ratchet for sender (initiator)
-export async function initRatchetAsSender(
-  _recipientIdentityPublicKey: CryptoKey,
-  recipientSignedPrekey: CryptoKey,
-  _recipientOneTimePrekey?: CryptoKey
-): Promise<{ state: RatchetState; initialMessage: Uint8Array }> {
-  // Generate ephemeral key pair
+/**
+ * Encrypt a message using ephemeral ECDH with the recipient's prekey.
+ * Each message generates a new ephemeral key pair for forward secrecy.
+ * 
+ * @param recipientPrekey - The recipient's signed prekey (public key)
+ * @param plaintext - The message content to encrypt
+ * @returns Encrypted message data including ephemeral public key, IV, and ciphertext
+ */
+export async function encryptMessage(
+  recipientPrekey: CryptoKey,
+  plaintext: string
+): Promise<EncryptedMessageData> {
+  // Generate ephemeral key pair for this message
   const ephemeralKeyPair = await generateExchangeKeyPair();
   
-  // Compute initial shared secret (X3DH-like)
-  // In a full implementation, this would be:
-  // DH1 = DH(IK_A, SPK_B)
-  // DH2 = DH(EK_A, IK_B)
-  // DH3 = DH(EK_A, SPK_B)
-  // DH4 = DH(EK_A, OPK_B) if OPK_B exists
-  // For simplicity, we do DH(EK_A, SPK_B)
-  const sharedSecret = await deriveSharedSecret(ephemeralKeyPair.privateKey, recipientSignedPrekey);
+  // Derive shared secret: DH(ephemeral_private, recipient_prekey)
+  const sharedSecret = await deriveSharedSecret(ephemeralKeyPair.privateKey, recipientPrekey);
   
-  // Generate DH ratchet key pair
-  const dhKeyPair = await generateExchangeKeyPair();
-  
-  // Derive initial chain keys
-  const salt = generateRandomBytes(32);
-  const { chainKey: sendingChainKey } = await deriveRatchetKey(sharedSecret, salt);
-  
-  const state: RatchetState = {
-    dhKeyPair,
-    remoteDhPublicKey: recipientSignedPrekey,
-    sendingChainKey,
-    sendingCounter: 0,
-    receivingCounter: 0,
-    previousChainLength: 0,
-    rootKey: sharedSecret
-  };
-  
-  // Create initial message containing ephemeral public key and DH public key
-  const ephemeralPublic = await exportPublicKey(ephemeralKeyPair.publicKey);
-  const dhPublic = await exportPublicKey(dhKeyPair.publicKey);
-  
-  // Pack keys: [ephemeralPublic (65 bytes), dhPublic (65 bytes), salt (32 bytes)]
-  const initialMessage = new Uint8Array(65 + 65 + 32);
-  initialMessage.set(new Uint8Array(ephemeralPublic), 0);
-  initialMessage.set(new Uint8Array(dhPublic), 65);
-  initialMessage.set(salt, 130);
-  
-  return { state, initialMessage };
-}
-
-// Initialize ratchet for receiver
-export async function initRatchetAsReceiver(
-  signedPrekeyPrivate: CryptoKey,
-  initialMessage: Uint8Array
-): Promise<RatchetState> {
-  // Parse initial message
-  const ephemeralPublicRaw = initialMessage.slice(0, 65);
-  const dhPublicRaw = initialMessage.slice(65, 130);
-  const salt = initialMessage.slice(130, 162);
-  
-  const ephemeralPublic = await importExchangePublicKey(ephemeralPublicRaw.buffer);
-  const remoteDhPublicKey = await importExchangePublicKey(dhPublicRaw.buffer);
-  
-  // Compute shared secret
-  const sharedSecret = await deriveSharedSecret(signedPrekeyPrivate, ephemeralPublic);
-  
-  // Generate DH ratchet key pair
-  const dhKeyPair = await generateExchangeKeyPair();
-  
-  // Derive initial chain keys (receiving is what sender used for sending)
-  const { chainKey: receivingChainKey } = await deriveRatchetKey(sharedSecret, salt);
-  
-  return {
-    dhKeyPair,
-    remoteDhPublicKey,
-    receivingChainKey,
-    sendingCounter: 0,
-    receivingCounter: 0,
-    previousChainLength: 0,
-    rootKey: sharedSecret
-  };
-}
-
-// Encrypt message using double ratchet
-export async function ratchetEncrypt(
-  state: RatchetState,
-  plaintext: string
-): Promise<{ ciphertext: ArrayBuffer; header: Uint8Array; newState: RatchetState }> {
-  if (!state.sendingChainKey) {
-    throw new Error('Sending chain key not initialized');
-  }
-  
-  // Derive message key and advance chain
-  const salt = generateRandomBytes(32);
-  const { chainKey: newChainKey, messageKey } = await deriveRatchetKey(state.sendingChainKey, salt);
-  
-  // Encrypt message
+  // Generate random IV
   const iv = generateIV();
+  
+  // Encrypt the message
   const encoder = new TextEncoder();
   const plaintextBytes = encoder.encode(plaintext);
-  const ciphertext = await encrypt(messageKey, plaintextBytes.buffer, iv);
+  const ciphertext = await encrypt(sharedSecret, plaintextBytes.buffer as ArrayBuffer, iv);
   
-  // Create header: [counter (4 bytes), DH public key (65 bytes), iv (12 bytes), salt (32 bytes)]
-  const dhPublic = await exportPublicKey(state.dhKeyPair.publicKey);
-  const header = new Uint8Array(4 + 65 + 12 + 32);
-  const counterView = new DataView(header.buffer);
-  counterView.setUint32(0, state.sendingCounter, false);
-  header.set(new Uint8Array(dhPublic), 4);
-  header.set(iv, 69);
-  header.set(salt, 81);
+  // Export ephemeral public key
+  const ephemeralPublicRaw = await exportPublicKey(ephemeralKeyPair.publicKey);
   
-  const newState: RatchetState = {
-    ...state,
-    sendingChainKey: newChainKey,
-    sendingCounter: state.sendingCounter + 1
+  return {
+    ephemeralPublicKey: arrayBufferToBase64(ephemeralPublicRaw),
+    iv: arrayBufferToBase64(iv.buffer as ArrayBuffer),
+    ciphertext: arrayBufferToBase64(ciphertext)
   };
-  
-  return { ciphertext, header, newState };
 }
 
-// Decrypt message using double ratchet
-export async function ratchetDecrypt(
-  state: RatchetState,
-  header: Uint8Array,
-  ciphertext: ArrayBuffer
-): Promise<{ plaintext: string; newState: RatchetState }> {
-  // Parse header
-  // Skip the counter (first 4 bytes) - used for out-of-order message handling in full implementation
-  const dhPublicRaw = header.slice(4, 69);
-  const iv = header.slice(69, 81);
-  const salt = header.slice(81, 113);
+/**
+ * Decrypt a message using the recipient's prekey private key.
+ * 
+ * @param recipientPrekeyPrivate - The recipient's signed prekey (private key)
+ * @param encryptedData - The encrypted message data
+ * @returns The decrypted message content
+ */
+export async function decryptMessage(
+  recipientPrekeyPrivate: CryptoKey,
+  encryptedData: EncryptedMessageData
+): Promise<string> {
+  // Import the sender's ephemeral public key
+  const ephemeralPublicRaw = base64ToArrayBuffer(encryptedData.ephemeralPublicKey);
+  const ephemeralPublicKey = await importExchangePublicKey(ephemeralPublicRaw);
   
-  const remoteDhPublic = await importExchangePublicKey(dhPublicRaw.buffer);
+  // Derive shared secret: DH(recipient_prekey_private, ephemeral_public)
+  const sharedSecret = await deriveSharedSecret(recipientPrekeyPrivate, ephemeralPublicKey);
   
-  let newState = { ...state };
+  // Get IV and ciphertext
+  const iv = new Uint8Array(base64ToArrayBuffer(encryptedData.iv));
+  const ciphertext = base64ToArrayBuffer(encryptedData.ciphertext);
   
-  // Check if we need to do a DH ratchet step
-  const currentRemotePublicRaw = state.remoteDhPublicKey ? 
-    await exportPublicKey(state.remoteDhPublicKey) : null;
-  const newRemotePublicRaw = dhPublicRaw.buffer;
-  
-  const keysAreDifferent = !currentRemotePublicRaw || 
-    !arrayBuffersEqual(currentRemotePublicRaw, newRemotePublicRaw);
-  
-  if (keysAreDifferent) {
-    // Perform DH ratchet step
-    const sharedSecret = await deriveSharedSecret(state.dhKeyPair.privateKey, remoteDhPublic);
-    const { chainKey: receivingChainKey } = await deriveRatchetKey(sharedSecret, generateRandomBytes(32));
-    
-    // Generate new DH key pair for sending
-    const newDhKeyPair = await generateExchangeKeyPair();
-    const sendingSharedSecret = await deriveSharedSecret(newDhKeyPair.privateKey, remoteDhPublic);
-    const { chainKey: sendingChainKey } = await deriveRatchetKey(sendingSharedSecret, generateRandomBytes(32));
-    
-    newState = {
-      ...state,
-      dhKeyPair: newDhKeyPair,
-      remoteDhPublicKey: remoteDhPublic,
-      receivingChainKey,
-      sendingChainKey,
-      previousChainLength: state.sendingCounter,
-      sendingCounter: 0,
-      receivingCounter: 0
-    };
-  }
-  
-  if (!newState.receivingChainKey) {
-    throw new Error('Receiving chain key not initialized');
-  }
-  
-  // Derive message key
-  const { chainKey: newChainKey, messageKey } = await deriveRatchetKey(newState.receivingChainKey, salt);
-  
-  // Decrypt message
-  const plaintextBytes = await decrypt(messageKey, ciphertext, iv);
+  // Decrypt the message
+  const plaintextBytes = await decrypt(sharedSecret, ciphertext, iv);
   const decoder = new TextDecoder();
-  const plaintext = decoder.decode(plaintextBytes);
-  
-  newState.receivingChainKey = newChainKey;
-  newState.receivingCounter++;
-  
-  return { plaintext, newState };
-}
-
-function arrayBuffersEqual(buf1: ArrayBuffer, buf2: ArrayBuffer): boolean {
-  if (buf1.byteLength !== buf2.byteLength) return false;
-  const view1 = new Uint8Array(buf1);
-  const view2 = new Uint8Array(buf2);
-  for (let idx = 0; idx < view1.length; idx++) {
-    if (view1[idx] !== view2[idx]) return false;
-  }
-  return true;
+  return decoder.decode(plaintextBytes);
 }
 
 // Sealed Sender envelope
@@ -521,8 +341,8 @@ export interface SealedSenderEnvelope {
 export interface InnerEnvelope {
   senderUsername: string;
   senderIdentityPublicKey: string; // base64
-  messageHeader: string; // base64 - ratchet header
-  ciphertext: string; // base64 - encrypted message
+  // Encrypted message data (ephemeral ECDH per message)
+  encryptedMessage: EncryptedMessageData;
 }
 
 // Create sealed sender envelope
@@ -530,8 +350,7 @@ export async function createSealedSenderEnvelope(
   senderUsername: string,
   senderIdentityPublicKey: CryptoKey,
   recipientSignedPrekey: CryptoKey,
-  messageHeader: Uint8Array,
-  ciphertext: ArrayBuffer
+  encryptedMessage: EncryptedMessageData
 ): Promise<SealedSenderEnvelope> {
   // Generate ephemeral key for sealed sender
   const ephemeralKeyPair = await generateExchangeKeyPair();
@@ -544,8 +363,7 @@ export async function createSealedSenderEnvelope(
   const inner: InnerEnvelope = {
     senderUsername,
     senderIdentityPublicKey: arrayBufferToBase64(senderPubKeyRaw),
-    messageHeader: arrayBufferToBase64(messageHeader.buffer as ArrayBuffer),
-    ciphertext: arrayBufferToBase64(ciphertext)
+    encryptedMessage
   };
   
   // Encrypt inner envelope
