@@ -509,8 +509,10 @@ class CustomerSupportWidget {
   }
 }
 
-// Export for global usage
+// Export for global usage - use the class directly as the global
 (window as unknown as { CustomerSupport: typeof CustomerSupportWidget }).CustomerSupport =
   CustomerSupportWidget;
 
+// Default export for IIFE
+export default CustomerSupportWidget;
 export { CustomerSupportWidget, CustomerSupportConfig };

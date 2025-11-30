@@ -376,10 +376,11 @@
   <script src="/sdk.js"></script>
   <script>
     // Replace with your workspace ID
-    const WORKSPACE_ID = 'YOUR_WORKSPACE_ID';
+    const WORKSPACE_ID = '6d1c144c-5bfc-4b76-a939-1f9f643d26bf';
     
     // Initialize the chat widget
-    new CustomerSupport({
+    // CustomerSupport is an IIFE that exports { CustomerSupportWidget, default }
+    new CustomerSupport.default({
       workspaceId: WORKSPACE_ID,
       primaryColor: '#2563eb',
       welcomeMessage: 'Hi! How can we help you today?',
