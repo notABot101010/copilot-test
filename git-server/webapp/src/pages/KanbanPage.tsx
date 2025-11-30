@@ -9,42 +9,157 @@ import {
 } from '@mantine/core';
 import { useRoute } from '@copilot-test/preact-router';
 import {
+  DndContext,
+  DragOverlay,
+  useDroppable,
+  useDraggable,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
+import {
   listProjectIssues,
   updateProjectIssue,
   type Issue,
 } from '../api';
 
+type IssueStatus = 'todo' | 'doing' | 'done';
+
+interface DraggableIssueCardProps {
+  issue: Issue;
+  orgName: string;
+  projectName: string;
+}
+
+function DraggableIssueCard({ issue, orgName, projectName }: DraggableIssueCardProps) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `issue-${issue.number}`,
+    data: { issue },
+  });
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  // Type cast is needed because @dnd-kit uses React event types while Preact has different types.
+  // The handlers are compatible at runtime.
+  const pointerDownHandler = listeners?.onPointerDown as unknown as (e: PointerEvent) => void;
+  const keyDownHandler = listeners?.onKeyDown as unknown as (e: KeyboardEvent) => void;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      role="button"
+      tabIndex={attributes.tabIndex}
+      aria-disabled={attributes['aria-disabled']}
+      aria-pressed={attributes['aria-pressed']}
+      aria-roledescription={attributes['aria-roledescription']}
+      aria-describedby={attributes['aria-describedby']}
+      onPointerDown={pointerDownHandler}
+      onKeyDown={keyDownHandler}
+    >
+      <a
+        href={`/${orgName}/${projectName}/issues/${issue.number}`}
+        class="block no-underline"
+        onClick={(e: MouseEvent) => {
+          // Prevent navigation when dragging
+          if (isDragging) {
+            e.preventDefault();
+          }
+        }}
+      >
+        <Card
+          shadow="sm"
+          padding="sm"
+          radius="md"
+          withBorder
+          class="cursor-grab hover:shadow-md transition-shadow active:cursor-grabbing"
+        >
+          <Group justify="space-between" mb="xs">
+            <Text size="xs" c="dimmed">#{issue.number}</Text>
+            <Badge
+              size="xs"
+              color={issue.state === 'open' ? 'green' : 'purple'}
+              variant="light"
+            >
+              {issue.state}
+            </Badge>
+          </Group>
+          <Text size="sm" fw={500} lineClamp={2}>
+            {issue.title}
+          </Text>
+          {issue.due_date && (
+            <Text size="xs" c="dimmed" mt="xs">
+              Due: {issue.due_date}
+            </Text>
+          )}
+        </Card>
+      </a>
+    </div>
+  );
+}
+
+interface IssueCardOverlayProps {
+  issue: Issue;
+}
+
+function IssueCardOverlay({ issue }: IssueCardOverlayProps) {
+  return (
+    <Card
+      shadow="lg"
+      padding="sm"
+      radius="md"
+      withBorder
+      class="cursor-grabbing"
+      style={{ width: '250px' }}
+    >
+      <Group justify="space-between" mb="xs">
+        <Text size="xs" c="dimmed">#{issue.number}</Text>
+        <Badge
+          size="xs"
+          color={issue.state === 'open' ? 'green' : 'purple'}
+          variant="light"
+        >
+          {issue.state}
+        </Badge>
+      </Group>
+      <Text size="sm" fw={500} lineClamp={2}>
+        {issue.title}
+      </Text>
+      {issue.due_date && (
+        <Text size="xs" c="dimmed" mt="xs">
+          Due: {issue.due_date}
+        </Text>
+      )}
+    </Card>
+  );
+}
+
 interface KanbanColumnProps {
   title: string;
-  status: 'todo' | 'doing' | 'done';
+  status: IssueStatus;
   issues: Issue[];
   orgName: string;
   projectName: string;
-  onDrop: (issueNumber: number, newStatus: 'todo' | 'doing' | 'done') => void;
-  onDragOver: (e: DragEvent) => void;
 }
 
-function KanbanColumn({ title, status, issues, orgName, projectName, onDrop, onDragOver }: KanbanColumnProps) {
-  const handleDrop = (e: DragEvent) => {
-    e.preventDefault();
-    const issueNumber = parseInt(e.dataTransfer?.getData('issueNumber') || '0', 10);
-    if (issueNumber) {
-      onDrop(issueNumber, status);
-    }
-  };
-
-  const handleDragStart = (e: DragEvent, issueNumber: number) => {
-    e.dataTransfer?.setData('issueNumber', String(issueNumber));
-  };
+function KanbanColumn({ title, status, issues, orgName, projectName }: KanbanColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: status,
+  });
 
   const bgColor = status === 'todo' ? 'bg-gray-100' : status === 'doing' ? 'bg-blue-50' : 'bg-green-50';
   const headerColor = status === 'todo' ? 'gray' : status === 'doing' ? 'blue' : 'green';
 
   return (
-    <div 
-      class={`flex-1 min-w-[280px] ${bgColor} rounded-lg p-3`}
-      onDrop={handleDrop}
-      onDragOver={onDragOver}
+    <div
+      ref={setNodeRef}
+      class={`flex-1 min-w-[280px] ${bgColor} rounded-lg p-3 transition-all ${isOver ? 'ring-2 ring-blue-400 ring-offset-2' : ''}`}
     >
       <Group justify="space-between" mb="md">
         <Text fw={600} size="lg">{title}</Text>
@@ -52,40 +167,12 @@ function KanbanColumn({ title, status, issues, orgName, projectName, onDrop, onD
       </Group>
       <div class="space-y-2">
         {issues.map((issue) => (
-          <a
+          <DraggableIssueCard
             key={issue.id}
-            href={`/${orgName}/${projectName}/issues/${issue.number}`}
-            class="block no-underline"
-          >
-            <Card
-              shadow="sm"
-              padding="sm"
-              radius="md"
-              withBorder
-              draggable
-              onDragStart={(e: DragEvent) => handleDragStart(e, issue.number)}
-              class="cursor-pointer hover:shadow-md transition-shadow"
-            >
-              <Group justify="space-between" mb="xs">
-                <Text size="xs" c="dimmed">#{issue.number}</Text>
-                <Badge
-                  size="xs"
-                  color={issue.state === 'open' ? 'green' : 'purple'}
-                  variant="light"
-                >
-                  {issue.state}
-                </Badge>
-              </Group>
-              <Text size="sm" fw={500} lineClamp={2}>
-                {issue.title}
-              </Text>
-              {issue.due_date && (
-                <Text size="xs" c="dimmed" mt="xs">
-                  Due: {issue.due_date}
-                </Text>
-              )}
-            </Card>
-          </a>
+            issue={issue}
+            orgName={orgName}
+            projectName={projectName}
+          />
         ))}
         {issues.length === 0 && (
           <Text size="sm" c="dimmed" ta="center" py="md">
@@ -102,10 +189,21 @@ export function KanbanPage() {
   const issues = useSignal<Issue[]>([]);
   const loading = useSignal(true);
   const error = useSignal<string | null>(null);
+  const activeIssue = useSignal<Issue | null>(null);
 
   const params = route.value.params;
   const orgName = params.org as string;
   const projectName = params.project as string;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        // Require 8px of movement before starting drag.
+        // This allows clicking on links within the draggable cards.
+        distance: 8,
+      },
+    })
+  );
 
   useSignalEffect(() => {
     loadIssues();
@@ -124,20 +222,46 @@ export function KanbanPage() {
     }
   }
 
-  async function handleDrop(issueNumber: number, newStatus: 'todo' | 'doing' | 'done') {
-    try {
-      await updateProjectIssue(orgName, projectName, issueNumber, { status: newStatus });
-      // Update local state
-      issues.value = issues.value.map(issue => 
-        issue.number === issueNumber ? { ...issue, status: newStatus } : issue
-      );
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to update issue';
+  function handleDragStart(event: DragStartEvent) {
+    const { active } = event;
+    const issue = active.data.current?.issue as Issue | undefined;
+    if (issue) {
+      activeIssue.value = issue;
     }
   }
 
-  function handleDragOver(e: DragEvent) {
-    e.preventDefault();
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    activeIssue.value = null;
+
+    if (!over) return;
+
+    const newStatus = over.id as IssueStatus;
+    const issue = active.data.current?.issue as Issue | undefined;
+
+    if (!issue) return;
+
+    // Store the original status for potential rollback
+    const originalStatus = issue.status;
+
+    // Only update if the status actually changed
+    if (originalStatus === newStatus) return;
+
+    try {
+      // Optimistically update the UI
+      issues.value = issues.value.map(i =>
+        i.number === issue.number ? { ...i, status: newStatus } : i
+      );
+
+      // Make the API call
+      await updateProjectIssue(orgName, projectName, issue.number, { status: newStatus });
+    } catch (err) {
+      // Revert on error - restore the original status
+      issues.value = issues.value.map(i =>
+        i.number === issue.number ? { ...i, status: originalStatus } : i
+      );
+      error.value = err instanceof Error ? err.message : 'Failed to update issue';
+    }
   }
 
   if (loading.value) {
@@ -170,36 +294,42 @@ export function KanbanPage() {
           </button>
         </a>
       </Group>
-      
-      <div class="flex gap-4 overflow-x-auto pb-4">
-        <KanbanColumn
-          title="To Do"
-          status="todo"
-          issues={todoIssues}
-          orgName={orgName}
-          projectName={projectName}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-        />
-        <KanbanColumn
-          title="Doing"
-          status="doing"
-          issues={doingIssues}
-          orgName={orgName}
-          projectName={projectName}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-        />
-        <KanbanColumn
-          title="Done"
-          status="done"
-          issues={doneIssues}
-          orgName={orgName}
-          projectName={projectName}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-        />
-      </div>
+
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div class="flex gap-4 overflow-x-auto pb-4">
+          <KanbanColumn
+            title="To Do"
+            status="todo"
+            issues={todoIssues}
+            orgName={orgName}
+            projectName={projectName}
+          />
+          <KanbanColumn
+            title="Doing"
+            status="doing"
+            issues={doingIssues}
+            orgName={orgName}
+            projectName={projectName}
+          />
+          <KanbanColumn
+            title="Done"
+            status="done"
+            issues={doneIssues}
+            orgName={orgName}
+            projectName={projectName}
+          />
+        </div>
+
+        <DragOverlay>
+          {activeIssue.value ? (
+            <IssueCardOverlay issue={activeIssue.value} />
+          ) : null}
+        </DragOverlay>
+      </DndContext>
     </div>
   );
 }
