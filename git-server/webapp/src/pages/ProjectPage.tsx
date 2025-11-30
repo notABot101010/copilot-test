@@ -24,7 +24,42 @@ export function ProjectPage() {
   const activeTab = useSignal<string>('files');
   const [cloneModalOpened, { open: openCloneModal, close: closeCloneModal }] = useDisclosure(false);
 
-  // Get query params
+  useSignalEffect(() => {
+    // Access route.value inside the effect to track signal changes
+    const params = route.value.params;
+    const query = route.value.query as { ref?: string; path?: string };
+    const orgName = params.org as string;
+    const projectName = params.project as string;
+    const gitRef = (query.ref as string) || 'HEAD';
+    const currentPath = (query.path as string) || '';
+
+    if (!orgName || !projectName) {
+      return;
+    }
+
+    loadData(orgName, projectName, gitRef, currentPath);
+  });
+
+  async function loadData(orgName: string, projectName: string, gitRef: string, currentPath: string) {
+    try {
+      loading.value = true;
+      error.value = null;
+      const [projectData, filesData, commitsData] = await Promise.all([
+        getProject(orgName, projectName),
+        getProjectTree(orgName, projectName, gitRef, currentPath),
+        getProjectCommits(orgName, projectName),
+      ]);
+      project.value = projectData;
+      files.value = filesData;
+      commits.value = commitsData;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to load project';
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  // Get current route params for rendering
   const params = route.value.params;
   const query = route.value.query as { ref?: string; path?: string };
   const orgName = params.org as string;
@@ -37,29 +72,6 @@ export function ProjectPage() {
   const httpCloneUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/${orgName}/${projectName}.git`
     : `http://localhost:8080/${orgName}/${projectName}.git`;
-
-  useSignalEffect(() => {
-    loadData();
-  });
-
-  async function loadData() {
-    try {
-      loading.value = true;
-      error.value = null;
-      const [projectData, filesData, commitsData] = await Promise.all([
-        getProject(orgName, projectName),
-        getProjectTree(orgName, projectName, gitRef, currentPath),
-        getProjectCommits(orgName, projectName),
-      ]);
-      project.value = projectData;
-      files.value = filesData;
-      commits.value = commitsData;
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load project';
-    } finally {
-      loading.value = false;
-    }
-  }
 
   if (loading.value) {
     return (

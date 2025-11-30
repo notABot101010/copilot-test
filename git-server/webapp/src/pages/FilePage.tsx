@@ -11,33 +11,43 @@ export function FilePage() {
   const deleting = useSignal(false);
   const error = useSignal<string | null>(null);
 
+  useSignalEffect(() => {
+    // Access route.value inside the effect to track signal changes
+    const params = route.value.params;
+    const query = route.value.query as { ref?: string };
+    const orgName = params.org as string;
+    const projectName = params.project as string;
+    const filePath = params.path as string;
+    const gitRef = (query.ref as string) || 'HEAD';
+
+    if (!orgName || !projectName || !filePath) {
+      error.value = 'No file path provided';
+      loading.value = false;
+      return;
+    }
+
+    loadContent(orgName, projectName, filePath, gitRef);
+  });
+
+  async function loadContent(orgName: string, projectName: string, filePath: string, gitRef: string) {
+    try {
+      loading.value = true;
+      error.value = null;
+      content.value = await getProjectBlob(orgName, projectName, filePath, gitRef);
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to load file';
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  // Get current route params for rendering
   const params = route.value.params;
   const query = route.value.query as { ref?: string };
   const orgName = params.org as string;
   const projectName = params.project as string;
   const filePath = params.path as string;
   const gitRef = (query.ref as string) || 'HEAD';
-
-  useSignalEffect(() => {
-    loadContent();
-  });
-
-  async function loadContent() {
-    if (!filePath) {
-      error.value = 'No file path provided';
-      loading.value = false;
-      return;
-    }
-    try {
-      loading.value = true;
-      error.value = null;
-      content.value = await getProjectBlob(orgName, projectName, filePath, gitRef);
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load file';
-    } finally {
-      loading.value = false;
-    }
-  }
 
   async function handleDelete() {
     if (!confirm(`Are you sure you want to delete ${filePath}?`)) {

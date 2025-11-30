@@ -56,16 +56,21 @@ export function IssuePage() {
   const editingCommentId = useSignal<number | null>(null);
   const editingCommentBody = useSignal('');
 
-  const params = route.value.params;
-  const orgName = params.org as string;
-  const projectName = params.project as string;
-  const issueNumber = parseInt(params.number as string, 10);
-
   useSignalEffect(() => {
-    loadIssue();
+    // Access route.value inside the effect to track signal changes
+    const params = route.value.params;
+    const orgName = params.org as string;
+    const projectName = params.project as string;
+    const issueNumber = parseInt(params.number as string, 10);
+
+    if (!orgName || !projectName || isNaN(issueNumber)) {
+      return;
+    }
+
+    loadIssue(orgName, projectName, issueNumber);
   });
 
-  async function loadIssue() {
+  async function loadIssue(orgName: string, projectName: string, issueNumber: number) {
     try {
       loading.value = true;
       error.value = null;
@@ -81,6 +86,12 @@ export function IssuePage() {
       loading.value = false;
     }
   }
+
+  // Get current route params for rendering and event handlers
+  const params = route.value.params;
+  const orgName = params.org as string;
+  const projectName = params.project as string;
+  const issueNumber = parseInt(params.number as string, 10);
 
   async function handleSubmitComment(e: Event) {
     e.preventDefault();
