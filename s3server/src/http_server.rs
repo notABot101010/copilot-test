@@ -2,10 +2,10 @@
 
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{delete, get, head, post, put},
+    routing::get,
     Router,
 };
 use futures_util::StreamExt;
@@ -140,20 +140,11 @@ pub struct MultipartParams {
 
 /// Create the router for S3 API
 pub fn create_router(state: AppState) -> Router {
-    // Create a nested router for object operations that catches all remaining path
-    let object_router = Router::new()
-        .fallback(handle_object_request);
-
     Router::new()
         // Service-level operations
         .route("/", get(list_buckets))
-        // Bucket operations
-        .route("/{bucket}", head(head_bucket))
-        .route("/{bucket}", get(get_bucket_or_list_objects))
-        .route("/{bucket}", put(create_bucket))
-        .route("/{bucket}", delete(delete_bucket))
-        // Object operations - use nest with a fallback
-        .nest("/{bucket}", object_router)
+        // All other requests go through the fallback handler
+        .fallback(handle_object_request)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state)
@@ -176,15 +167,24 @@ async fn handle_object_request(
     let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
     if parts.is_empty() {
-        return Err(S3Error::BadRequest("Missing bucket".to_string()));
+        return Err(S3Error::NotFound("Not found".to_string()));
     }
 
     let bucket = parts[0];
-    let key = if parts.len() > 1 {
-        parts[1..].join("/")
-    } else {
-        return Err(S3Error::BadRequest("Missing key".to_string()));
-    };
+
+    // If there's only one part (bucket only), handle bucket-level operations
+    if parts.len() == 1 {
+        match method {
+            Method::HEAD => return head_bucket_impl(state, bucket).await,
+            Method::GET => return get_bucket_or_list_objects_impl(state, bucket, params).await,
+            Method::PUT => return create_bucket_impl(state, bucket).await,
+            Method::DELETE => return delete_bucket_impl(state, bucket).await,
+            _ => return Err(S3Error::BadRequest("Method not allowed".to_string())),
+        }
+    }
+
+    // Otherwise, it's an object operation
+    let key = parts[1..].join("/");
 
     match method {
         Method::HEAD => head_object_impl(state, bucket, &key).await,
@@ -210,14 +210,11 @@ async fn list_buckets(State(state): State<AppState>) -> Result<impl IntoResponse
         .unwrap())
 }
 
-/// Check if bucket exists
-async fn head_bucket(
-    State(state): State<AppState>,
-    Path(bucket): Path<String>,
-) -> Result<impl IntoResponse> {
+/// Implementation of head bucket
+async fn head_bucket_impl(state: AppState, bucket: &str) -> Result<Response<Body>> {
     state
         .db
-        .get_bucket(&bucket)
+        .get_bucket(bucket)
         .await?
         .ok_or_else(|| S3Error::NotFound(format!("Bucket not found: {}", bucket)))?;
 
@@ -227,19 +224,19 @@ async fn head_bucket(
         .unwrap())
 }
 
-/// Get bucket (list objects) or handle special queries
-async fn get_bucket_or_list_objects(
-    State(state): State<AppState>,
-    Path(bucket): Path<String>,
-    Query(params): Query<ListObjectsParams>,
-    Query(multipart): Query<MultipartParams>,
-) -> Result<impl IntoResponse> {
+/// Implementation of get bucket or list objects
+async fn get_bucket_or_list_objects_impl(
+    state: AppState,
+    bucket: &str,
+    params: MultipartParams,
+) -> Result<Response<Body>> {
     // Check if this is a list multipart uploads request
-    if multipart.uploads.is_some() {
-        return list_multipart_uploads(state, &bucket).await;
+    if params.uploads.is_some() {
+        return list_multipart_uploads(state, bucket).await;
     }
 
-    list_objects(state, &bucket, params).await
+    // Default list objects with no params
+    list_objects(state, bucket, ListObjectsParams::default()).await
 }
 
 /// List objects in a bucket
@@ -290,17 +287,14 @@ async fn list_multipart_uploads(state: AppState, bucket: &str) -> Result<Respons
         .unwrap())
 }
 
-/// Create a bucket
-async fn create_bucket(
-    State(state): State<AppState>,
-    Path(bucket): Path<String>,
-) -> Result<impl IntoResponse> {
+/// Implementation of create bucket
+async fn create_bucket_impl(state: AppState, bucket: &str) -> Result<Response<Body>> {
     // Validate bucket name
     if bucket.is_empty() || bucket.len() > 63 {
         return Err(S3Error::BadRequest("Invalid bucket name length".to_string()));
     }
 
-    state.db.create_bucket(&bucket, "owner").await?;
+    state.db.create_bucket(bucket, "owner").await?;
 
     Ok(Response::builder()
         .status(StatusCode::OK)
@@ -309,22 +303,19 @@ async fn create_bucket(
         .unwrap())
 }
 
-/// Delete a bucket
-async fn delete_bucket(
-    State(state): State<AppState>,
-    Path(bucket): Path<String>,
-) -> Result<impl IntoResponse> {
+/// Implementation of delete bucket
+async fn delete_bucket_impl(state: AppState, bucket: &str) -> Result<Response<Body>> {
     // Check if bucket is empty
     let (objects, _, _) = state
         .db
-        .list_objects(&bucket, None, None, 1, None)
+        .list_objects(bucket, None, None, 1, None)
         .await?;
 
     if !objects.is_empty() {
         return Err(S3Error::Conflict("Bucket is not empty".to_string()));
     }
 
-    state.db.delete_bucket(&bucket).await?;
+    state.db.delete_bucket(bucket).await?;
 
     Ok(Response::builder()
         .status(StatusCode::NO_CONTENT)
