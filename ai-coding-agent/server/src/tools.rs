@@ -1,3 +1,5 @@
+// Note: #![allow(dead_code)] is used here because these tools are scaffolded
+// for future LLM integration but not yet connected to the orchestrator.
 #![allow(dead_code)]
 
 use async_trait::async_trait;

@@ -42,7 +42,7 @@ pub struct AppState {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> AppResult<()> {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
             std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
@@ -86,7 +86,5 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-// Import anyhow for Result
-mod anyhow {
-    pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-}
+// Simple Result type alias for error handling
+type AppResult<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;

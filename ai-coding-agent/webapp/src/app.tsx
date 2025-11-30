@@ -1,5 +1,4 @@
 import { useSignal } from '@preact/signals';
-import { MantineProvider } from '@mantine/core';
 import { AppLayout } from './components/AppLayout';
 import { SessionsPage } from './pages/SessionsPage';
 import { SessionPage } from './pages/SessionPage';
@@ -31,10 +30,8 @@ function Router() {
 
 export function App() {
   return (
-    <MantineProvider>
-      <AppLayout>
-        <Router />
-      </AppLayout>
-    </MantineProvider>
+    <AppLayout>
+      <Router />
+    </AppLayout>
   );
 }
