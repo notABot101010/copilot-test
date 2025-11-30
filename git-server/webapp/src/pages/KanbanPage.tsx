@@ -45,6 +45,11 @@ function DraggableIssueCard({ issue, orgName, projectName }: DraggableIssueCardP
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // Type cast is needed because @dnd-kit uses React event types while Preact has different types.
+  // The handlers are compatible at runtime.
+  const pointerDownHandler = listeners?.onPointerDown as unknown as (e: PointerEvent) => void;
+  const keyDownHandler = listeners?.onKeyDown as unknown as (e: KeyboardEvent) => void;
+
   return (
     <div
       ref={setNodeRef}
@@ -55,8 +60,8 @@ function DraggableIssueCard({ issue, orgName, projectName }: DraggableIssueCardP
       aria-pressed={attributes['aria-pressed']}
       aria-roledescription={attributes['aria-roledescription']}
       aria-describedby={attributes['aria-describedby']}
-      onPointerDown={listeners?.onPointerDown as unknown as (e: PointerEvent) => void}
-      onKeyDown={listeners?.onKeyDown as unknown as (e: KeyboardEvent) => void}
+      onPointerDown={pointerDownHandler}
+      onKeyDown={keyDownHandler}
     >
       <a
         href={`/${orgName}/${projectName}/issues/${issue.number}`}
@@ -193,7 +198,9 @@ export function KanbanPage() {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // Require 8px of movement before starting drag
+        // Require 8px of movement before starting drag.
+        // This allows clicking on links within the draggable cards.
+        distance: 8,
       },
     })
   );
@@ -234,8 +241,11 @@ export function KanbanPage() {
 
     if (!issue) return;
 
+    // Store the original status for potential rollback
+    const originalStatus = issue.status;
+
     // Only update if the status actually changed
-    if (issue.status === newStatus) return;
+    if (originalStatus === newStatus) return;
 
     try {
       // Optimistically update the UI
@@ -246,9 +256,9 @@ export function KanbanPage() {
       // Make the API call
       await updateProjectIssue(orgName, projectName, issue.number, { status: newStatus });
     } catch (err) {
-      // Revert on error
+      // Revert on error - restore the original status
       issues.value = issues.value.map(i =>
-        i.number === issue.number ? { ...i, status: issue.status } : i
+        i.number === issue.number ? { ...i, status: originalStatus } : i
       );
       error.value = err instanceof Error ? err.message : 'Failed to update issue';
     }
