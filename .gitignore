@@ -24,3 +24,5 @@ coverage/
 
 # SQLite database files
 *.db
+
+s3server/data

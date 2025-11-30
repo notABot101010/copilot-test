@@ -34,3 +34,4 @@
 * when creating a button to move to another page, wrap it into a link insteaod of using `onClick={router.push(...)}`
 * prefer minimalist, simple and elegant design.
 * when building user interfaces for APIs, always allow the dev to configure the API_BASE_URL via en environment variable. And use a proxy in the vitejs config for the `/api` path to this custom API_BASE_URL env var.
+* Always use native HTML tags for text and headings (`<p>`, `<span>`, `<h1>`, `<h2>`...) instead of components like `Text`, `Heading` etc...
