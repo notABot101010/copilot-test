@@ -35,7 +35,10 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
   for (let idx = 0; idx < binary.length; idx++) {
     bytes[idx] = binary.charCodeAt(idx);
   }
-  return bytes.buffer;
+  // Create a new ArrayBuffer and copy the data to ensure proper type
+  const buffer = new ArrayBuffer(bytes.length);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
 }
 
 // Generate random bytes
@@ -118,9 +121,11 @@ export async function exportPrivateKey(privateKey: CryptoKey): Promise<ArrayBuff
 
 // Import ECDSA public key from raw bytes
 export async function importIdentityPublicKey(keyData: ArrayBuffer): Promise<CryptoKey> {
+  // Ensure we have a proper ArrayBuffer
+  const buffer = keyData instanceof ArrayBuffer ? keyData : new Uint8Array(keyData as ArrayBufferLike).buffer;
   return crypto.subtle.importKey(
     'raw',
-    keyData,
+    buffer,
     { name: 'ECDSA', namedCurve: 'P-256' },
     true,
     ['verify']
