@@ -18,6 +18,9 @@ import { CreateFilePage } from './pages/CreateFilePage';
 import { IssuesPage } from './pages/IssuesPage';
 import { IssuePage } from './pages/IssuePage';
 import { CreateIssuePage } from './pages/CreateIssuePage';
+import { KanbanPage } from './pages/KanbanPage';
+import { GanttPage } from './pages/GanttPage';
+import { CalendarPage } from './pages/CalendarPage';
 import { PullRequestsPage } from './pages/PullRequestsPage';
 import { PullRequestPage } from './pages/PullRequestPage';
 import { CreatePullRequestPage } from './pages/CreatePullRequestPage';
@@ -47,6 +50,11 @@ const router = createRouter({
     { path: '/:org/:project/issues', name: 'issues', component: IssuesPage },
     { path: '/:org/:project/issues/new', name: 'new-issue', component: CreateIssuePage },
     { path: '/:org/:project/issues/:number', name: 'issue', component: IssuePage },
+
+    // Project Management Views
+    { path: '/:org/:project/kanban', name: 'kanban', component: KanbanPage },
+    { path: '/:org/:project/gantt', name: 'gantt', component: GanttPage },
+    { path: '/:org/:project/calendar', name: 'calendar', component: CalendarPage },
 
     // Pull Requests
     { path: '/:org/:project/pulls', name: 'pulls', component: PullRequestsPage },

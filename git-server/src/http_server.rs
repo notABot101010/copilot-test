@@ -151,6 +151,8 @@ pub struct IssueInfo {
     pub title: String,
     pub body: String,
     pub state: String,
+    pub status: String,
+    pub due_date: Option<String>,
     pub author: String,
     pub created_at: String,
     pub updated_at: String,
@@ -164,6 +166,7 @@ pub struct IssueCommentInfo {
     pub body: String,
     pub author: String,
     pub created_at: String,
+    pub updated_at: String,
 }
 
 /// Pull request info for API responses
@@ -208,6 +211,8 @@ pub struct FileDiff {
 pub struct CreateIssueRequest {
     pub title: String,
     pub body: String,
+    #[serde(default)]
+    pub due_date: Option<String>,
 }
 
 /// Request body for updating an issue
@@ -216,11 +221,19 @@ pub struct UpdateIssueRequest {
     pub title: Option<String>,
     pub body: Option<String>,
     pub state: Option<String>,
+    pub status: Option<String>,
+    pub due_date: Option<String>,
 }
 
 /// Request body for creating a comment
 #[derive(Debug, Deserialize)]
 pub struct CreateCommentRequest {
+    pub body: String,
+}
+
+/// Request body for updating a comment
+#[derive(Debug, Deserialize)]
+pub struct UpdateCommentRequest {
     pub body: String,
 }
 
@@ -268,6 +281,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/orgs/:org/projects/:project/issues", get(project_list_issues).post(project_create_issue))
         .route("/orgs/:org/projects/:project/issues/:number", get(project_get_issue).patch(project_update_issue))
         .route("/orgs/:org/projects/:project/issues/:number/comments", get(project_list_issue_comments).post(project_create_issue_comment))
+        .route("/orgs/:org/projects/:project/issues/:number/comments/:comment_id", axum::routing::patch(project_update_issue_comment))
         // Project pull request routes
         .route("/orgs/:org/projects/:project/pulls", get(project_list_pull_requests).post(project_create_pull_request))
         .route("/orgs/:org/projects/:project/pulls/:number", get(project_get_pull_request).patch(project_update_pull_request))
@@ -286,6 +300,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/orgs/:org/projects/:project/repos/:name/issues", get(list_issues).post(create_issue))
         .route("/orgs/:org/projects/:project/repos/:name/issues/:number", get(get_issue).patch(update_issue))
         .route("/orgs/:org/projects/:project/repos/:name/issues/:number/comments", get(list_issue_comments).post(create_issue_comment))
+        .route("/orgs/:org/projects/:project/repos/:name/issues/:number/comments/:comment_id", axum::routing::patch(update_issue_comment))
         .route("/orgs/:org/projects/:project/repos/:name/pulls", get(list_pull_requests).post(create_pull_request))
         .route("/orgs/:org/projects/:project/repos/:name/pulls/:number", get(get_pull_request).patch(update_pull_request))
         .route("/orgs/:org/projects/:project/repos/:name/pulls/:number/comments", get(list_pr_comments).post(create_pr_comment))
@@ -1165,7 +1180,7 @@ async fn create_issue(
 
     let full_name = format!("{}/{}/{}", org, project, name);
     let issue = state.db
-        .create_issue(&full_name, &body.title, &body.body, "anonymous")
+        .create_issue(&full_name, &body.title, &body.body, "anonymous", body.due_date.as_deref())
         .await
         ?;
 
@@ -1180,7 +1195,7 @@ async fn update_issue(
 ) -> Result<Json<IssueInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
     let issue = state.db
-        .update_issue(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref())
+        .update_issue(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref(), body.status.as_deref(), body.due_date.as_deref())
         .await
         ?
         .ok_or_else(|| AppError::not_found("Not found"))?;
@@ -1229,6 +1244,32 @@ async fn create_issue_comment(
         .create_issue_comment(issue.id, &body.body, "anonymous")
         .await
         ?;
+
+    Ok(Json(comment))
+}
+
+/// Update a comment on an issue
+async fn update_issue_comment(
+    State(state): State<AppState>,
+    Path((org, project, name, number, comment_id)): Path<(String, String, String, i64, i64)>,
+    Json(body): Json<UpdateCommentRequest>,
+) -> Result<Json<IssueCommentInfo>, AppError> {
+    let full_name = format!("{}/{}/{}", org, project, name);
+    let _issue = state.db
+        .get_issue(&full_name, number)
+        .await
+        ?
+        .ok_or_else(|| AppError::not_found("Issue not found"))?;
+
+    if body.body.trim().is_empty() {
+        return Err(AppError::bad_request("Comment body is required"));
+    }
+
+    let comment = state.db
+        .update_issue_comment(comment_id, &body.body)
+        .await
+        ?
+        .ok_or_else(|| AppError::not_found("Comment not found"))?;
 
     Ok(Json(comment))
 }
@@ -1809,7 +1850,7 @@ async fn project_create_issue(
 
     let full_name = format!("{}/{}/{}", org, project, project);
     let issue = state.db
-        .create_issue(&full_name, &body.title, &body.body, "anonymous")
+        .create_issue(&full_name, &body.title, &body.body, "anonymous", body.due_date.as_deref())
         .await
         ?;
     Ok(Json(issue))
@@ -1823,7 +1864,7 @@ async fn project_update_issue(
 ) -> Result<Json<IssueInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
     let issue = state.db
-        .update_issue(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref())
+        .update_issue(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref(), body.status.as_deref(), body.due_date.as_deref())
         .await
         ?
         .ok_or_else(|| AppError::not_found("Not found"))?;
@@ -1870,6 +1911,31 @@ async fn project_create_issue_comment(
         .create_issue_comment(issue.id, &body.body, "anonymous")
         .await
         ?;
+    Ok(Json(comment))
+}
+
+/// Update a comment on an issue in a project
+async fn project_update_issue_comment(
+    State(state): State<AppState>,
+    Path((org, project, number, comment_id)): Path<(String, String, i64, i64)>,
+    Json(body): Json<UpdateCommentRequest>,
+) -> Result<Json<IssueCommentInfo>, AppError> {
+    let full_name = format!("{}/{}/{}", org, project, project);
+    let _issue = state.db
+        .get_issue(&full_name, number)
+        .await
+        ?
+        .ok_or_else(|| AppError::not_found("Issue not found"))?;
+
+    if body.body.trim().is_empty() {
+        return Err(AppError::bad_request("Comment body is required"));
+    }
+
+    let comment = state.db
+        .update_issue_comment(comment_id, &body.body)
+        .await
+        ?
+        .ok_or_else(|| AppError::not_found("Comment not found"))?;
     Ok(Json(comment))
 }
 

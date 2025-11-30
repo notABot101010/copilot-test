@@ -9,6 +9,8 @@ import {
   Textarea,
   Group,
   TypographyStylesProvider,
+  Select,
+  TextInput,
 } from '@mantine/core';
 import { useRoute } from '@copilot-test/preact-router';
 import {
@@ -16,6 +18,7 @@ import {
   getProjectIssueComments,
   createProjectIssueComment,
   updateProjectIssue,
+  updateProjectIssueComment,
   type Issue,
   type IssueComment,
   formatDate,
@@ -50,6 +53,8 @@ export function IssuePage() {
   const error = useSignal<string | null>(null);
   const newComment = useSignal('');
   const submitting = useSignal(false);
+  const editingCommentId = useSignal<number | null>(null);
+  const editingCommentBody = useSignal('');
 
   const params = route.value.params;
   const orgName = params.org as string;
@@ -70,8 +75,8 @@ export function IssuePage() {
       ]);
       issue.value = issueData;
       comments.value = commentsData;
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to load issue';
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to load issue';
     } finally {
       loading.value = false;
     }
@@ -86,8 +91,8 @@ export function IssuePage() {
       const comment = await createProjectIssueComment(orgName, projectName, issueNumber, newComment.value);
       comments.value = [...comments.value, comment];
       newComment.value = '';
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to add comment';
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to add comment';
     } finally {
       submitting.value = false;
     }
@@ -100,8 +105,67 @@ export function IssuePage() {
       const newState = issue.value.state === 'open' ? 'closed' : 'open';
       const updated = await updateProjectIssue(orgName, projectName, issueNumber, { state: newState });
       issue.value = updated;
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to update issue';
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to update issue';
+    }
+  }
+
+  async function handleStatusChange(newStatus: string) {
+    if (!issue.value || !newStatus) return;
+
+    try {
+      const updated = await updateProjectIssue(orgName, projectName, issueNumber, { 
+        status: newStatus as 'todo' | 'doing' | 'done' 
+      });
+      issue.value = updated;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to update status';
+    }
+  }
+
+  async function handleDueDateChange(e: Event) {
+    if (!issue.value) return;
+    const newDate = (e.target as HTMLInputElement).value;
+
+    try {
+      const updated = await updateProjectIssue(orgName, projectName, issueNumber, { 
+        due_date: newDate || null
+      });
+      issue.value = updated;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to update due date';
+    }
+  }
+
+  function startEditingComment(comment: IssueComment) {
+    editingCommentId.value = comment.id;
+    editingCommentBody.value = comment.body;
+  }
+
+  function cancelEditingComment() {
+    editingCommentId.value = null;
+    editingCommentBody.value = '';
+  }
+
+  async function saveEditedComment(commentId: number) {
+    if (!editingCommentBody.value.trim()) return;
+
+    try {
+      submitting.value = true;
+      const updated = await updateProjectIssueComment(
+        orgName, 
+        projectName, 
+        issueNumber, 
+        commentId, 
+        editingCommentBody.value
+      );
+      comments.value = comments.value.map(c => c.id === commentId ? updated : c);
+      editingCommentId.value = null;
+      editingCommentBody.value = '';
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to update comment';
+    } finally {
+      submitting.value = false;
     }
   }
 
@@ -129,6 +193,9 @@ export function IssuePage() {
     );
   }
 
+  const statusColor = issue.value.status === 'done' ? 'green' : 
+                      issue.value.status === 'doing' ? 'blue' : 'gray';
+
   return (
     <div class="space-y-4">
       <Card shadow="sm" padding="lg" radius="md" withBorder>
@@ -144,6 +211,9 @@ export function IssuePage() {
               >
                 {issue.value.state}
               </Badge>
+              <Badge color={statusColor} variant="light">
+                {issue.value.status}
+              </Badge>
               <Text size="sm" c="dimmed">
                 #{issue.value.number} opened by {issue.value.author} on {formatDate(issue.value.created_at)}
               </Text>
@@ -156,6 +226,28 @@ export function IssuePage() {
           >
             {issue.value.state === 'open' ? 'Close issue' : 'Reopen issue'}
           </Button>
+        </Group>
+
+        {/* Status and Due Date controls */}
+        <Group mb="md">
+          <Select
+            label="Status"
+            value={issue.value.status}
+            onChange={(value: string | null) => value && handleStatusChange(value)}
+            data={[
+              { value: 'todo', label: 'To Do' },
+              { value: 'doing', label: 'Doing' },
+              { value: 'done', label: 'Done' },
+            ]}
+            style={{ width: 150 }}
+          />
+          <TextInput
+            label="Due Date"
+            type="date"
+            value={issue.value.due_date || ''}
+            onChange={handleDueDateChange}
+            style={{ width: 180 }}
+          />
         </Group>
 
         {issue.value.body && (
@@ -172,15 +264,55 @@ export function IssuePage() {
       <div class="space-y-4">
         {comments.value.map((comment) => (
           <Card key={comment.id} shadow="sm" padding="md" radius="md" withBorder>
-            <Group gap="xs" mb="sm">
-              <Text fw={500}>{comment.author}</Text>
-              <Text size="sm" c="dimmed">
-                commented on {formatDate(comment.created_at)}
-              </Text>
+            <Group justify="space-between" mb="sm">
+              <Group gap="xs">
+                <Text fw={500}>{comment.author}</Text>
+                <Text size="sm" c="dimmed">
+                  commented on {formatDate(comment.created_at)}
+                  {comment.updated_at !== comment.created_at && ' (edited)'}
+                </Text>
+              </Group>
+              {editingCommentId.value !== comment.id && (
+                <Button 
+                  variant="subtle" 
+                  size="xs" 
+                  onClick={() => startEditingComment(comment)}
+                >
+                  Edit
+                </Button>
+              )}
             </Group>
-            <TypographyStylesProvider>
-              <div dangerouslySetInnerHTML={{ __html: renderMarkdown(comment.body) }} />
-            </TypographyStylesProvider>
+            {editingCommentId.value === comment.id ? (
+              <div>
+                <Textarea
+                  value={editingCommentBody.value}
+                  onChange={(e: Event) => (editingCommentBody.value = (e.target as HTMLTextAreaElement).value)}
+                  minRows={3}
+                  mb="sm"
+                />
+                <Group>
+                  <Button 
+                    size="xs" 
+                    color="green" 
+                    onClick={() => saveEditedComment(comment.id)}
+                    loading={submitting.value}
+                  >
+                    Save
+                  </Button>
+                  <Button 
+                    size="xs" 
+                    variant="subtle" 
+                    onClick={cancelEditingComment}
+                  >
+                    Cancel
+                  </Button>
+                </Group>
+              </div>
+            ) : (
+              <TypographyStylesProvider>
+                <div dangerouslySetInnerHTML={{ __html: renderMarkdown(comment.body) }} />
+              </TypographyStylesProvider>
+            )}
           </Card>
         ))}
       </div>

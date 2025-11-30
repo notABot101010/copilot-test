@@ -59,7 +59,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               class="flex items-center gap-2 no-underline text-inherit"
             >
               <Text size="xl" fw={700} c="blue">
-                📦 GitServer
+                GitServer
               </Text>
             </a>
           </Group>
@@ -118,6 +118,33 @@ export function AppLayout({ children }: AppLayoutProps) {
                 active={path.includes('/pulls')}
                 href={`/${org}/${project}/pulls`}
               />
+            </AppShell.Section>
+
+            <AppShell.Section mt="md">
+              <Text size="xs" c="dimmed" mb="xs" tt="uppercase">
+                Project Management
+              </Text>
+              <NavLink
+                label="Kanban Board"
+                leftSection={<span>📋</span>}
+                active={path === `/${org}/${project}/kanban`}
+                href={`/${org}/${project}/kanban`}
+              />
+              <NavLink
+                label="Gantt Chart"
+                leftSection={<span>📊</span>}
+                active={path === `/${org}/${project}/gantt`}
+                href={`/${org}/${project}/gantt`}
+              />
+              <NavLink
+                label="Calendar"
+                leftSection={<span>📅</span>}
+                active={path === `/${org}/${project}/calendar`}
+                href={`/${org}/${project}/calendar`}
+              />
+            </AppShell.Section>
+
+            <AppShell.Section mt="md">
               <NavLink
                 label="Settings"
                 leftSection={<span>⚙️</span>}

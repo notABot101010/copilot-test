@@ -1,11 +1,10 @@
 import { useSignal, useSignalEffect } from '@preact/signals';
 import { Card, Text, Loader, Alert, Badge, Group, Anchor } from '@mantine/core';
-import { useRoute, useRouter } from '@copilot-test/preact-router';
+import { useRoute } from '@copilot-test/preact-router';
 import { getProjectBranches } from '../api';
 
 export function BranchesPage() {
   const route = useRoute();
-  const router = useRouter();
   const branches = useSignal<string[]>([]);
   const loading = useSignal(true);
   const error = useSignal<string | null>(null);
