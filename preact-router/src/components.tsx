@@ -5,9 +5,7 @@ import type { Router, RouterViewProps, RouterLinkProps, RouteComponentProps, Rou
 import { RouterContextProvider, useRouter, useRoute } from './hooks';
 import { createReactiveRoute } from './router';
 
-/**
- * Check if a URL is internal (same origin, not external)
- */
+
 /**
  * Check if a URL is internal (same origin, not external)
  */
@@ -152,8 +150,8 @@ export function RouterView({ name, props: additionalProps, notFound: NotFoundCom
   // Compute initial state based on current route
   const initialMatched = router.currentRoute.value.matched;
   const initialIsNotFound = initialMatched.length === 0;
-  const initialMatchedRoute = name 
-    ? initialMatched.find(r => r.name === name) 
+  const initialMatchedRoute = name
+    ? initialMatched.find(r => r.name === name)
     : initialMatched[initialMatched.length - 1];
   const initialComponent = initialMatchedRoute?.component || null;
 
