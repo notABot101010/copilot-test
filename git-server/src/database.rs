@@ -1,6 +1,6 @@
 use sqlx::SqlitePool;
 
-use crate::http_server::{IssueInfo, IssueCommentInfo, PullRequestInfo, PullRequestCommentInfo, OrganizationInfo, ProjectInfo};
+use crate::http_server::{IssueInfo, IssueCommentInfo, PullRequestInfo, PullRequestCommentInfo, OrganizationInfo, ProjectInfo, TagInfo};
 
 /// Database manager for git repositories
 #[derive(Clone)]
@@ -97,6 +97,8 @@ impl Database {
                 state TEXT NOT NULL DEFAULT 'open',
                 status TEXT NOT NULL DEFAULT 'todo',
                 due_date TEXT,
+                start_date TEXT,
+                target_date TEXT,
                 author TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -111,7 +113,7 @@ impl Database {
         // We use `let _ = ...` to ignore errors (e.g., "duplicate column name")
         // which occurs when the column already exists from CREATE TABLE.
         
-        // Migration: add due_date column if it doesn't exist
+        // Migration: add due_date column if it doesn't exist (legacy, will be replaced by target_date)
         let _ = sqlx::query("ALTER TABLE issues ADD COLUMN due_date TEXT")
             .execute(&self.pool)
             .await;
@@ -120,6 +122,49 @@ impl Database {
         let _ = sqlx::query("ALTER TABLE issues ADD COLUMN status TEXT NOT NULL DEFAULT 'todo'")
             .execute(&self.pool)
             .await;
+
+        // Migration: add start_date column if it doesn't exist
+        let _ = sqlx::query("ALTER TABLE issues ADD COLUMN start_date TEXT")
+            .execute(&self.pool)
+            .await;
+
+        // Migration: add target_date column if it doesn't exist
+        let _ = sqlx::query("ALTER TABLE issues ADD COLUMN target_date TEXT")
+            .execute(&self.pool)
+            .await;
+
+        // Tags table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_name TEXT NOT NULL,
+                name TEXT NOT NULL,
+                color TEXT NOT NULL DEFAULT '#6b7280',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(repo_name, name)
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Issue-tag association table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS issue_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                issue_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(issue_id, tag_id),
+                FOREIGN KEY (issue_id) REFERENCES issues(id),
+                FOREIGN KEY (tag_id) REFERENCES tags(id)
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
 
         // Issue comments table
         sqlx::query(
@@ -400,18 +445,19 @@ impl Database {
     }
 
     /// Create a new issue
-    pub async fn create_issue(&self, repo_name: &str, title: &str, body: &str, author: &str, due_date: Option<&str>) -> Result<IssueInfo, sqlx::Error> {
+    pub async fn create_issue(&self, repo_name: &str, title: &str, body: &str, author: &str, start_date: Option<&str>, target_date: Option<&str>) -> Result<IssueInfo, sqlx::Error> {
         let number = self.next_issue_number(repo_name).await?;
         
         let result = sqlx::query(
-            "INSERT INTO issues (repo_name, number, title, body, author, due_date, status) VALUES (?, ?, ?, ?, ?, ?, 'todo')"
+            "INSERT INTO issues (repo_name, number, title, body, author, start_date, target_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'todo')"
         )
         .bind(repo_name)
         .bind(number)
         .bind(title)
         .bind(body)
         .bind(author)
-        .bind(due_date)
+        .bind(start_date)
+        .bind(target_date)
         .execute(&self.pool)
         .await?;
 
@@ -425,7 +471,8 @@ impl Database {
             body: body.to_string(),
             state: "open".to_string(),
             status: "todo".to_string(),
-            due_date: due_date.map(|d| d.to_string()),
+            start_date: start_date.map(|d| d.to_string()),
+            target_date: target_date.map(|d| d.to_string()),
             author: author.to_string(),
             created_at: chrono_now(),
             updated_at: chrono_now(),
@@ -435,7 +482,7 @@ impl Database {
     /// Get issue by repo and number
     pub async fn get_issue(&self, repo_name: &str, number: i64) -> Result<Option<IssueInfo>, sqlx::Error> {
         sqlx::query_as::<_, IssueInfo>(
-            "SELECT id, repo_name, number, title, body, state, status, due_date, author, created_at, updated_at FROM issues WHERE repo_name = ? AND number = ?"
+            "SELECT id, repo_name, number, title, body, state, status, start_date, target_date, author, created_at, updated_at FROM issues WHERE repo_name = ? AND number = ?"
         )
         .bind(repo_name)
         .bind(number)
@@ -446,7 +493,7 @@ impl Database {
     /// List issues for a repository
     pub async fn list_issues(&self, repo_name: &str) -> Result<Vec<IssueInfo>, sqlx::Error> {
         sqlx::query_as::<_, IssueInfo>(
-            "SELECT id, repo_name, number, title, body, state, status, due_date, author, created_at, updated_at FROM issues WHERE repo_name = ? ORDER BY number DESC"
+            "SELECT id, repo_name, number, title, body, state, status, start_date, target_date, author, created_at, updated_at FROM issues WHERE repo_name = ? ORDER BY number DESC"
         )
         .bind(repo_name)
         .fetch_all(&self.pool)
@@ -462,7 +509,8 @@ impl Database {
         body: Option<&str>,
         state: Option<&str>,
         status: Option<&str>,
-        due_date: Option<&str>,
+        start_date: Option<&str>,
+        target_date: Option<&str>,
     ) -> Result<Option<IssueInfo>, sqlx::Error> {
         // Build dynamic update query
         let mut updates = Vec::new();
@@ -478,8 +526,11 @@ impl Database {
         if status.is_some() {
             updates.push("status = ?");
         }
-        if due_date.is_some() {
-            updates.push("due_date = ?");
+        if start_date.is_some() {
+            updates.push("start_date = ?");
+        }
+        if target_date.is_some() {
+            updates.push("target_date = ?");
         }
         
         if updates.is_empty() {
@@ -505,8 +556,11 @@ impl Database {
         if let Some(st) = status {
             q = q.bind(st);
         }
-        if let Some(dd) = due_date {
-            q = q.bind(dd);
+        if let Some(sd) = start_date {
+            q = q.bind(sd);
+        }
+        if let Some(td) = target_date {
+            q = q.bind(td);
         }
         q = q.bind(repo_name).bind(number);
         q.execute(&self.pool).await?;
@@ -728,6 +782,145 @@ impl Database {
             author: author.to_string(),
             created_at: chrono_now(),
         })
+    }
+
+    // ============ Tag Methods ============
+
+    /// Create a new tag
+    pub async fn create_tag(&self, repo_name: &str, name: &str, color: &str) -> Result<TagInfo, sqlx::Error> {
+        let result = sqlx::query(
+            "INSERT INTO tags (repo_name, name, color) VALUES (?, ?, ?)"
+        )
+        .bind(repo_name)
+        .bind(name)
+        .bind(color)
+        .execute(&self.pool)
+        .await?;
+
+        let id = result.last_insert_rowid();
+        
+        Ok(TagInfo {
+            id,
+            repo_name: repo_name.to_string(),
+            name: name.to_string(),
+            color: color.to_string(),
+        })
+    }
+
+    /// Get tag by repo and name
+    pub async fn get_tag(&self, repo_name: &str, name: &str) -> Result<Option<TagInfo>, sqlx::Error> {
+        sqlx::query_as::<_, TagInfo>(
+            "SELECT id, repo_name, name, color FROM tags WHERE repo_name = ? AND name = ?"
+        )
+        .bind(repo_name)
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    /// Get tag by id
+    pub async fn get_tag_by_id(&self, id: i64) -> Result<Option<TagInfo>, sqlx::Error> {
+        sqlx::query_as::<_, TagInfo>(
+            "SELECT id, repo_name, name, color FROM tags WHERE id = ?"
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    /// List all tags for a repository
+    pub async fn list_tags(&self, repo_name: &str) -> Result<Vec<TagInfo>, sqlx::Error> {
+        sqlx::query_as::<_, TagInfo>(
+            "SELECT id, repo_name, name, color FROM tags WHERE repo_name = ? ORDER BY name"
+        )
+        .bind(repo_name)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    /// Update a tag
+    pub async fn update_tag(&self, id: i64, name: Option<&str>, color: Option<&str>) -> Result<Option<TagInfo>, sqlx::Error> {
+        let mut updates = Vec::new();
+        if name.is_some() {
+            updates.push("name = ?");
+        }
+        if color.is_some() {
+            updates.push("color = ?");
+        }
+        
+        if updates.is_empty() {
+            return self.get_tag_by_id(id).await;
+        }
+
+        let query = format!(
+            "UPDATE tags SET {} WHERE id = ?",
+            updates.join(", ")
+        );
+
+        let mut q = sqlx::query(&query);
+        if let Some(n) = name {
+            q = q.bind(n);
+        }
+        if let Some(c) = color {
+            q = q.bind(c);
+        }
+        q = q.bind(id);
+        q.execute(&self.pool).await?;
+
+        self.get_tag_by_id(id).await
+    }
+
+    /// Delete a tag
+    pub async fn delete_tag(&self, id: i64) -> Result<(), sqlx::Error> {
+        // First delete all issue-tag associations
+        sqlx::query("DELETE FROM issue_tags WHERE tag_id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        
+        // Then delete the tag itself
+        sqlx::query("DELETE FROM tags WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(())
+    }
+
+    /// Add a tag to an issue
+    pub async fn add_tag_to_issue(&self, issue_id: i64, tag_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO issue_tags (issue_id, tag_id) VALUES (?, ?)"
+        )
+        .bind(issue_id)
+        .bind(tag_id)
+        .execute(&self.pool)
+        .await?;
+        
+        Ok(())
+    }
+
+    /// Remove a tag from an issue
+    pub async fn remove_tag_from_issue(&self, issue_id: i64, tag_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM issue_tags WHERE issue_id = ? AND tag_id = ?")
+            .bind(issue_id)
+            .bind(tag_id)
+            .execute(&self.pool)
+            .await?;
+        
+        Ok(())
+    }
+
+    /// Get tags for an issue
+    pub async fn get_issue_tags(&self, issue_id: i64) -> Result<Vec<TagInfo>, sqlx::Error> {
+        sqlx::query_as::<_, TagInfo>(
+            "SELECT t.id, t.repo_name, t.name, t.color FROM tags t 
+             INNER JOIN issue_tags it ON t.id = it.tag_id 
+             WHERE it.issue_id = ? ORDER BY t.name"
+        )
+        .bind(issue_id)
+        .fetch_all(&self.pool)
+        .await
     }
 }
 

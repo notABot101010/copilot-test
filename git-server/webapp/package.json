@@ -14,8 +14,10 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@mantine/core": "^7.16.3",
+    "@mantine/dates": "^7.17.8",
     "@mantine/hooks": "^7.16.3",
     "@preact/signals": "^2.5.1",
+    "dayjs": "^1.11.19",
     "preact": "^10.27.2"
   },
   "devDependencies": {

@@ -152,10 +152,20 @@ pub struct IssueInfo {
     pub body: String,
     pub state: String,
     pub status: String,
-    pub due_date: Option<String>,
+    pub start_date: Option<String>,
+    pub target_date: Option<String>,
     pub author: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Tag info for API responses
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
+pub struct TagInfo {
+    pub id: i64,
+    pub repo_name: String,
+    pub name: String,
+    pub color: String,
 }
 
 /// Issue comment for API responses
@@ -212,7 +222,9 @@ pub struct CreateIssueRequest {
     pub title: String,
     pub body: String,
     #[serde(default)]
-    pub due_date: Option<String>,
+    pub start_date: Option<String>,
+    #[serde(default)]
+    pub target_date: Option<String>,
 }
 
 /// Request body for updating an issue
@@ -222,7 +234,27 @@ pub struct UpdateIssueRequest {
     pub body: Option<String>,
     pub state: Option<String>,
     pub status: Option<String>,
-    pub due_date: Option<String>,
+    pub start_date: Option<String>,
+    pub target_date: Option<String>,
+}
+
+/// Request body for creating a tag
+#[derive(Debug, Deserialize)]
+pub struct CreateTagRequest {
+    pub name: String,
+    #[serde(default = "default_tag_color")]
+    pub color: String,
+}
+
+fn default_tag_color() -> String {
+    "#6b7280".to_string()
+}
+
+/// Request body for updating a tag
+#[derive(Debug, Deserialize)]
+pub struct UpdateTagRequest {
+    pub name: Option<String>,
+    pub color: Option<String>,
 }
 
 /// Request body for creating a comment
@@ -282,6 +314,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/orgs/:org/projects/:project/issues/:number", get(project_get_issue).patch(project_update_issue))
         .route("/orgs/:org/projects/:project/issues/:number/comments", get(project_list_issue_comments).post(project_create_issue_comment))
         .route("/orgs/:org/projects/:project/issues/:number/comments/:comment_id", axum::routing::patch(project_update_issue_comment))
+        .route("/orgs/:org/projects/:project/issues/:number/tags", get(project_get_issue_tags).post(project_add_issue_tag))
+        .route("/orgs/:org/projects/:project/issues/:number/tags/:tag_id", axum::routing::delete(project_remove_issue_tag))
+        // Project tag routes
+        .route("/orgs/:org/projects/:project/tags", get(project_list_tags).post(project_create_tag))
+        .route("/orgs/:org/projects/:project/tags/:tag_id", get(project_get_tag).patch(project_update_tag).delete(project_delete_tag))
         // Project pull request routes
         .route("/orgs/:org/projects/:project/pulls", get(project_list_pull_requests).post(project_create_pull_request))
         .route("/orgs/:org/projects/:project/pulls/:number", get(project_get_pull_request).patch(project_update_pull_request))
@@ -1180,7 +1217,7 @@ async fn create_issue(
 
     let full_name = format!("{}/{}/{}", org, project, name);
     let issue = state.db
-        .create_issue(&full_name, &body.title, &body.body, "anonymous", body.due_date.as_deref())
+        .create_issue(&full_name, &body.title, &body.body, "anonymous", body.start_date.as_deref(), body.target_date.as_deref())
         .await
         ?;
 
@@ -1195,7 +1232,7 @@ async fn update_issue(
 ) -> Result<Json<IssueInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
     let issue = state.db
-        .update_issue(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref(), body.status.as_deref(), body.due_date.as_deref())
+        .update_issue(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref(), body.status.as_deref(), body.start_date.as_deref(), body.target_date.as_deref())
         .await
         ?
         .ok_or_else(|| AppError::not_found("Not found"))?;
@@ -1850,7 +1887,7 @@ async fn project_create_issue(
 
     let full_name = format!("{}/{}/{}", org, project, project);
     let issue = state.db
-        .create_issue(&full_name, &body.title, &body.body, "anonymous", body.due_date.as_deref())
+        .create_issue(&full_name, &body.title, &body.body, "anonymous", body.start_date.as_deref(), body.target_date.as_deref())
         .await
         ?;
     Ok(Json(issue))
@@ -1864,7 +1901,7 @@ async fn project_update_issue(
 ) -> Result<Json<IssueInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
     let issue = state.db
-        .update_issue(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref(), body.status.as_deref(), body.due_date.as_deref())
+        .update_issue(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref(), body.status.as_deref(), body.start_date.as_deref(), body.target_date.as_deref())
         .await
         ?
         .ok_or_else(|| AppError::not_found("Not found"))?;
@@ -1937,6 +1974,148 @@ async fn project_update_issue_comment(
         ?
         .ok_or_else(|| AppError::not_found("Comment not found"))?;
     Ok(Json(comment))
+}
+
+// ============ Project-level Tag Handlers ============
+
+/// List tags for a project
+async fn project_list_tags(
+    State(state): State<AppState>,
+    Path((org, project)): Path<(String, String)>,
+) -> Result<Json<Vec<TagInfo>>, AppError> {
+    let _repo = get_project_repo(&state, &org, &project).await?;
+    let full_name = format!("{}/{}/{}", org, project, project);
+    let tags = state.db
+        .list_tags(&full_name)
+        .await
+        ?;
+    Ok(Json(tags))
+}
+
+/// Create a new tag for a project
+async fn project_create_tag(
+    State(state): State<AppState>,
+    Path((org, project)): Path<(String, String)>,
+    Json(body): Json<CreateTagRequest>,
+) -> Result<Json<TagInfo>, AppError> {
+    let _repo = get_project_repo(&state, &org, &project).await?;
+
+    if body.name.trim().is_empty() {
+        return Err(AppError::bad_request("Tag name is required"));
+    }
+
+    let full_name = format!("{}/{}/{}", org, project, project);
+    let tag = state.db
+        .create_tag(&full_name, &body.name, &body.color)
+        .await
+        ?;
+    Ok(Json(tag))
+}
+
+/// Get a single tag for a project
+async fn project_get_tag(
+    State(state): State<AppState>,
+    Path((org, project, tag_id)): Path<(String, String, i64)>,
+) -> Result<Json<TagInfo>, AppError> {
+    let _repo = get_project_repo(&state, &org, &project).await?;
+    let tag = state.db
+        .get_tag_by_id(tag_id)
+        .await
+        ?
+        .ok_or_else(|| AppError::not_found("Tag not found"))?;
+    Ok(Json(tag))
+}
+
+/// Update a tag for a project
+async fn project_update_tag(
+    State(state): State<AppState>,
+    Path((org, project, tag_id)): Path<(String, String, i64)>,
+    Json(body): Json<UpdateTagRequest>,
+) -> Result<Json<TagInfo>, AppError> {
+    let _repo = get_project_repo(&state, &org, &project).await?;
+    let tag = state.db
+        .update_tag(tag_id, body.name.as_deref(), body.color.as_deref())
+        .await
+        ?
+        .ok_or_else(|| AppError::not_found("Tag not found"))?;
+    Ok(Json(tag))
+}
+
+/// Delete a tag for a project
+async fn project_delete_tag(
+    State(state): State<AppState>,
+    Path((org, project, tag_id)): Path<(String, String, i64)>,
+) -> Result<(), AppError> {
+    let _repo = get_project_repo(&state, &org, &project).await?;
+    state.db
+        .delete_tag(tag_id)
+        .await
+        ?;
+    Ok(())
+}
+
+/// Get tags for an issue in a project
+async fn project_get_issue_tags(
+    State(state): State<AppState>,
+    Path((org, project, number)): Path<(String, String, i64)>,
+) -> Result<Json<Vec<TagInfo>>, AppError> {
+    let full_name = format!("{}/{}/{}", org, project, project);
+    let issue = state.db
+        .get_issue(&full_name, number)
+        .await
+        ?
+        .ok_or_else(|| AppError::not_found("Issue not found"))?;
+    
+    let tags = state.db
+        .get_issue_tags(issue.id)
+        .await
+        ?;
+    Ok(Json(tags))
+}
+
+/// Add tag to issue request body
+#[derive(Debug, Deserialize)]
+pub struct AddTagToIssueRequest {
+    pub tag_id: i64,
+}
+
+/// Add a tag to an issue in a project
+async fn project_add_issue_tag(
+    State(state): State<AppState>,
+    Path((org, project, number)): Path<(String, String, i64)>,
+    Json(body): Json<AddTagToIssueRequest>,
+) -> Result<(), AppError> {
+    let full_name = format!("{}/{}/{}", org, project, project);
+    let issue = state.db
+        .get_issue(&full_name, number)
+        .await
+        ?
+        .ok_or_else(|| AppError::not_found("Issue not found"))?;
+    
+    state.db
+        .add_tag_to_issue(issue.id, body.tag_id)
+        .await
+        ?;
+    Ok(())
+}
+
+/// Remove a tag from an issue in a project
+async fn project_remove_issue_tag(
+    State(state): State<AppState>,
+    Path((org, project, number, tag_id)): Path<(String, String, i64, i64)>,
+) -> Result<(), AppError> {
+    let full_name = format!("{}/{}/{}", org, project, project);
+    let issue = state.db
+        .get_issue(&full_name, number)
+        .await
+        ?
+        .ok_or_else(|| AppError::not_found("Issue not found"))?;
+    
+    state.db
+        .remove_tag_from_issue(issue.id, tag_id)
+        .await
+        ?;
+    Ok(())
 }
 
 // ============ Project-level Pull Request Handlers ============
