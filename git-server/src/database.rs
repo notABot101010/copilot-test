@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use sqlx::SqlitePool;
 
 use crate::http_server::{IssueInfo, IssueCommentInfo, PullRequestInfo, PullRequestCommentInfo, OrganizationInfo, ProjectInfo};
@@ -690,22 +688,4 @@ pub struct Repository {
 #[derive(sqlx::FromRow)]
 struct NextNumber {
     next: i64,
-}
-
-/// Initialize a bare git repository on disk
-pub async fn init_bare_repo(path: &Path) -> Result<(), std::io::Error> {
-    let status = tokio::process::Command::new("git")
-        .args(["init", "--bare"])
-        .arg(path)
-        .status()
-        .await?;
-
-    if !status.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to initialize bare git repository",
-        ));
-    }
-
-    Ok(())
 }
