@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo Website - Customer Support</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      line-height: 1.6;
+      color: #1f2937;
+    }
+
+    /* Header */
+    header {
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      color: white;
+      padding: 1rem 2rem;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    nav ul {
+      display: flex;
+      list-style: none;
+      gap: 2rem;
+    }
+
+    nav a {
+      color: white;
+      text-decoration: none;
+      opacity: 0.9;
+      transition: opacity 0.2s;
+    }
+
+    nav a:hover {
+      opacity: 1;
+    }
+
+    /* Hero Section */
+    .hero {
+      background: linear-gradient(180deg, #1d4ed8 0%, #2563eb 100%);
+      color: white;
+      padding: 6rem 2rem;
+      text-align: center;
+    }
+
+    .hero h1 {
+      font-size: 3rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero p {
+      font-size: 1.25rem;
+      opacity: 0.9;
+      max-width: 600px;
+      margin: 0 auto 2rem;
+    }
+
+    .hero-button {
+      display: inline-block;
+      background: white;
+      color: #2563eb;
+      padding: 1rem 2rem;
+      border-radius: 8px;
+      font-size: 1.125rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .hero-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Features Section */
+    .features {
+      padding: 5rem 2rem;
+      background: #f9fafb;
+    }
+
+    .features h2 {
+      text-align: center;
+      font-size: 2.25rem;
+      margin-bottom: 3rem;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .feature-card {
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .feature-card h3 {
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+      color: #2563eb;
+    }
+
+    .feature-card p {
+      color: #6b7280;
+    }
+
+    /* Pricing Section */
+    .pricing {
+      padding: 5rem 2rem;
+    }
+
+    .pricing h2 {
+      text-align: center;
+      font-size: 2.25rem;
+      margin-bottom: 3rem;
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .pricing-card {
+      border: 2px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .pricing-card.featured {
+      border-color: #2563eb;
+      background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+    }
+
+    .pricing-card h3 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .pricing-card .price {
+      font-size: 3rem;
+      font-weight: 700;
+      color: #2563eb;
+      margin: 1rem 0;
+    }
+
+    .pricing-card ul {
+      list-style: none;
+      margin: 1.5rem 0;
+      text-align: left;
+    }
+
+    .pricing-card li {
+      padding: 0.5rem 0;
+      color: #6b7280;
+    }
+
+    .pricing-card li::before {
+      content: "✓";
+      color: #10b981;
+      margin-right: 0.5rem;
+    }
+
+    .pricing-button {
+      display: inline-block;
+      width: 100%;
+      padding: 1rem;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .pricing-button.primary {
+      background: #2563eb;
+      color: white;
+    }
+
+    .pricing-button.primary:hover {
+      background: #1d4ed8;
+    }
+
+    .pricing-button.secondary {
+      background: #f3f4f6;
+      color: #1f2937;
+    }
+
+    .pricing-button.secondary:hover {
+      background: #e5e7eb;
+    }
+
+    /* About Section */
+    .about {
+      padding: 5rem 2rem;
+      background: #1f2937;
+      color: white;
+    }
+
+    .about-content {
+      max-width: 800px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .about h2 {
+      font-size: 2.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .about p {
+      opacity: 0.8;
+      font-size: 1.125rem;
+      margin-bottom: 1rem;
+    }
+
+    /* Footer */
+    footer {
+      background: #111827;
+      color: white;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    footer p {
+      opacity: 0.6;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .hero h1 {
+        font-size: 2rem;
+      }
+
+      nav ul {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <nav>
+      <div class="logo">DemoApp</div>
+      <ul>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#about">About</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <h1>Welcome to DemoApp</h1>
+    <p>Experience the power of our amazing product. Build better, faster, and smarter.</p>
+    <a href="#features" class="hero-button">Get Started</a>
+  </section>
+
+  <section class="features" id="features">
+    <h2>Features</h2>
+    <div class="features-grid">
+      <div class="feature-card">
+        <h3>Lightning Fast</h3>
+        <p>Our platform is built for speed. Experience blazing fast performance that keeps your workflow smooth.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Secure by Default</h3>
+        <p>Enterprise-grade security built into every layer. Your data is protected with industry-leading encryption.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Easy Integration</h3>
+        <p>Connect with your favorite tools in minutes. Our APIs make integration a breeze.</p>
+      </div>
+      <div class="feature-card">
+        <h3>24/7 Support</h3>
+        <p>Our dedicated support team is always here to help. Get answers when you need them most.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Analytics Dashboard</h3>
+        <p>Make data-driven decisions with our comprehensive analytics and reporting tools.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Team Collaboration</h3>
+        <p>Work together seamlessly. Share, comment, and collaborate in real-time with your team.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="pricing" id="pricing">
+    <h2>Simple Pricing</h2>
+    <div class="pricing-grid">
+      <div class="pricing-card">
+        <h3>Starter</h3>
+        <div class="price">$9</div>
+        <p>/month</p>
+        <ul>
+          <li>Up to 5 users</li>
+          <li>Basic analytics</li>
+          <li>Email support</li>
+          <li>1GB storage</li>
+        </ul>
+        <a href="#" class="pricing-button secondary">Start Free Trial</a>
+      </div>
+      <div class="pricing-card featured">
+        <h3>Professional</h3>
+        <div class="price">$29</div>
+        <p>/month</p>
+        <ul>
+          <li>Up to 50 users</li>
+          <li>Advanced analytics</li>
+          <li>Priority support</li>
+          <li>50GB storage</li>
+          <li>Custom integrations</li>
+        </ul>
+        <a href="#" class="pricing-button primary">Start Free Trial</a>
+      </div>
+      <div class="pricing-card">
+        <h3>Enterprise</h3>
+        <div class="price">$99</div>
+        <p>/month</p>
+        <ul>
+          <li>Unlimited users</li>
+          <li>Full analytics suite</li>
+          <li>24/7 phone support</li>
+          <li>Unlimited storage</li>
+          <li>Custom development</li>
+        </ul>
+        <a href="#" class="pricing-button secondary">Contact Sales</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="about" id="about">
+    <div class="about-content">
+      <h2>About Us</h2>
+      <p>We're a team of passionate developers and designers building tools that help businesses thrive in the digital age.</p>
+      <p>Founded in 2024, we've helped thousands of companies streamline their workflows and boost productivity.</p>
+    </div>
+  </section>
+
+  <footer>
+    <p>&copy; 2024 DemoApp. All rights reserved.</p>
+  </footer>
+
+  <!-- Customer Support Chat Widget -->
+  <script src="/sdk.js"></script>
+  <script>
+    // Replace with your workspace ID
+    const WORKSPACE_ID = '6d1c144c-5bfc-4b76-a939-1f9f643d26bf';
+    
+    // Initialize the chat widget
+    // CustomerSupport is an IIFE that exports { CustomerSupportWidget, default }
+    new CustomerSupport.default({
+      workspaceId: WORKSPACE_ID,
+      primaryColor: '#2563eb',
+      welcomeMessage: 'Hi! How can we help you today?',
+      position: 'bottom-right'
+    });
+  </script>
+</body>
+</html>
