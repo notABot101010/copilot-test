@@ -22,14 +22,13 @@
 
 ## Web applications
 
-* When asked to create a web application, always create a single page app with vite and preact, starting from the preact-ts template.
-* Use only tailwindcss for design and mantine for components. Unless strictly necessary, never use css-in-js libraries, don't use inline styles, don't use separate CSS files
-* Use `@tailwindcss/vite` to setup tailwindcss with vite.
+* projects setup: when asked to create a web application, always create a single page app with vite and preact, starting from the preact-ts template.  Use `@tailwindcss/vite` to setup tailwindcss with vite.
+* Use only tailwindcss for design and mantine for components. NEVER use css-in-js libraries, don't use inline styles, don't use separate CSS files unless strictly necessary.
 * Always use our own preact-router from this repo for routing.
 * Always make sure that the webapp compiles.
-* ALWAYS use preact signals for state management. NEVER use hooks for state management.
+* ALWAYS use preact signals for state management. NEVER use hooks for state management. Use the `useSignal` hook for component-scoped signals. More info here: https://preactjs.com/guide/v10/signals
 * Always use the following "dev" script in package.json `"dev": "vite --strictPort --port 4000 --host"`
-* Use native links (`<a>` HTML tags) as much as possible instaod of special component link `Anchor` or similar.
+* Use native links (`<a>` HTML tags) as much as possible instaod of special components link `Anchor` or similar.
 * when creating a button to move to another page, wrap it into a link insteaod of using `onClick={router.push(...)}`
 * prefer minimalist, simple and elegant design.
 * when building user interfaces for APIs, always allow the dev to configure the API_BASE_URL via en environment variable. And use a proxy in the vitejs config for the `/api` path to this custom API_BASE_URL env var.
