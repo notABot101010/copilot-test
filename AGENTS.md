@@ -18,12 +18,12 @@
 * Use `sqlx` when you need to interact with a database. Use the `sqlx::query_as` function for database queries when relevant, to deserialize directly into a struct.
 * When working, always build the projects in debug mode to go faster.
 * use the `tracing` crate for logs.
-* never use unwrap. If it's a result handle it, if it's an Option, use safe patterns such as `.ok_or`, `if let Some()`...
+* never use unwrap. If it's a `Result` handle it, if it's an `Option`, use safe patterns such as `.ok_or`, `if let Some()`...
 
 ## Web applications
 
 * When asked to create a web application, always create a single page app with vite and preact, starting from the preact-ts template.
-* Use only tailwindcss for design and mantine for components. Unless strictly necessary, never use css-in-js libraries, don't use inline styles, don't use separate CSS files.
+* Use only tailwindcss for design and mantine for components. Unless strictly necessary, never use css-in-js libraries, don't use inline styles, don't use separate CSS files
 * Always use our own preact-router from this repo for routing.
 * Always make sure that the webapp compiles.
 * Always use the following "dev" script in package.json
