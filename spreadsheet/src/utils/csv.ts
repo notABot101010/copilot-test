@@ -76,7 +76,7 @@ export function parseCSV(csvContent: string): string[][] {
  * Finds the bounds of the data and exports all cells within those bounds.
  */
 export function generateCSV(cells: Record<string, CellData>): string {
-  const cellKeys = Object.keys(cells).filter(key => cells[key]?.value);
+  const cellKeys = Object.keys(cells).filter(key => cells[key]?.value !== undefined);
   
   if (cellKeys.length === 0) {
     return '';
@@ -98,7 +98,7 @@ export function generateCSV(cells: Record<string, CellData>): string {
     const rowValues: string[] = [];
     for (let col = 0; col <= maxCol; col++) {
       const key = getCellKey(row, col);
-      const value = cells[key]?.value || '';
+      const value = cells[key]?.value ?? '';
       rowValues.push(escapeCSVField(value));
     }
     rows.push(rowValues.join(','));
@@ -170,7 +170,18 @@ export function openCSVFilePicker(): Promise<string | null> {
     input.accept = '.csv,text/csv';
     input.style.display = 'none';
     
+    let resolved = false;
+    
+    const cleanup = () => {
+      if (input.parentNode) {
+        document.body.removeChild(input);
+      }
+    };
+    
     input.onchange = async (event) => {
+      if (resolved) return;
+      resolved = true;
+      
       const target = event.target as HTMLInputElement;
       const file = target.files?.[0];
       
@@ -181,13 +192,24 @@ export function openCSVFilePicker(): Promise<string | null> {
         resolve(null);
       }
       
-      document.body.removeChild(input);
+      cleanup();
     };
     
-    input.oncancel = () => {
-      resolve(null);
-      document.body.removeChild(input);
+    // Use focus event on window to detect when file dialog is closed
+    // This is more reliable than oncancel across browsers
+    const handleFocus = () => {
+      // Small delay to allow onchange to fire first if a file was selected
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve(null);
+          cleanup();
+        }
+        window.removeEventListener('focus', handleFocus);
+      }, 300);
     };
+    
+    window.addEventListener('focus', handleFocus);
     
     document.body.appendChild(input);
     input.click();

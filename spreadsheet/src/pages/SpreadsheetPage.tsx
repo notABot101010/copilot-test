@@ -652,7 +652,8 @@ export function SpreadsheetPage() {
   const handleExportCSV = useCallback(() => {
     if (!spreadsheet) return;
     const csvContent = generateCSV(spreadsheet.cells);
-    const filename = `${spreadsheet.name.replace(/[^a-z0-9]/gi, '_')}.csv`;
+    // Sanitize filename: only remove characters that are invalid in filenames
+    const filename = `${spreadsheet.name.replace(/[<>:"/\\|?*]/g, '_')}.csv`;
     downloadCSV(csvContent, filename);
   }, [spreadsheet]);
 
