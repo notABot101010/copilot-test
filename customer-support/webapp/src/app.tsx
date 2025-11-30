@@ -8,7 +8,7 @@ import {
   ContactsView,
   WorkspaceSelector,
 } from './components';
-import { currentWorkspace, setWorkspace, addMessage, updateConversationInList, conversations } from './state';
+import { currentWorkspace, setWorkspace, addMessage, updateConversationInList, messages } from './state';
 import * as api from './services/api';
 
 function WorkspaceLayout() {
@@ -39,7 +39,11 @@ function WorkspaceLayout() {
           // Process events
           for (const event of result.events) {
             if (event.type === 'new_message' && event.message && event.conversation_id) {
-              addMessage(event.message);
+              // Only add the message if it doesn't already exist (prevent duplicates)
+              const messageExists = messages.value.some(m => m.id === event.message.id);
+              if (!messageExists) {
+                addMessage(event.message);
+              }
               // Refresh conversation to update last message
               try {
                 const conv = await api.getConversation(workspace.id, event.conversation_id);

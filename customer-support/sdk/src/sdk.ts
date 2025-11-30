@@ -404,8 +404,12 @@ class CustomerSupportWidget {
                 event.conversation_id === this.conversationId &&
                 event.message
               ) {
-                this.messages.push(event.message);
-                this.renderMessages();
+                // Only add the message if it doesn't already exist (prevent duplicates)
+                const messageExists = this.messages.some(m => m.id === event.message.id);
+                if (!messageExists) {
+                  this.messages.push(event.message);
+                  this.renderMessages();
+                }
               }
             }
           }
