@@ -252,7 +252,8 @@ export async function deleteSpreadsheet(id: string): Promise<boolean> {
 
 // Update a cell value
 export function updateCell(row: number, col: number, value: string): void {
-  const doc = currentSpreadsheetDoc.value;
+  // Always get the latest doc reference to avoid race conditions
+  let doc = currentSpreadsheetDoc.value;
   if (!doc) return;
   
   const key = getCellKey(row, col);
@@ -271,7 +272,12 @@ export function updateCell(row: number, col: number, value: string): void {
     pushToUndoStack(doc);
   }
   
-  const newDoc = Automerge.change(doc, `Update cell ${row}:${col}`, (d) => {
+  // Re-fetch doc to get the latest version and clone it to avoid outdated document errors
+  doc = currentSpreadsheetDoc.value;
+  if (!doc) return;
+  const clonedDoc = Automerge.clone(doc);
+  
+  const newDoc = Automerge.change(clonedDoc, `Update cell ${row}:${col}`, (d) => {
     if (!d.cells[key]) {
       d.cells[key] = { value: '' };
     }
@@ -280,14 +286,15 @@ export function updateCell(row: number, col: number, value: string): void {
   });
   
   currentSpreadsheetDoc.value = newDoc;
-  saveAndBroadcast(doc, newDoc);
+  saveAndBroadcast(clonedDoc, newDoc);
 }
 
 // Update a cell value in real-time (without adding to undo stack on each keystroke)
 // This is used for propagating changes as the user types
 // On the first call of an edit session, it saves the pre-edit state for undo
 export function updateCellLive(row: number, col: number, value: string): void {
-  const doc = currentSpreadsheetDoc.value;
+  // Always get the latest doc reference to avoid race conditions
+  let doc = currentSpreadsheetDoc.value;
   if (!doc) return;
   
   // Check if value actually changed
@@ -300,7 +307,12 @@ export function updateCellLive(row: number, col: number, value: string): void {
     preEditDoc = doc;
   }
   
-  const newDoc = Automerge.change(doc, `Live update cell ${row}:${col}`, (d) => {
+  // Re-fetch doc to get the latest version and clone it to avoid outdated document errors
+  doc = currentSpreadsheetDoc.value;
+  if (!doc) return;
+  const clonedDoc = Automerge.clone(doc);
+  
+  const newDoc = Automerge.change(clonedDoc, `Live update cell ${row}:${col}`, (d) => {
     if (!d.cells[key]) {
       d.cells[key] = { value: '' };
     }
@@ -309,7 +321,7 @@ export function updateCellLive(row: number, col: number, value: string): void {
   });
   
   currentSpreadsheetDoc.value = newDoc;
-  saveAndBroadcast(doc, newDoc);
+  saveAndBroadcast(clonedDoc, newDoc);
 }
 
 // Cancel the current edit session and restore the pre-edit state
@@ -327,22 +339,27 @@ export function cancelEdit(): void {
 
 // Update multiple cells at once
 export function updateMultipleCells(updates: { row: number; col: number; value: string }[]): void {
-  const doc = currentSpreadsheetDoc.value;
-  if (!doc || updates.length === 0) return;
+  const initialDoc = currentSpreadsheetDoc.value;
+  if (!initialDoc || updates.length === 0) return;
   
   // Check if any values actually changed
   const changedUpdates = updates.filter(({ row, col, value }) => {
     const key = getCellKey(row, col);
-    const currentValue = doc.cells[key]?.value || '';
+    const currentValue = initialDoc.cells[key]?.value || '';
     return currentValue !== value;
   });
   
   if (changedUpdates.length === 0) return;
   
   // Save to undo stack before making changes
-  pushToUndoStack(doc);
+  pushToUndoStack(initialDoc);
   
-  const newDoc = Automerge.change(doc, `Update ${changedUpdates.length} cells`, (d) => {
+  // Re-fetch doc to get the latest version and clone it to avoid outdated document errors
+  const doc = currentSpreadsheetDoc.value;
+  if (!doc) return;
+  const clonedDoc = Automerge.clone(doc);
+  
+  const newDoc = Automerge.change(clonedDoc, `Update ${changedUpdates.length} cells`, (d) => {
     for (const { row, col, value } of changedUpdates) {
       const key = getCellKey(row, col);
       if (!d.cells[key]) {
@@ -354,21 +371,24 @@ export function updateMultipleCells(updates: { row: number; col: number; value: 
   });
   
   currentSpreadsheetDoc.value = newDoc;
-  saveAndBroadcast(doc, newDoc);
+  saveAndBroadcast(clonedDoc, newDoc);
 }
 
 // Rename spreadsheet
 export function renameSpreadsheet(name: string): void {
-  const doc = currentSpreadsheetDoc.value;
+  let doc = currentSpreadsheetDoc.value;
   if (!doc) return;
   
-  const newDoc = Automerge.change(doc, 'Rename spreadsheet', (d) => {
+  // Clone to avoid outdated document errors
+  const clonedDoc = Automerge.clone(doc);
+  
+  const newDoc = Automerge.change(clonedDoc, 'Rename spreadsheet', (d) => {
     d.name = name;
     d.updatedAt = Date.now();
   });
   
   currentSpreadsheetDoc.value = newDoc;
-  saveAndBroadcast(doc, newDoc);
+  saveAndBroadcast(clonedDoc, newDoc);
 }
 
 // Update the list item with current spreadsheet info (internal, no broadcast)
