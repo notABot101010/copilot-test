@@ -8,6 +8,7 @@
     "spreadsheet",
     "team-chat",
     "git-server/webapp",
-    "s3ui"
+    "s3ui",
+    "encrypted-chat/webapp"
   ]
 }
