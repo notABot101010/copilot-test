@@ -3,3 +3,7 @@ test-server-run/
 config.json
 static/dist/
 repos/
+
+# Test data
+test-repos/
+test-git-server.db
