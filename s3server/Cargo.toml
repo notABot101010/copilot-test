@@ -1,0 +1,42 @@
+[package]
+name = "s3server"
+version = "0.1.0"
+edition = "2021"
+description = "An S3-compatible object storage server"
+license = "MIT"
+
+[[bin]]
+name = "s3server"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "sync", "net", "fs", "io-util"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+clap = { version = "4.5", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+hex = "0.4"
+base64 = "0.22"
+aws-lc-rs = "1"
+bytes = "1"
+futures-util = "0.3"
+tokio-util = { version = "0.7", features = ["io"] }
+quick-xml = { version = "0.37", features = ["serialize"] }
+percent-encoding = "2.3"
+async-trait = "0.1"
+
+[dev-dependencies]
+tempfile = "3.10"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+aws-config = "1"
+aws-sdk-s3 = "1"
+aws-credential-types = "1"
+tokio-stream = "0.1"

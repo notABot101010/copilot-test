@@ -6,6 +6,7 @@
     "router-test",
     "spreadsheet",
     "team-chat",
-    "git-server/webapp"
+    "git-server/webapp",
+    "s3ui"
   ]
 }
