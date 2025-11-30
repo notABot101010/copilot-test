@@ -121,8 +121,8 @@ export async function exportPrivateKey(privateKey: CryptoKey): Promise<ArrayBuff
 
 // Import ECDSA public key from raw bytes
 export async function importIdentityPublicKey(keyData: ArrayBuffer): Promise<CryptoKey> {
-  // Ensure we have a proper ArrayBuffer
-  const buffer = keyData instanceof ArrayBuffer ? keyData : new Uint8Array(keyData as ArrayBufferLike).buffer;
+  // Ensure we have a proper ArrayBuffer (not SharedArrayBuffer)
+  const buffer = new Uint8Array(keyData).buffer as ArrayBuffer;
   return crypto.subtle.importKey(
     'raw',
     buffer,
