@@ -198,6 +198,8 @@ export interface RouterViewProps {
   name?: string;
   /** Additional props to pass to the route component */
   props?: Record<string, unknown>;
+  /** Component to render when no route matches (NotFound page) */
+  notFound?: ComponentType<RouteComponentProps>;
 }
 
 /**

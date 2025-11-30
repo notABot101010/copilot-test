@@ -134,17 +134,31 @@ export function IssuePage() {
     }
   }
 
-  async function handleDueDateChange(e: Event) {
+  async function handleStartDateChange(e: Event) {
     if (!issue.value) return;
     const newDate = (e.target as HTMLInputElement).value;
 
     try {
       const updated = await updateProjectIssue(orgName, projectName, issueNumber, { 
-        due_date: newDate || null
+        start_date: newDate || null
       });
       issue.value = updated;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to update due date';
+      error.value = err instanceof Error ? err.message : 'Failed to update start date';
+    }
+  }
+
+  async function handleTargetDateChange(e: Event) {
+    if (!issue.value) return;
+    const newDate = (e.target as HTMLInputElement).value;
+
+    try {
+      const updated = await updateProjectIssue(orgName, projectName, issueNumber, { 
+        target_date: newDate || null
+      });
+      issue.value = updated;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to update target date';
     }
   }
 
@@ -253,10 +267,17 @@ export function IssuePage() {
             style={{ width: 150 }}
           />
           <TextInput
-            label="Due Date"
+            label="Start Date"
             type="date"
-            value={issue.value.due_date || ''}
-            onChange={handleDueDateChange}
+            value={issue.value.start_date || ''}
+            onChange={handleStartDateChange}
+            style={{ width: 180 }}
+          />
+          <TextInput
+            label="Target Date"
+            type="date"
+            value={issue.value.target_date || ''}
+            onChange={handleTargetDateChange}
             style={{ width: 180 }}
           />
         </Group>

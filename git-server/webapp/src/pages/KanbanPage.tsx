@@ -93,9 +93,9 @@ function DraggableIssueCard({ issue, orgName, projectName }: DraggableIssueCardP
           <Text size="sm" fw={500} lineClamp={2}>
             {issue.title}
           </Text>
-          {issue.due_date && (
+          {issue.target_date && (
             <Text size="xs" c="dimmed" mt="xs">
-              Due: {issue.due_date}
+              Target: {issue.target_date}
             </Text>
           )}
         </Card>
@@ -131,9 +131,9 @@ function IssueCardOverlay({ issue }: IssueCardOverlayProps) {
       <Text size="sm" fw={500} lineClamp={2}>
         {issue.title}
       </Text>
-      {issue.due_date && (
+      {issue.target_date && (
         <Text size="xs" c="dimmed" mt="xs">
-          Due: {issue.due_date}
+          Target: {issue.target_date}
         </Text>
       )}
     </Card>

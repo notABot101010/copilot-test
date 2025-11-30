@@ -145,12 +145,13 @@ export function RouterProvider({ router, children }: RouterProviderProps): VNode
  * RouterView component
  * Renders the component for the current matched route
  */
-export function RouterView({ name, props: additionalProps }: RouterViewProps = {}): VNode<unknown> | null {
+export function RouterView({ name, props: additionalProps, notFound: NotFoundComponent }: RouterViewProps = {}): VNode<unknown> | null {
   const router = useRouter();
   const route = useRoute();
 
   const [Component, setComponent] = useState<ComponentType<RouteComponentProps> | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isNotFound, setIsNotFound] = useState(false);
 
   // Subscribe to route changes using signals
   useSignalEffect(() => {
@@ -159,8 +160,11 @@ export function RouterView({ name, props: additionalProps }: RouterViewProps = {
 
     if (matched.length === 0) {
       setComponent(null);
+      setIsNotFound(true);
       return;
     }
+
+    setIsNotFound(false);
 
     // Get the last matched route (or the one matching the name if specified)
     let matchedRoute: RouteRecord | undefined;
@@ -198,6 +202,15 @@ export function RouterView({ name, props: additionalProps }: RouterViewProps = {
 
   if (loading) {
     return h(Fragment, null) as VNode<unknown>;
+  }
+
+  // If no route matches and a notFound component is provided, render it
+  if (isNotFound && NotFoundComponent) {
+    const notFoundProps: RouteComponentProps = {
+      params: route.value.params,
+      query: route.value.query
+    };
+    return h(NotFoundComponent, { ...notFoundProps, ...additionalProps }) as VNode<unknown>;
   }
 
   if (!Component) {

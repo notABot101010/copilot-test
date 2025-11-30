@@ -8,7 +8,8 @@ export function CreateIssuePage() {
   const router = useRouter();
   const title = useSignal('');
   const body = useSignal('');
-  const dueDate = useSignal('');
+  const startDate = useSignal('');
+  const targetDate = useSignal('');
   const loading = useSignal(false);
   const error = useSignal<string | null>(null);
 
@@ -32,7 +33,8 @@ export function CreateIssuePage() {
         projectName, 
         title.value.trim(), 
         body.value.trim(),
-        dueDate.value || undefined
+        startDate.value || undefined,
+        targetDate.value || undefined
       );
       router.push(`/${orgName}/${projectName}/issues/${issue.number}`);
     } catch (err) {
@@ -72,14 +74,22 @@ export function CreateIssuePage() {
           mb="lg"
         />
 
-        <TextInput
-          label="Due Date"
-          type="date"
-          placeholder="YYYY-MM-DD"
-          value={dueDate.value}
-          onChange={(e: Event) => (dueDate.value = (e.target as HTMLInputElement).value)}
-          mb="lg"
-        />
+        <Group mb="lg">
+          <TextInput
+            label="Start Date"
+            type="date"
+            placeholder="YYYY-MM-DD"
+            value={startDate.value}
+            onChange={(e: Event) => (startDate.value = (e.target as HTMLInputElement).value)}
+          />
+          <TextInput
+            label="Target Date"
+            type="date"
+            placeholder="YYYY-MM-DD"
+            value={targetDate.value}
+            onChange={(e: Event) => (targetDate.value = (e.target as HTMLInputElement).value)}
+          />
+        </Group>
 
         <Group>
           <Button type="submit" loading={loading.value} color="green">

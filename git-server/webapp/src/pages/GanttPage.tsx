@@ -32,12 +32,12 @@ function getDateRange(issues: Issue[]): { start: Date; end: Date; days: number }
   maxDate.setDate(maxDate.getDate() + 30); // Default to 30 days ahead
   
   for (const issue of issues) {
-    const created = new Date(issue.created_at);
-    const dueDate = parseDate(issue.due_date);
+    const startDate = parseDate(issue.start_date) || new Date(issue.created_at);
+    const targetDate = parseDate(issue.target_date);
     
-    if (created < minDate) minDate = new Date(created);
-    if (dueDate && dueDate > maxDate) maxDate = new Date(dueDate);
-    if (dueDate && dueDate < minDate) minDate = new Date(dueDate);
+    if (startDate < minDate) minDate = new Date(startDate);
+    if (targetDate && targetDate > maxDate) maxDate = new Date(targetDate);
+    if (targetDate && targetDate < minDate) minDate = new Date(targetDate);
   }
   
   // Add some padding
@@ -68,14 +68,14 @@ interface GanttBarProps {
 }
 
 function GanttBar({ issue, startDate, totalDays, orgName, projectName }: GanttBarProps) {
-  const created = new Date(issue.created_at);
-  const dueDate = parseDate(issue.due_date);
+  const issueStart = parseDate(issue.start_date) || new Date(issue.created_at);
+  const targetDate = parseDate(issue.target_date);
   
-  const startDay = Math.max(0, Math.floor((created.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+  const startDay = Math.max(0, Math.floor((issueStart.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
   
   let endDay: number;
-  if (dueDate) {
-    endDay = Math.floor((dueDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  if (targetDate) {
+    endDay = Math.floor((targetDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
   } else {
     endDay = startDay + 7; // Default to 7 days duration
   }
@@ -108,7 +108,7 @@ function GanttBar({ issue, startDate, totalDays, orgName, projectName }: GanttBa
           <div
             class={`absolute top-2 h-6 ${statusColor} rounded-full opacity-80 hover:opacity-100 transition-opacity`}
             style={{ left: `${leftPercent}%`, width: `${Math.max(widthPercent, 2)}%` }}
-            title={`${issue.title}\nStatus: ${issue.status}\n${dueDate ? `Due: ${issue.due_date}` : 'No due date'}`}
+            title={`${issue.title}\nStatus: ${issue.status}\n${targetDate ? `Target: ${issue.target_date}` : 'No target date'}`}
           />
         </div>
       </div>
@@ -164,15 +164,15 @@ export function GanttPage() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Sort issues: open first, then by due date
+  // Sort issues: open first, then by target date
   const sortedIssues = [...issues.value].sort((a, b) => {
     if (a.state !== b.state) return a.state === 'open' ? -1 : 1;
-    const aDue = parseDate(a.due_date);
-    const bDue = parseDate(b.due_date);
-    if (!aDue && !bDue) return 0;
-    if (!aDue) return 1;
-    if (!bDue) return -1;
-    return aDue.getTime() - bDue.getTime();
+    const aTarget = parseDate(a.target_date);
+    const bTarget = parseDate(b.target_date);
+    if (!aTarget && !bTarget) return 0;
+    if (!aTarget) return 1;
+    if (!bTarget) return -1;
+    return aTarget.getTime() - bTarget.getTime();
   });
 
   return (
