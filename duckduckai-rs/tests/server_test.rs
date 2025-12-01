@@ -1,8 +1,9 @@
 use async_openai::{
+    Client,
+    config::OpenAIConfig,
     types::{ChatCompletionRequestMessage, CreateChatCompletionRequestArgs},
-    Client, config::OpenAIConfig,
 };
-use duckduckai::{run_server, DEFAULT_MODEL};
+use duckduckai::{DEFAULT_MODEL, run_server};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -40,7 +41,7 @@ async fn test_server_non_streaming_chat_completion() {
         .messages(vec![ChatCompletionRequestMessage::User(
             async_openai::types::ChatCompletionRequestUserMessage {
                 content: async_openai::types::ChatCompletionRequestUserMessageContent::Text(
-                    "What is 2+2? Reply with just the number.".to_string()
+                    "What is 2+2? Reply with just the number.".to_string(),
                 ),
                 name: None,
             },
@@ -86,7 +87,7 @@ async fn test_server_streaming_chat_completion() {
         .messages(vec![ChatCompletionRequestMessage::User(
             async_openai::types::ChatCompletionRequestUserMessage {
                 content: async_openai::types::ChatCompletionRequestUserMessageContent::Text(
-                    "Say hello in one word".to_string()
+                    "Say hello in one word".to_string(),
                 ),
                 name: None,
             },
@@ -150,7 +151,7 @@ async fn test_server_with_invalid_api_key() {
         .messages(vec![ChatCompletionRequestMessage::User(
             async_openai::types::ChatCompletionRequestUserMessage {
                 content: async_openai::types::ChatCompletionRequestUserMessageContent::Text(
-                    "Hello".to_string()
+                    "Hello".to_string(),
                 ),
                 name: None,
             },
@@ -183,7 +184,7 @@ async fn test_server_with_different_models() {
             .messages(vec![ChatCompletionRequestMessage::User(
                 async_openai::types::ChatCompletionRequestUserMessage {
                     content: async_openai::types::ChatCompletionRequestUserMessageContent::Text(
-                        "Say hi in one word".to_string()
+                        "Say hi in one word".to_string(),
                     ),
                     name: None,
                 },
@@ -222,7 +223,7 @@ async fn test_server_multiple_sequential_requests() {
             .messages(vec![ChatCompletionRequestMessage::User(
                 async_openai::types::ChatCompletionRequestUserMessage {
                     content: async_openai::types::ChatCompletionRequestUserMessageContent::Text(
-                        format!("Count to {}. Just output the numbers.", i)
+                        format!("Count to {}. Just output the numbers.", i),
                     ),
                     name: None,
                 },

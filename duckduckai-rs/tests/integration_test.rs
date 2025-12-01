@@ -1,5 +1,5 @@
-use duckduckai::{DuckDuckGoClient, ChallengeSolver};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
+use duckduckai::{ChallengeSolver, DuckDuckGoClient};
 
 #[tokio::test]
 async fn test_client_initialization() {
@@ -10,14 +10,17 @@ async fn test_client_initialization() {
 #[tokio::test]
 async fn test_challenge_solver_initialization() {
     let solver = ChallengeSolver::new();
-    assert!(solver.is_ok(), "Challenge solver should initialize successfully");
+    assert!(
+        solver.is_ok(),
+        "Challenge solver should initialize successfully"
+    );
 }
 
 /// Test that we can solve a sample challenge with the JavaScript runtime
 #[tokio::test]
 async fn test_challenge_solver_with_sample_data() {
     let solver = ChallengeSolver::new().expect("Failed to create solver");
-    
+
     // Create a sample challenge similar to what the real API returns
     let sample_challenge = serde_json::json!({
         "server_hashes": [
@@ -37,38 +40,44 @@ async fn test_challenge_solver_with_sample_data() {
             "duration": "9"
         }
     });
-    
+
     let challenge_json = serde_json::to_string(&sample_challenge).unwrap();
     let challenge_b64 = BASE64.encode(challenge_json.as_bytes());
-    
+
     let result = solver.solve(&challenge_b64).await;
     assert!(result.is_ok(), "Challenge solving failed: {:?}", result);
-    
+
     let solved = result.unwrap();
-    
+
     // Verify the result is valid base64
     let decoded = BASE64.decode(&solved);
     assert!(decoded.is_ok(), "Result should be valid base64");
-    
+
     // Verify the decoded result is valid JSON
     let decoded_json: serde_json::Value = serde_json::from_slice(&decoded.unwrap()).unwrap();
-    
+
     // Verify structure
-    assert!(decoded_json.get("server_hashes").is_some(), "Should have server_hashes");
-    assert!(decoded_json.get("client_hashes").is_some(), "Should have client_hashes");
+    assert!(
+        decoded_json.get("server_hashes").is_some(),
+        "Should have server_hashes"
+    );
+    assert!(
+        decoded_json.get("client_hashes").is_some(),
+        "Should have client_hashes"
+    );
     assert!(decoded_json.get("meta").is_some(), "Should have meta");
-    
+
     // Verify we computed client hashes
     let client_hashes = decoded_json["client_hashes"].as_array().unwrap();
     assert_eq!(client_hashes.len(), 3, "Should have 3 client hashes");
-    
+
     // Verify origin is set correctly
     assert_eq!(
         decoded_json["meta"]["origin"].as_str().unwrap(),
         "https://duckduckgo.com",
         "Origin should be duckduckgo.com"
     );
-    
+
     println!("Solved challenge successfully!");
     println!("Client hashes: {:?}", client_hashes);
 }
@@ -79,56 +88,68 @@ async fn test_challenge_solver_with_sample_data() {
 #[ignore] // Ignored by default - requires network access
 async fn test_fetch_and_solve_vqd_challenge() {
     let client = reqwest::Client::new();
-    
+
     // Step 1: Fetch challenge from status endpoint
     let response = client
         .get("https://duckduckgo.com/duckchat/v1/status")
-        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        )
         .header("Accept", "*/*")
         .header("x-vqd-accept", "1")
         .send()
         .await;
-    
+
     if let Err(ref err) = response {
         eprintln!("Failed to fetch status: {:#?}", err);
         eprintln!("Note: This test requires network access to duckduckgo.com");
         return;
     }
-    
+
     let response = response.unwrap();
     println!("Status: {}", response.status());
-    
+
     // Step 2: Extract challenge from x-vqd-hash-1 header
     let challenge = response
         .headers()
         .get("x-vqd-hash-1")
         .map(|h| h.to_str().unwrap().to_string());
-    
+
     if challenge.is_none() {
         eprintln!("x-vqd-hash-1 header not found in response");
         eprintln!("Headers: {:?}", response.headers());
         return;
     }
-    
+
     let challenge = challenge.unwrap();
-    println!("Received challenge (first 50 chars): {}...", &challenge[..challenge.len().min(50)]);
-    
+    println!(
+        "Received challenge (first 50 chars): {}...",
+        &challenge[..challenge.len().min(50)]
+    );
+
     // Step 3: Solve the challenge using the JavaScript runtime
     let solver = ChallengeSolver::new().expect("Failed to create solver");
     let solved = solver.solve(&challenge).await;
-    
+
     assert!(solved.is_ok(), "Challenge solving failed: {:?}", solved);
-    
+
     let vqd_header = solved.unwrap();
-    println!("Solved VQD header (first 50 chars): {}...", &vqd_header[..vqd_header.len().min(50)]);
-    
+    println!(
+        "Solved VQD header (first 50 chars): {}...",
+        &vqd_header[..vqd_header.len().min(50)]
+    );
+
     // Verify the solved header is valid base64 JSON
     let decoded = BASE64.decode(&vqd_header);
     assert!(decoded.is_ok(), "Solved header should be valid base64");
-    
+
     let decoded_json: serde_json::Value = serde_json::from_slice(&decoded.unwrap()).unwrap();
-    assert!(decoded_json.get("client_hashes").is_some(), "Should have client_hashes");
-    
+    assert!(
+        decoded_json.get("client_hashes").is_some(),
+        "Should have client_hashes"
+    );
+
     println!("Successfully fetched and solved VQD challenge!");
 }
 
@@ -138,25 +159,32 @@ async fn test_fetch_and_solve_vqd_challenge() {
 #[ignore] // Ignored by default - requires network access
 async fn test_full_chat_flow_with_challenge_solving() {
     let mut client = DuckDuckGoClient::new().expect("Failed to create client");
-    
+
     // This will internally:
     // 1. Fetch the challenge from status endpoint
     // 2. Solve the challenge using JavaScript runtime
     // 3. Use the solved X-Vqd-Hash-1 header for chat
-    let result = client.chat("What is 2+2? Reply with just the number.", None).await;
-    
+    let result = client
+        .chat("What is 2+2? Reply with just the number.", None)
+        .await;
+
     if let Err(ref err) = result {
         eprintln!("Chat error: {:#?}", err);
-        eprintln!("Note: This test requires network access and the challenge solver to work correctly");
+        eprintln!(
+            "Note: This test requires network access and the challenge solver to work correctly"
+        );
         return;
     }
-    
+
     let response = result.unwrap();
     assert!(!response.is_empty(), "Response should not be empty");
     println!("Chat response: {}", response);
-    
+
     // Verify response contains "4" somewhere
-    assert!(response.contains("4"), "Response should contain the answer 4");
+    assert!(
+        response.contains("4"),
+        "Response should contain the answer 4"
+    );
 }
 
 #[tokio::test]
@@ -253,7 +281,7 @@ async fn test_multiple_requests() {
 #[tokio::test]
 async fn test_javascript_code_challenge() {
     let solver = ChallengeSolver::new().expect("Failed to create solver");
-    
+
     // This simulates a JavaScript challenge that DuckDuckGo might return
     let js_challenge = r#"(function(){
         return {
@@ -275,32 +303,48 @@ async fn test_javascript_code_challenge() {
             }
         };
     })()"#;
-    
+
     let challenge_b64 = BASE64.encode(js_challenge.as_bytes());
-    
+
     let result = solver.solve(&challenge_b64).await;
-    assert!(result.is_ok(), "JavaScript challenge should be solved successfully: {:?}", result);
-    
+    assert!(
+        result.is_ok(),
+        "JavaScript challenge should be solved successfully: {:?}",
+        result
+    );
+
     let solved = result.unwrap();
-    
+
     // Verify the result is valid base64
     let decoded = BASE64.decode(&solved);
     assert!(decoded.is_ok(), "Solved result should be valid base64");
-    
+
     // Verify the structure
     let decoded_json: serde_json::Value = serde_json::from_slice(&decoded.unwrap()).unwrap();
-    assert!(decoded_json.get("server_hashes").is_some(), "Should have server_hashes");
-    assert!(decoded_json.get("client_hashes").is_some(), "Should have client_hashes");
+    assert!(
+        decoded_json.get("server_hashes").is_some(),
+        "Should have server_hashes"
+    );
+    assert!(
+        decoded_json.get("client_hashes").is_some(),
+        "Should have client_hashes"
+    );
     assert!(decoded_json.get("meta").is_some(), "Should have meta");
-    
+
     // Verify client hashes were computed
     let client_hashes = decoded_json["client_hashes"].as_array().unwrap();
     assert_eq!(client_hashes.len(), 3, "Should have 3 client hashes");
-    
+
     // Verify meta fields
-    assert_eq!(decoded_json["meta"]["challenge_id"].as_str().unwrap(), "integration_test_js");
-    assert_eq!(decoded_json["meta"]["origin"].as_str().unwrap(), "https://duckduckgo.com");
-    
+    assert_eq!(
+        decoded_json["meta"]["challenge_id"].as_str().unwrap(),
+        "integration_test_js"
+    );
+    assert_eq!(
+        decoded_json["meta"]["origin"].as_str().unwrap(),
+        "https://duckduckgo.com"
+    );
+
     println!("JavaScript challenge solved successfully!");
 }
 
@@ -308,7 +352,7 @@ async fn test_javascript_code_challenge() {
 #[tokio::test]
 async fn test_javascript_challenge_with_browser_apis() {
     let solver = ChallengeSolver::new().expect("Failed to create solver");
-    
+
     // This challenge uses browser APIs that should be available in our QuickJS environment
     // Note: We use more careful access patterns since the globals may have some limitations
     let js_challenge = r#"(function(){
@@ -341,23 +385,39 @@ async fn test_javascript_challenge_with_browser_apis() {
         
         return result;
     })()"#;
-    
+
     let challenge_b64 = BASE64.encode(js_challenge.as_bytes());
-    
+
     let result = solver.solve(&challenge_b64).await;
-    assert!(result.is_ok(), "Browser API challenge should be solved: {:?}", result);
-    
+    assert!(
+        result.is_ok(),
+        "Browser API challenge should be solved: {:?}",
+        result
+    );
+
     let solved = result.unwrap();
     let decoded = BASE64.decode(&solved).unwrap();
     let decoded_json: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
-    
+
     // Verify the challenge was solved
-    assert!(decoded_json.get("server_hashes").is_some(), "Should have server_hashes");
-    assert!(decoded_json.get("client_hashes").is_some(), "Should have client_hashes");
-    
+    assert!(
+        decoded_json.get("server_hashes").is_some(),
+        "Should have server_hashes"
+    );
+    assert!(
+        decoded_json.get("client_hashes").is_some(),
+        "Should have client_hashes"
+    );
+
     // Verify origin was retrieved correctly
-    assert_eq!(decoded_json["meta"]["origin"].as_str().unwrap(), "https://duckduckgo.com");
-    
+    assert_eq!(
+        decoded_json["meta"]["origin"].as_str().unwrap(),
+        "https://duckduckgo.com"
+    );
+
     println!("Browser API challenge solved successfully!");
-    println!("Meta: {}", serde_json::to_string_pretty(&decoded_json["meta"]).unwrap());
+    println!(
+        "Meta: {}",
+        serde_json::to_string_pretty(&decoded_json["meta"]).unwrap()
+    );
 }

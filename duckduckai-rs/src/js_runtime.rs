@@ -60,19 +60,20 @@ impl ChallengeSolver {
             OsStr::new("--no-first-run"),
             OsStr::new("--no-default-browser-check"),
             // Realistic user agent
-            OsStr::new("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"),
+            OsStr::new(
+                "--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            ),
         ];
-        
+
         let options = LaunchOptions::default_builder()
             .headless(true)
-            .sandbox(false)  // Required for running in Docker/CI environments
+            .sandbox(false) // Required for running in Docker/CI environments
             .args(args)
             .build()
             .context("Failed to build launch options")?;
-        
-        let browser = Browser::new(options)
-            .context("Failed to launch headless Chrome")?;
-        
+
+        let browser = Browser::new(options).context("Failed to launch headless Chrome")?;
+
         Ok(Self { browser })
     }
 
@@ -93,16 +94,21 @@ impl ChallengeSolver {
         let challenge_code =
             String::from_utf8(challenge_bytes).context("Challenge is not valid UTF-8")?;
 
-        tracing::debug!("Decoded challenge: {}", &challenge_code[..challenge_code.len().min(100)]);
+        tracing::debug!(
+            "Decoded challenge: {}",
+            &challenge_code[..challenge_code.len().min(100)]
+        );
 
         // Execute the challenge in a browser context that mimics DuckDuckGo
-        let challenge_result = self.execute_challenge(&challenge_code)
+        let challenge_result = self
+            .execute_challenge(&challenge_code)
             .context("Failed to execute challenge in browser")?;
 
         tracing::debug!("Challenge result from browser: {:?}", challenge_result);
 
         // Hash the client_hashes with SHA-256 and encode as base64
-        let hashed_client_hashes: Vec<String> = challenge_result.client_hashes
+        let hashed_client_hashes: Vec<String> = challenge_result
+            .client_hashes
             .iter()
             .map(|h| {
                 let hash = digest(&SHA256, h.as_bytes());
@@ -139,7 +145,9 @@ impl ChallengeSolver {
 
     /// Execute the challenge JavaScript in a browser with a minimal DuckDuckGo-like environment
     fn execute_challenge(&self, challenge_code: &str) -> Result<ChallengeResult> {
-        let tab = self.browser.new_tab()
+        let tab = self
+            .browser
+            .new_tab()
             .context("Failed to create new browser tab")?;
 
         // Navigate to about:blank first
@@ -173,7 +181,7 @@ impl ChallengeSolver {
                 window.__iframeReady = true;
             }
         "#;
-        
+
         tab.evaluate(setup_script, false)
             .context("Failed to set up challenge environment")?;
 
@@ -185,7 +193,7 @@ impl ChallengeSolver {
                 tracing::warn!("Timeout waiting for iframe to be ready, proceeding anyway");
                 break;
             }
-            
+
             let ready_check = tab.evaluate("window.__iframeReady === true", false);
             if let Ok(result) = ready_check {
                 if let Some(value) = result.value {
@@ -221,7 +229,7 @@ impl ChallengeSolver {
         // Wait for the challenge to complete (poll for result)
         let timeout = Duration::from_secs(15);
         let start = Instant::now();
-        
+
         loop {
             if start.elapsed() > timeout {
                 // Try to get any error that occurred
@@ -238,7 +246,8 @@ impl ChallengeSolver {
             }
 
             // Check for error first
-            let error_check = tab.evaluate("window.__challengeError", false)
+            let error_check = tab
+                .evaluate("window.__challengeError", false)
                 .context("Failed to check for error")?;
             if let Some(error) = error_check.value {
                 if !error.is_null() {
@@ -248,11 +257,13 @@ impl ChallengeSolver {
             }
 
             // Check for result
-            let result_check = tab.evaluate("window.__challengeResult", false)
+            let result_check = tab
+                .evaluate("window.__challengeResult", false)
                 .context("Failed to check for result")?;
             if let Some(result) = result_check.value {
                 if !result.is_null() {
-                    let result_str = result.as_str()
+                    let result_str = result
+                        .as_str()
                         .ok_or_else(|| anyhow!("Result is not a string"))?;
                     let challenge_data: ChallengeResult = serde_json::from_str(result_str)
                         .context("Failed to parse challenge result as JSON")?;

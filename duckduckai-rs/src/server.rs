@@ -1,19 +1,22 @@
 use anyhow::{Context, Result, anyhow};
 use axum::{
+    Router,
     extract::{Json, State},
     http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response, sse::{Event, Sse}},
+    response::{
+        IntoResponse, Response,
+        sse::{Event, Sse},
+    },
     routing::post,
-    Router,
 };
 use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
-use crate::{DuckDuckGoClient, DEFAULT_MODEL};
+use crate::{DEFAULT_MODEL, DuckDuckGoClient};
 
 #[derive(Debug)]
 pub struct ServerState {
@@ -114,10 +117,7 @@ async fn handle_chat_completion(
 
     // Validate that we have at least one message
     if request.messages.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "No messages provided".to_string(),
-        ));
+        return Err((StatusCode::BAD_REQUEST, "No messages provided".to_string()));
     }
 
     // Convert OpenAI-format messages to DuckDuckGo ChatMessage format
@@ -156,7 +156,7 @@ async fn create_non_streaming_response(
     model: String,
 ) -> Result<ChatCompletionResponse> {
     let model_for_response = model.clone();
-    
+
     let content = {
         let mut client = client.lock().await;
         client.chat_with_messages(messages, Some(&model)).await?
@@ -222,7 +222,7 @@ fn create_streaming_response(
         let id_for_closure = id.clone();
         let model_for_closure = model.clone();
         let tx_clone = tx.clone();
-        
+
         // Use the shared client
         {
             let mut client = client.lock().await;
@@ -291,8 +291,8 @@ fn create_streaming_response(
 pub async fn run_server(host: &str, port: u16, api_key: String) -> Result<()> {
     // Create a single DuckDuckGoClient to be shared across all requests
     let client = DuckDuckGoClient::new()?;
-    
-    let state = Arc::new(ServerState { 
+
+    let state = Arc::new(ServerState {
         api_key,
         client: Arc::new(Mutex::new(client)),
     });
@@ -309,9 +309,7 @@ pub async fn run_server(host: &str, port: u16, api_key: String) -> Result<()> {
         .await
         .context("Failed to bind to address")?;
 
-    axum::serve(listener, app)
-        .await
-        .context("Server error")?;
+    axum::serve(listener, app).await.context("Server error")?;
 
     Ok(())
 }

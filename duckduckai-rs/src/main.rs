@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use duckduckai::{DuckDuckGoClient, run_server, DEFAULT_MODEL};
+use duckduckai::{ChatMessage, DEFAULT_MODEL, DuckDuckGoClient, run_server};
 use std::io::{self, Write};
 use tracing_subscriber::EnvFilter;
 
@@ -110,6 +110,7 @@ async fn main() -> Result<()> {
         println!("DuckDuckGo AI Chat (type 'exit' to quit)");
         println!("Model: {}", args.model);
         println!();
+        let mut messages = Vec::new();
 
         loop {
             print!("> ");
@@ -129,17 +130,32 @@ async fn main() -> Result<()> {
                 break;
             }
 
+            messages.push(ChatMessage {
+                role: "user".to_string(),
+                content: input.to_string(),
+            });
+
             if args.stream {
                 client
-                    .chat_stream(input, Some(&args.model), |chunk| {
+                    .chat_stream_with_messages(messages.clone(), Some(&args.model), |chunk| {
                         print!("{}", chunk);
                         io::stdout().flush().unwrap();
                     })
                     .await?;
                 println!("\n"); // Double new line for readability
             } else {
-                match client.chat(input, Some(&args.model)).await {
-                    Ok(response) => println!("{}\n", response),
+                match client
+                    .chat_with_messages(messages.clone(), Some(&args.model))
+                    .await
+                {
+                    Ok(response) => {
+                        let response = response.trim();
+                        messages.push(ChatMessage {
+                            role: "assistant".to_string(),
+                            content: response.to_string(),
+                        });
+                        println!("{}\n", response);
+                    }
                     Err(err) => eprintln!("Error: {}\n", err),
                 }
             }

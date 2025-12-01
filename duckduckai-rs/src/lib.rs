@@ -93,7 +93,10 @@ impl DuckDuckGoClient {
         );
         headers.insert("Sec-CH-UA-Mobile", HeaderValue::from_static("?0"));
         headers.insert("Sec-CH-UA-Platform", HeaderValue::from_static("\"macOS\""));
-        headers.insert("Referer", HeaderValue::from_static("https://duckduckgo.com/"));
+        headers.insert(
+            "Referer",
+            HeaderValue::from_static("https://duckduckgo.com/"),
+        );
 
         Ok(headers)
     }
@@ -103,12 +106,26 @@ impl DuckDuckGoClient {
 
         headers.insert(USER_AGENT, HeaderValue::from_static(USER_AGENT_STRING));
         headers.insert("Accept", HeaderValue::from_static("*/*"));
-        headers.insert("Accept-Encoding", HeaderValue::from_static("gzip, deflate, br, zstd"));
-        headers.insert("Accept-Language", HeaderValue::from_static("en-US,en;q=0.7"));
+        headers.insert(
+            "Accept-Encoding",
+            HeaderValue::from_static("gzip, deflate, br, zstd"),
+        );
+        headers.insert(
+            "Accept-Language",
+            HeaderValue::from_static("en-US,en;q=0.7"),
+        );
         headers.insert("Cache-Control", HeaderValue::from_static("no-store"));
         headers.insert("Priority", HeaderValue::from_static("u=1, i"));
-        headers.insert("Referer", HeaderValue::from_static("https://duckduckgo.com/"));
-        headers.insert("Sec-CH-UA", HeaderValue::from_static("\"Chromium\";v=\"142\", \"Brave\";v=\"142\", \"Not_A Brand\";v=\"99\""));
+        headers.insert(
+            "Referer",
+            HeaderValue::from_static("https://duckduckgo.com/"),
+        );
+        headers.insert(
+            "Sec-CH-UA",
+            HeaderValue::from_static(
+                "\"Chromium\";v=\"142\", \"Brave\";v=\"142\", \"Not_A Brand\";v=\"99\"",
+            ),
+        );
         headers.insert("Sec-CH-UA-Mobile", HeaderValue::from_static("?0"));
         headers.insert("Sec-CH-UA-Platform", HeaderValue::from_static("\"macOS\""));
         headers.insert("Sec-Fetch-Dest", HeaderValue::from_static("empty"));
@@ -144,7 +161,10 @@ impl DuckDuckGoClient {
             .context("Failed to parse x-vqd-hash-1 header")?
             .to_string();
 
-        tracing::debug!("Received challenge: {}", &challenge[..challenge.len().min(DEBUG_TRUNCATE_LEN)]);
+        tracing::debug!(
+            "Received challenge: {}",
+            &challenge[..challenge.len().min(DEBUG_TRUNCATE_LEN)]
+        );
 
         // Solve the challenge using the JavaScript runtime
         let solver = ChallengeSolver::new().context("Failed to create challenge solver")?;
@@ -153,7 +173,10 @@ impl DuckDuckGoClient {
             .await
             .context("Failed to solve VQD challenge")?;
 
-        tracing::debug!("Solved VQD token: {}", &vqd[..vqd.len().min(DEBUG_TRUNCATE_LEN)]);
+        tracing::debug!(
+            "Solved VQD token: {}",
+            &vqd[..vqd.len().min(DEBUG_TRUNCATE_LEN)]
+        );
         self.vqd = Some(vqd.clone());
 
         Ok(vqd)
@@ -401,7 +424,7 @@ impl DuckDuckGoClient {
         model: Option<&str>,
     ) -> Result<String> {
         let model_str = model.unwrap_or(DEFAULT_MODEL).to_string();
-        
+
         // Retry logic for VQD token refresh
         for attempt in 0..3 {
             if attempt > 0 {
@@ -524,7 +547,7 @@ impl DuckDuckGoClient {
         F: FnMut(&str),
     {
         let model_str = model.unwrap_or(DEFAULT_MODEL).to_string();
-        
+
         // Retry logic for VQD token refresh
         for attempt in 0..3 {
             if attempt > 0 {
