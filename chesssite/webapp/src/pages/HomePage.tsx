@@ -1,6 +1,5 @@
-import { useSignal } from '@preact/signals';
-import { useEffect } from 'preact/hooks';
-import { Button, Card, Modal, Select } from '@mantine/core';
+import { useEffect, useState } from 'preact/hooks';
+import { Button, Card, Select } from '@mantine/core';
 import { IconPlus, IconLogout, IconChess } from '@tabler/icons-preact';
 import { 
   currentUser, 
@@ -19,10 +18,11 @@ export function HomePage() {
   const matchList = matches.value;
   const loading = matchesLoading.value;
   
-  const showNewMatchModal = useSignal(false);
-  const availableUsers = useSignal<string[]>([]);
-  const selectedOpponent = useSignal('');
-  const creatingMatch = useSignal(false);
+  // Use useState for modal to ensure proper re-render with Mantine
+  const [modalOpened, setModalOpened] = useState(false);
+  const [usersList, setUsersList] = useState<string[]>([]);
+  const [opponent, setOpponent] = useState('');
+  const [creating, setCreating] = useState(false);
   
   useEffect(() => {
     if (!user) {
@@ -32,25 +32,19 @@ export function HomePage() {
     fetchMatches();
   }, [user]);
   
-  const handleNewMatch = async () => {
-    const users = await fetchUsers();
-    availableUsers.value = users.filter(u => u !== user?.username);
-    showNewMatchModal.value = true;
-  };
-  
   const handleCreateMatch = async () => {
-    if (!selectedOpponent.value) return;
+    if (!opponent) return;
     
-    creatingMatch.value = true;
+    setCreating(true);
     try {
-      const matchId = await createMatch(selectedOpponent.value);
+      const matchId = await createMatch(opponent);
       if (matchId) {
-        showNewMatchModal.value = false;
-        selectedOpponent.value = '';
+        setModalOpened(false);
+        setOpponent('');
         router.push(`/match/${matchId}`);
       }
     } finally {
-      creatingMatch.value = false;
+      setCreating(false);
     }
   };
   
@@ -108,12 +102,19 @@ export function HomePage() {
         
         {/* New Match Button */}
         <div class="mb-6">
-          <Button
-            leftSection={<IconPlus size={18} />}
-            onClick={handleNewMatch}
+          <button
+            type="button"
+            class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
+            onClick={() => {
+              setModalOpened(true);
+              fetchUsers().then(users => {
+                setUsersList(users.filter(u => u !== user?.username));
+              });
+            }}
           >
-            New Match
-          </Button>
+            <IconPlus size={18} />
+            <span>New Match</span>
+          </button>
         </div>
         
         {/* Match List */}
@@ -160,43 +161,43 @@ export function HomePage() {
       </div>
       
       {/* New Match Modal */}
-      <Modal
-        opened={showNewMatchModal.value}
-        onClose={() => showNewMatchModal.value = false}
-        title="Create New Match"
-        centered
-      >
-        <div class="space-y-4">
-          <Select
-            label="Select opponent"
-            placeholder="Choose a player"
-            data={availableUsers.value.map(u => ({ value: u, label: u }))}
-            value={selectedOpponent.value}
-            onChange={(value: string | null) => selectedOpponent.value = value || ''}
-            searchable
-          />
-          
-          {availableUsers.value.length === 0 && (
-            <p class="text-gray-400 text-sm">No other users available. Ask a friend to register!</p>
-          )}
-          
-          <div class="flex justify-end gap-2">
-            <Button 
-              variant="subtle" 
-              onClick={() => showNewMatchModal.value = false}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateMatch}
-              loading={creatingMatch.value}
-              disabled={!selectedOpponent.value}
-            >
-              Create Match
-            </Button>
+      {modalOpened && (
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md shadow-xl">
+            <h2 class="text-xl font-bold mb-4">Create New Match</h2>
+            <div class="space-y-4">
+              <Select
+                label="Select opponent"
+                placeholder="Choose a player"
+                data={usersList.map(u => ({ value: u, label: u }))}
+                value={opponent}
+                onChange={(value: string | null) => setOpponent(value || '')}
+                searchable
+              />
+              
+              {usersList.length === 0 && (
+                <p class="text-gray-400 text-sm">No other users available. Ask a friend to register!</p>
+              )}
+              
+              <div class="flex justify-end gap-2">
+                <Button 
+                  variant="subtle" 
+                  onClick={() => setModalOpened(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCreateMatch}
+                  loading={creating}
+                  disabled={!opponent}
+                >
+                  Create Match
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
-      </Modal>
+      )}
     </div>
   );
 }
