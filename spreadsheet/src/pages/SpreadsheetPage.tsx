@@ -13,10 +13,14 @@ import {
   canUndoSignal,
   canRedoSignal,
   cancelEdit,
+  createChart,
 } from '../store/spreadsheetStore';
 import { getCellKey } from '../types/spreadsheet';
+import type { ChartType, ChartDataRange } from '../types/chart';
 import { getComputedValue, indexToColumn } from '../utils/formulaEngine';
 import { generateCSV, downloadCSV, openCSVFilePicker, importCSVToCells } from '../utils/csv';
+import { CreateChartModal } from '../components/CreateChartModal';
+import { ChartOverlay } from '../components/ChartOverlay';
 
 // Virtual scrolling configuration
 const CELL_HEIGHT = 28;
@@ -123,6 +127,9 @@ export function SpreadsheetPage() {
   // Formula bar ref
   const formulaInputRef = useRef<HTMLInputElement>(null);
   const cellInputRef = useRef<HTMLInputElement>(null);
+
+  // Chart modal state
+  const [isChartModalOpen, setIsChartModalOpen] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -657,6 +664,11 @@ export function SpreadsheetPage() {
     downloadCSV(csvContent, filename);
   }, [spreadsheet]);
 
+  // Chart creation handler
+  const handleCreateChart = useCallback((type: ChartType, title: string, dataRange: ChartDataRange) => {
+    createChart(type, title, dataRange);
+  }, []);
+
   if (isLoading) {
     return (
       <div className="py-8 flex justify-center items-center h-screen">
@@ -718,6 +730,20 @@ export function SpreadsheetPage() {
             </Menu.Item>
             <Menu.Item onClick={handleExportCSV}>
               Export to CSV
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+        
+        {/* Insert Menu */}
+        <Menu shadow="md" width={200}>
+          <Menu.Target>
+            <Button variant="subtle" size="sm">
+              Insert
+            </Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Item onClick={() => setIsChartModalOpen(true)}>
+              New Chart
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
@@ -930,6 +956,19 @@ export function SpreadsheetPage() {
               });
             })}
           </div>
+
+          {/* Chart Overlays */}
+          {Object.values(spreadsheet.charts || {}).map((chart) => (
+            <ChartOverlay
+              key={chart.id}
+              chart={chart}
+              cells={spreadsheet.cells}
+              scrollLeft={scrollLeft}
+              scrollTop={scrollTop}
+              containerOffsetX={ROW_HEADER_WIDTH}
+              containerOffsetY={CELL_HEIGHT}
+            />
+          ))}
         </div>
       </div>
 
@@ -948,6 +987,13 @@ export function SpreadsheetPage() {
           Formulas: =SUM, =AVERAGE, =MIN, =MAX, =COUNT, =IF, =ROUND, etc.
         </span>
       </div>
+
+      {/* Chart Modal */}
+      <CreateChartModal
+        opened={isChartModalOpen}
+        onClose={() => setIsChartModalOpen(false)}
+        onSubmit={handleCreateChart}
+      />
     </div>
   );
 }
