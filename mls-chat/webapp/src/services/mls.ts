@@ -1,33 +1,41 @@
-// Simplified MLS-like service
-// In a production app, this would use OpenMLS via WebAssembly
-// For this demo, we use a simplified approach
+// MLS service using OpenMLS WebAssembly bindings
+// This module provides MLS group management using RFC 9420 compliant OpenMLS
 
-// Storage for MLS state
-interface MlsGroupState {
-  groupId: string;
-  groupSecret: string;
-  epoch: number;
-}
+import init, {
+  init_mls,
+  generate_key_packages,
+  create_group,
+  create_invite,
+  process_welcome,
+  process_commit,
+  encrypt_message,
+  decrypt_message,
+  has_group_state,
+  clear_state,
+} from 'openmls-wasm';
 
-const groupStates: Map<string, MlsGroupState> = new Map();
+// Track initialization state
+let wasmInitialized = false;
+let initPromise: Promise<void> | null = null;
 
-// Generate random bytes
-function randomBytes(length: number): Uint8Array {
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  return bytes;
-}
-
-// Convert bytes to base64
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+// Initialize the WASM module
+async function ensureWasmInitialized(): Promise<void> {
+  if (wasmInitialized) {
+    return;
   }
-  return btoa(binary);
+  if (initPromise) {
+    return initPromise;
+  }
+  initPromise = init().then(() => {
+    wasmInitialized = true;
+  });
+  return initPromise;
 }
 
-// Convert base64 to bytes (exported for potential future use)
+// Track MLS initialization per user
+let currentMlsUser: string | null = null;
+
+// Convert bytes to base64 (kept for compatibility)
 export function base64ToBytes(base64: string): Uint8Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -37,164 +45,140 @@ export function base64ToBytes(base64: string): Uint8Array {
   return bytes;
 }
 
-// Generate key packages (simulated)
-export async function generateKeyPackages(username: string, count: number): Promise<string[]> {
-  const packages: string[] = [];
-  for (let i = 0; i < count; i++) {
-    // Create a simulated key package
-    const keyPackage = {
-      version: 1,
-      username,
-      publicKey: bytesToBase64(randomBytes(32)),
-      signature: bytesToBase64(randomBytes(64)),
-      timestamp: Date.now(),
-      index: i,
-    };
-    packages.push(btoa(JSON.stringify(keyPackage)));
+// Initialize MLS for a user
+export async function initializeMls(username: string): Promise<void> {
+  await ensureWasmInitialized();
+  
+  // Don't re-initialize if already initialized for this user
+  if (currentMlsUser === username) {
+    return;
   }
-  return packages;
+  
+  // Clear previous state if switching users
+  if (currentMlsUser !== null) {
+    clear_state();
+  }
+  
+  init_mls(username);
+  currentMlsUser = username;
 }
 
-// Create a new MLS group
+// Generate key packages (RFC 9420 compliant)
+export async function generateKeyPackages(username: string, count: number): Promise<string[]> {
+  await initializeMls(username);
+  const packages = generate_key_packages(count);
+  return packages as string[];
+}
+
+// Create a new MLS group (RFC 9420 compliant)
 export async function createMlsGroup(groupId: string): Promise<void> {
-  const groupSecret = bytesToBase64(randomBytes(32));
-  groupStates.set(groupId, {
-    groupId,
-    groupSecret,
-    epoch: 0,
-  });
+  await ensureWasmInitialized();
+  if (!currentMlsUser) {
+    throw new Error('MLS not initialized - please login first');
+  }
+  create_group(groupId);
   // Store in localStorage for persistence
   saveGroupState(groupId);
 }
 
-// Create welcome and commit for inviting a member
+// Create welcome and commit for inviting a member (RFC 9420 compliant)
 export async function createInvite(
   groupId: string,
-  _inviteeKeyPackage: string
+  inviteeKeyPackage: string
 ): Promise<{ welcome: string; commit: string }> {
-  const state = groupStates.get(groupId);
-  if (!state) {
-    throw new Error('Group not found');
-  }
-
-  // Create welcome message with group secret (simplified)
-  const welcome = {
-    version: 1,
-    groupId,
-    groupSecret: state.groupSecret,
-    epoch: state.epoch + 1,
-  };
-
-  // Create commit message (simplified)
-  const commit = {
-    version: 1,
-    groupId,
-    epoch: state.epoch + 1,
-    action: 'add',
-  };
-
-  // Update epoch
-  state.epoch += 1;
-  saveGroupState(groupId);
-
-  return {
-    welcome: btoa(JSON.stringify(welcome)),
-    commit: btoa(JSON.stringify(commit)),
-  };
+  await ensureWasmInitialized();
+  const result = create_invite(groupId, inviteeKeyPackage);
+  return result as { welcome: string; commit: string };
 }
 
-// Process a welcome message to join a group
+// Process a welcome message to join a group (RFC 9420 compliant)
 export async function processWelcome(welcomeData: string): Promise<string> {
-  const welcome = JSON.parse(atob(welcomeData));
-  groupStates.set(welcome.groupId, {
-    groupId: welcome.groupId,
-    groupSecret: welcome.groupSecret,
-    epoch: welcome.epoch,
-  });
-  saveGroupState(welcome.groupId);
-  return welcome.groupId;
+  await ensureWasmInitialized();
+  const groupId = process_welcome(welcomeData);
+  saveGroupState(groupId);
+  return groupId;
 }
 
-// Process a commit message
+// Process a commit message (RFC 9420 compliant)
 export async function processCommit(commitData: string): Promise<void> {
-  const commit = JSON.parse(atob(commitData));
-  const state = groupStates.get(commit.groupId);
-  if (state && commit.epoch > state.epoch) {
-    state.epoch = commit.epoch;
-    saveGroupState(commit.groupId);
-  }
-}
-
-// Encrypt a message for the group
-export async function encryptMessage(groupId: string, plaintext: string): Promise<string> {
-  const state = groupStates.get(groupId);
-  if (!state) {
-    // Try to load from storage
-    loadGroupState(groupId);
-    const loadedState = groupStates.get(groupId);
-    if (!loadedState) {
-      throw new Error('Group not found');
-    }
-  }
-
-  // Simplified encryption (in production, use proper AEAD)
-  const message = {
-    ciphertext: btoa(plaintext),
-    epoch: groupStates.get(groupId)?.epoch || 0,
-    nonce: bytesToBase64(randomBytes(12)),
-  };
-
-  return btoa(JSON.stringify(message));
-}
-
-// Decrypt a message from the group
-export async function decryptMessage(groupId: string, ciphertext: string): Promise<string> {
-  const state = groupStates.get(groupId);
-  if (!state) {
-    loadGroupState(groupId);
-  }
-
+  await ensureWasmInitialized();
+  // The commit contains the group ID, so we need to extract it or handle errors
   try {
-    const message = JSON.parse(atob(ciphertext));
-    return atob(message.ciphertext);
-  } catch {
-    return '[Unable to decrypt]';
-  }
-}
-
-// Save group state to localStorage
-function saveGroupState(groupId: string): void {
-  const state = groupStates.get(groupId);
-  if (state) {
-    localStorage.setItem(`mls_group_${groupId}`, JSON.stringify(state));
-  }
-}
-
-// Load group state from localStorage
-function loadGroupState(groupId: string): void {
-  const stored = localStorage.getItem(`mls_group_${groupId}`);
-  if (stored) {
-    const state = JSON.parse(stored);
-    groupStates.set(groupId, state);
-  }
-}
-
-// Load all group states from localStorage
-export function loadAllGroupStates(): void {
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key && key.startsWith('mls_group_')) {
-      const groupId = key.replace('mls_group_', '');
-      loadGroupState(groupId);
+    // For commits, we need to know the group ID - in this case the server should tell us
+    // This is a simplified approach - in production, you'd track this better
+    const storedGroups = getStoredGroupIds();
+    for (const groupId of storedGroups) {
+      try {
+        process_commit(groupId, commitData);
+        return;
+      } catch {
+        // Try next group
+      }
     }
+  } catch {
+    // Ignore commit processing errors
   }
+}
+
+// Encrypt a message for the group (RFC 9420 compliant)
+export async function encryptMessage(groupId: string, plaintext: string): Promise<string> {
+  await ensureWasmInitialized();
+  return encrypt_message(groupId, plaintext);
+}
+
+// Decrypt a message from the group (RFC 9420 compliant)
+export async function decryptMessage(groupId: string, ciphertext: string): Promise<string> {
+  await ensureWasmInitialized();
+  return decrypt_message(groupId, ciphertext);
 }
 
 // Check if we have state for a group
 export function hasGroupState(groupId: string): boolean {
-  if (groupStates.has(groupId)) {
-    return true;
+  if (!wasmInitialized) {
+    return checkStoredGroupState(groupId);
   }
-  loadGroupState(groupId);
-  return groupStates.has(groupId);
+  return has_group_state(groupId) || checkStoredGroupState(groupId);
+}
+
+// Load all group states (for page refresh)
+export function loadAllGroupStates(): void {
+  // With WASM, we can't easily persist the full MLS state
+  // This is a simplified approach - in production, you'd use IndexedDB
+  // For now, we just track group IDs and re-join on login
+}
+
+// Clear all MLS state (for logout)
+export function clearMlsState(): void {
+  if (wasmInitialized) {
+    clear_state();
+  }
+  currentMlsUser = null;
+}
+
+// Helper functions for localStorage persistence
+
+function saveGroupState(groupId: string): void {
+  const groups = getStoredGroupIds();
+  if (!groups.includes(groupId)) {
+    groups.push(groupId);
+    localStorage.setItem('mls_group_ids', JSON.stringify(groups));
+  }
+  localStorage.setItem(`mls_group_${groupId}`, JSON.stringify({ groupId, active: true }));
+}
+
+function getStoredGroupIds(): string[] {
+  const stored = localStorage.getItem('mls_group_ids');
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function checkStoredGroupState(groupId: string): boolean {
+  const stored = localStorage.getItem(`mls_group_${groupId}`);
+  return stored !== null;
 }
