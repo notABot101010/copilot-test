@@ -576,9 +576,7 @@ impl DuckDuckGoClient {
                 tracing::warn!("Received status {}, refreshing VQD token", status);
                 self.fetch_vqd().await?;
                 if attempt < 2 {
-                    // Clone messages for next retry - but we can't easily do this
-                    // with the callback pattern, so just continue the loop
-                    continue;
+                    continue; // Retry with the already cloned messages
                 }
                 return Err(anyhow!("VQD token expired or rate limited after retries"));
             }
