@@ -1,0 +1,8 @@
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# SQLite database files
+documents.db*
+test_*.db*
