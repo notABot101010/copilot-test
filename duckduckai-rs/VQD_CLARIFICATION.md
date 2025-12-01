@@ -71,6 +71,8 @@ const X_FE_VERSION: &str = "serp_20251128_165151_ET-b75a8c1a947c8014070f";
 4. **Error Handling**: On 418/429 errors:
    - Calls `/status` endpoint
    - Extracts `x-vqd-hash-1` from response headers (if available)
+   - perform client-side challenge
+   - encode the answer of the callenge to base64 and send it in the `x-vqd-hash-1` header
    - Falls back to `INITIAL_VQD` if not found
    - Retries the request (up to 3 times)
 
