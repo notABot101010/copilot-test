@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'preact/hooks';
-import { useSignal } from '@preact/signals';
+import { useSignal, useSignalEffect } from '@preact/signals';
 import { useRouter, useRoute } from '@copilot-test/preact-router';
 import { Container, Loader, ActionIcon, TextInput, Group } from '@mantine/core';
 import { 
@@ -32,12 +32,12 @@ export function DocumentPage() {
     };
   }, [documentId, documentState]);
 
-  // Update title input when document changes
-  useEffect(() => {
+  // Update title input when document changes - using useSignalEffect for signal reactivity
+  useSignalEffect(() => {
     if (documentState.document.value) {
       titleInput.value = String(documentState.document.value.title);
     }
-  }, [documentState.document.value?.title, titleInput]);
+  });
 
   const handleGoBack = () => {
     router.push('/');

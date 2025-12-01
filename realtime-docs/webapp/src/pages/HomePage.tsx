@@ -26,7 +26,7 @@ export function HomePage() {
       isLoadingList.value = false;
     };
     loadDocuments();
-  }, [documentList, isLoadingList]);
+  }, []); // Run once on mount - signals handle reactivity automatically
 
   const handleCreateDocument = async () => {
     if (!newDocTitle.trim() || isCreating) return;
