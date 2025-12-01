@@ -22,7 +22,9 @@ RUN apt-get install -y --no-install-recommends \
     # pingoo specific dependencies
     sqlite3 \
     # pingoo-server / webapp specific dependencies
-    postgresql-client-16
+    postgresql-client-16 \
+    # for headless chrome
+    chromium chromium-driver fonts-liberation
 
 
 # setup node
