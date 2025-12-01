@@ -147,66 +147,57 @@ export function RouterView({ name, props: additionalProps, notFound: NotFoundCom
   const router = useRouter();
   const route = useRoute();
 
-  // Compute initial state based on current route
-  const initialMatched = router.currentRoute.value.matched;
-  const initialIsNotFound = initialMatched.length === 0;
-  const initialMatchedRoute = name
-    ? initialMatched.find(r => r.name === name)
-    : initialMatched[initialMatched.length - 1];
-  const initialComponent = initialMatchedRoute?.component || null;
+  // Read route directly from signal for immediate reactivity
+  const currentRoute = router.currentRoute.value;
+  const matched = currentRoute.matched;
 
-  const [Component, setComponent] = useState<ComponentType<RouteComponentProps> | null>(initialComponent);
-  const [loading, setLoading] = useState(false);
-  const [isNotFound, setIsNotFound] = useState(initialIsNotFound);
+  // Derive route key directly - this ensures we're using the current value
+  const routeKey = currentRoute.fullPath;
 
-  // Subscribe to route changes using signals
-  useSignalEffect(() => {
-    const currentRoute = router.currentRoute.value;
-    const matched = currentRoute.matched;
+  // Determine if this is a not-found route
+  const isNotFound = matched.length === 0;
 
-    if (matched.length === 0) {
-      setComponent(null);
-      setIsNotFound(true);
-      return;
-    }
-
-    setIsNotFound(false);
-
-    // Get the last matched route (or the one matching the name if specified)
-    let matchedRoute: RouteRecord | undefined;
-
+  // Get the matched route component
+  let matchedRoute: RouteRecord | undefined;
+  if (!isNotFound) {
     if (name) {
       matchedRoute = matched.find(r => r.name === name);
     } else {
       matchedRoute = matched[matched.length - 1];
     }
+  }
 
+  // State for lazy-loaded components
+  const [lazyComponent, setLazyComponent] = useState<ComponentType<RouteComponentProps> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingRoutePath, setLoadingRoutePath] = useState<string | null>(null);
 
-    if (!matchedRoute) {
-      setComponent(null);
-      return;
-    }
-
-    // Handle lazy-loaded components
-    if (matchedRoute.lazyComponent) {
+  // Handle lazy-loaded components
+  useEffect(() => {
+    if (matchedRoute?.lazyComponent && loadingRoutePath !== routeKey) {
       setLoading(true);
+      setLoadingRoutePath(routeKey);
       matchedRoute.lazyComponent()
         .then(module => {
-          setComponent(() => module.default);
+          // Only update if we're still on the same route
+          if (router.currentRoute.value.fullPath === routeKey) {
+            setLazyComponent(() => module.default);
+          }
           setLoading(false);
         })
         .catch(error => {
           console.error('Failed to load component:', error);
           setLoading(false);
         });
-    } else if (matchedRoute.component) {
-      setComponent(() => matchedRoute!.component!);
-    } else {
-      setComponent(null);
     }
-  });
+  }, [matchedRoute?.lazyComponent, routeKey, loadingRoutePath, router.currentRoute]);
 
-  if (loading) {
+  // Determine which component to render
+  const Component = matchedRoute?.lazyComponent
+    ? (loading ? null : lazyComponent)
+    : matchedRoute?.component || null;
+
+  if (loading || (matchedRoute?.lazyComponent && !lazyComponent)) {
     return h(Fragment, null) as VNode<unknown>;
   }
 
@@ -216,16 +207,12 @@ export function RouterView({ name, props: additionalProps, notFound: NotFoundCom
       params: route.value.params,
       query: route.value.query
     };
-    return h(NotFoundComponent, { ...notFoundProps, ...additionalProps }) as VNode<unknown>;
+    return h(NotFoundComponent, { key: routeKey, ...notFoundProps, ...additionalProps }) as VNode<unknown>;
   }
 
   if (!Component) {
     return null;
   }
-
-  // Get props from route config
-  const currentRoute = router.currentRoute.value;
-  const matchedRoute = currentRoute.matched[currentRoute.matched.length - 1];
 
   let componentProps: RouteComponentProps = {
     params: route.value.params,
@@ -242,7 +229,9 @@ export function RouterView({ name, props: additionalProps, notFound: NotFoundCom
     }
   }
 
-  return h(Component, { ...componentProps, ...additionalProps }) as VNode<unknown>;
+  // Use routeKey to force component remount when route changes
+  // This ensures the previous component is properly unmounted before the new one is mounted
+  return h(Component, { key: routeKey, ...componentProps, ...additionalProps }) as VNode<unknown>;
 }
 
 /**

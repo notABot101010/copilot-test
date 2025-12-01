@@ -1,7 +1,9 @@
 import { useState } from 'preact/hooks';
+import { useSignal } from '@preact/signals';
 import { useRouter } from '@copilot-test/preact-router';
 import { Button, Card, TextInput, Stack, Group, ActionIcon, Container, Modal, Loader } from '@mantine/core';
-import { documentList, createDocument, deleteDocument, loadDocumentList, isLoadingList } from '../store/documentStore';
+import { fetchDocumentList, createDocument, deleteDocument } from '../store/documentStore';
+import type { DocumentInfo } from '../store/documentStore';
 import { useEffect } from 'preact/hooks';
 
 export function HomePage() {
@@ -12,9 +14,19 @@ export function HomePage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Use local signals for document list and loading state
+  const documentList = useSignal<DocumentInfo[]>([]);
+  const isLoadingList = useSignal(false);
+
   useEffect(() => {
-    loadDocumentList();
-  }, []);
+    const loadDocuments = async () => {
+      isLoadingList.value = true;
+      const docs = await fetchDocumentList();
+      documentList.value = docs;
+      isLoadingList.value = false;
+    };
+    loadDocuments();
+  }, []); // Run once on mount - signals handle reactivity automatically
 
   const handleCreateDocument = async () => {
     if (!newDocTitle.trim() || isCreating) return;
@@ -35,7 +47,11 @@ export function HomePage() {
     if (isDeleting) return;
     setIsDeleting(true);
     try {
-      await deleteDocument(id);
+      const success = await deleteDocument(id);
+      if (success) {
+        // Update local list
+        documentList.value = documentList.value.filter(doc => doc.id !== id);
+      }
       setDeleteConfirmId(null);
     } finally {
       setIsDeleting(false);

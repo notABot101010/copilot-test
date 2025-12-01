@@ -1,6 +1,6 @@
-import { signal } from '@preact/signals';
+import { signal, Signal } from '@preact/signals';
 import * as Automerge from '@automerge/automerge';
-import { getServerUrl, initSync, startServerSync, stopServerSync, broadcastChanges } from './syncManager';
+import { getServerUrl, initSync, startServerSync, stopServerSync, broadcastChanges, setSyncUpdateCallback } from './syncManager';
 
 // API endpoint
 const API_URL = getServerUrl();
@@ -22,12 +22,12 @@ export interface DocumentInfo {
   updatedAt: number;
 }
 
-// Global signals
-export const documentList = signal<DocumentInfo[]>([]);
-export const currentDocument = signal<Automerge.Doc<DocumentSchema> | null>(null);
-export const currentDocumentId = signal<string | null>(null);
-export const isLoadingList = signal(false);
-export const isLoadingDocument = signal(false);
+// Document state interface for local signals
+export interface DocumentState {
+  document: Signal<Automerge.Doc<DocumentSchema> | null>;
+  documentId: Signal<string | null>;
+  isLoading: Signal<boolean>;
+}
 
 // Helper functions for base64 encoding/decoding
 function base64ToUint8Array(base64: string): Uint8Array {
@@ -39,35 +39,35 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
-// Initialize sync manager
-initSync((documentId: string, binary: Uint8Array) => {
-  if (currentDocumentId.value === documentId && currentDocument.value) {
-    try {
-      const remoteDoc = Automerge.load<DocumentSchema>(binary);
-      const mergedDoc = Automerge.merge(currentDocument.value, remoteDoc);
-      currentDocument.value = mergedDoc;
-    } catch (err) {
-      console.debug('Failed to merge remote document:', err);
-    }
-  }
-});
+// Initialize sync manager (just set up the broadcast channel, no callback yet)
+initSync();
+
+/**
+ * Create local document state signals for a component.
+ * These signals are scoped to the component and will be cleaned up when it unmounts.
+ */
+export function createDocumentState(): DocumentState {
+  return {
+    document: signal<Automerge.Doc<DocumentSchema> | null>(null),
+    documentId: signal<string | null>(null),
+    isLoading: signal(false),
+  };
+}
 
 /**
  * Load the list of documents from the server
  */
-export async function loadDocumentList(): Promise<void> {
-  isLoadingList.value = true;
+export async function fetchDocumentList(): Promise<DocumentInfo[]> {
   try {
     const response = await fetch(`${API_URL}/api/documents`);
     if (!response.ok) {
       throw new Error('Failed to load documents');
     }
     const data = await response.json();
-    documentList.value = data.documents;
+    return data.documents;
   } catch (err) {
     console.error('Failed to load documents:', err);
-  } finally {
-    isLoadingList.value = false;
+    return [];
   }
 }
 
@@ -89,10 +89,6 @@ export async function createDocument(title: string): Promise<string | null> {
     }
     
     const data = await response.json();
-    
-    // Refresh the document list
-    await loadDocumentList();
-    
     return data.id;
   } catch (err) {
     console.error('Failed to create document:', err);
@@ -113,9 +109,6 @@ export async function deleteDocument(id: string): Promise<boolean> {
       throw new Error('Failed to delete document');
     }
     
-    // Update the local list
-    documentList.value = documentList.value.filter(doc => doc.id !== id);
-    
     return true;
   } catch (err) {
     console.error('Failed to delete document:', err);
@@ -124,11 +117,24 @@ export async function deleteDocument(id: string): Promise<boolean> {
 }
 
 /**
- * Load a document from the server
+ * Load a document from the server with local state
  */
-export async function loadDocument(id: string): Promise<boolean> {
-  isLoadingDocument.value = true;
-  currentDocumentId.value = id;
+export async function loadDocument(id: string, state: DocumentState): Promise<boolean> {
+  state.isLoading.value = true;
+  state.documentId.value = id;
+  
+  // Set up sync callback for this document state
+  setSyncUpdateCallback((documentId: string, binary: Uint8Array) => {
+    if (state.documentId.value === documentId && state.document.value) {
+      try {
+        const remoteDoc = Automerge.load<DocumentSchema>(binary);
+        const mergedDoc = Automerge.merge(state.document.value, remoteDoc);
+        state.document.value = mergedDoc;
+      } catch (err) {
+        console.debug('Failed to merge remote document:', err);
+      }
+    }
+  });
   
   try {
     const response = await fetch(`${API_URL}/api/documents/${id}`);
@@ -140,7 +146,7 @@ export async function loadDocument(id: string): Promise<boolean> {
     const binary = base64ToUint8Array(data.document);
     const doc = Automerge.load<DocumentSchema>(binary);
     
-    currentDocument.value = doc;
+    state.document.value = doc;
     
     // Start real-time sync
     startServerSync(id);
@@ -148,20 +154,20 @@ export async function loadDocument(id: string): Promise<boolean> {
     return true;
   } catch (err) {
     console.error('Failed to load document:', err);
-    currentDocument.value = null;
+    state.document.value = null;
     return false;
   } finally {
-    isLoadingDocument.value = false;
+    state.isLoading.value = false;
   }
 }
 
 /**
- * Update the document content
+ * Update the document content with local state
  */
-export function updateDocumentContent(newContent: string): void {
-  if (!currentDocument.value || !currentDocumentId.value) return;
+export function updateDocumentContent(newContent: string, state: DocumentState): void {
+  if (!state.document.value || !state.documentId.value) return;
   
-  const oldDoc = currentDocument.value;
+  const oldDoc = state.document.value;
   const currentContent = String(oldDoc.content || '');
   
   // Skip if content hasn't changed
@@ -172,52 +178,37 @@ export function updateDocumentContent(newContent: string): void {
     doc.updatedAt = Date.now();
   });
   
-  currentDocument.value = newDoc;
+  state.document.value = newDoc;
   
   // Broadcast changes to other clients
-  broadcastChanges(currentDocumentId.value, oldDoc, newDoc);
+  broadcastChanges(state.documentId.value, oldDoc, newDoc);
 }
 
 /**
- * Update the document title
+ * Update the document title with local state
  */
-export function updateDocumentTitle(newTitle: string): void {
-  if (!currentDocument.value || !currentDocumentId.value) return;
+export function updateDocumentTitle(newTitle: string, state: DocumentState): void {
+  if (!state.document.value || !state.documentId.value) return;
   
-  const oldDoc = currentDocument.value;
+  const oldDoc = state.document.value;
   
   const newDoc = Automerge.change(oldDoc, doc => {
     doc.title = newTitle;
     doc.updatedAt = Date.now();
   });
   
-  currentDocument.value = newDoc;
+  state.document.value = newDoc;
   
   // Broadcast changes to other clients
-  broadcastChanges(currentDocumentId.value, oldDoc, newDoc);
+  broadcastChanges(state.documentId.value, oldDoc, newDoc);
 }
 
 /**
- * Stop editing and disconnect from real-time sync
+ * Close document and clean up local state
  */
-export function closeDocument(): void {
+export function closeDocument(state: DocumentState): void {
   stopServerSync();
-  currentDocument.value = null;
-  currentDocumentId.value = null;
-}
-
-/**
- * Get the current document content as a string
- */
-export function getDocumentContent(): string {
-  if (!currentDocument.value) return '';
-  return String(currentDocument.value.content || '');
-}
-
-/**
- * Get the current document title
- */
-export function getDocumentTitle(): string {
-  if (!currentDocument.value) return '';
-  return currentDocument.value.title;
+  setSyncUpdateCallback(null);
+  state.document.value = null;
+  state.documentId.value = null;
 }

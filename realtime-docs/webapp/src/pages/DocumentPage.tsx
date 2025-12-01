@@ -1,20 +1,23 @@
-import { useEffect } from 'preact/hooks';
-import { useSignal } from '@preact/signals';
+import { useEffect, useMemo } from 'preact/hooks';
+import { useSignal, useSignalEffect } from '@preact/signals';
 import { useRouter, useRoute } from '@copilot-test/preact-router';
 import { Container, Loader, ActionIcon, TextInput, Group } from '@mantine/core';
-import {
-  currentDocument,
-  loadDocument,
-  closeDocument,
-  updateDocumentContent,
+import { 
+  createDocumentState,
+  loadDocument, 
+  closeDocument, 
+  updateDocumentContent, 
   updateDocumentTitle,
-  isLoadingDocument
+
 } from '../store/documentStore';
 
 export function DocumentPage() {
   const router = useRouter();
   const route = useRoute();
   const documentId = route.value.params?.id as string;
+  
+  // Create local document state - this is scoped to this component instance
+  const documentState = useMemo(() => createDocumentState(), []);  
 
   const isEditingTitle = useSignal(false);
   const titleInput = useSignal('');
@@ -22,20 +25,20 @@ export function DocumentPage() {
 
   useEffect(() => {
     if (documentId) {
-      loadDocument(documentId);
+      loadDocument(documentId, documentState);
     }
 
     return () => {
-      closeDocument();
+      closeDocument(documentState);
     };
-  }, [documentId]);
+  }, [documentId, documentState]);
 
-  // Update title input when document changes
-  useEffect(() => {
-    if (currentDocument.value) {
-      titleInput.value = String(currentDocument.value.title);
+  // Update title input when document changes - using useSignalEffect for signal reactivity
+  useSignalEffect(() => {
+    if (documentState.document.value) {
+      titleInput.value = String(documentState.document.value.title);
     }
-  }, [currentDocument.value?.title]);
+  });
 
   const handleGoBack = () => {
     router.push('/');
@@ -43,7 +46,7 @@ export function DocumentPage() {
 
   const handleTitleSubmit = () => {
     if (titleInput.value.trim()) {
-      updateDocumentTitle(titleInput.value.trim());
+      updateDocumentTitle(titleInput.value.trim(), documentState);
     }
     isEditingTitle.value = false;
   };
@@ -55,11 +58,11 @@ export function DocumentPage() {
     // Only update if content actually changed
     if (newContent !== lastSyncedContent.value) {
       lastSyncedContent.value = newContent;
-      updateDocumentContent(newContent);
+      updateDocumentContent(newContent, documentState);
     }
   };
 
-  if (isLoadingDocument.value) {
+  if (documentState.isLoading.value) {
     return (
       <Container size="lg" className="py-8">
         <div className="flex justify-center items-center h-64">
@@ -69,7 +72,7 @@ export function DocumentPage() {
     );
   }
 
-  if (!currentDocument.value) {
+  if (!documentState.document.value) {
     return (
       <Container size="lg" className="py-8">
         <div className="flex flex-col items-center justify-center h-64">
@@ -85,7 +88,7 @@ export function DocumentPage() {
     );
   }
 
-  const content = String(currentDocument.value.content || '');
+  const content = String(documentState.document.value.content || '');
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-900">
@@ -115,7 +118,7 @@ export function DocumentPage() {
                     if (event.key === 'Enter') {
                       handleTitleSubmit();
                     } else if (event.key === 'Escape') {
-                      titleInput.value = String(currentDocument.value?.title || '');
+                      titleInput.value = String(documentState.document.value?.title || '');
                       isEditingTitle.value = false;
                     }
                   }}
@@ -128,7 +131,7 @@ export function DocumentPage() {
                   onClick={() => isEditingTitle.value = true}
                   title="Click to edit title"
                 >
-                  {String(currentDocument.value.title)}
+                  {String(documentState.document.value.title)}
                 </h1>
               )}
             </Group>

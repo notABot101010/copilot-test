@@ -653,4 +653,130 @@ describe('Edge cases', () => {
     const link = container.querySelector('a');
     expect(link?.getAttribute('href')).toBe('/some-path');
   });
+
+  it('should use route key to differentiate components on route change', () => {
+    const router = createRouter({
+      routes: [
+        { path: '/', name: 'home', component: HomeComponent },
+        { path: '/about', name: 'about', component: AboutComponent }
+      ]
+    });
+
+    const { container, rerender } = render(
+      h(RouterProvider, { router },
+        h(RouterView, null)
+      )
+    );
+
+    // Initially shows home (mocked window.location.pathname is '/')
+    expect(container.querySelector('[data-testid="home"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="about"]')).toBeNull();
+
+    // Change to about route
+    router.currentRoute.value = {
+      fullPath: '/about',
+      path: '/about',
+      params: {},
+      query: {},
+      hash: '',
+      meta: {},
+      matched: [{ path: '/about', name: 'about', component: AboutComponent }]
+    };
+
+    // Force re-render to pick up the signal change
+    rerender(
+      h(RouterProvider, { router },
+        h(RouterView, null)
+      )
+    );
+
+    // Should now show about and not home (no page stacking)
+    expect(container.querySelector('[data-testid="about"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="home"]')).toBeNull();
+  });
+
+  it('should properly switch between different route components without stacking', () => {
+    const router = createRouter({
+      routes: [
+        { path: '/', name: 'home', component: HomeComponent },
+        { path: '/users/:id', name: 'user', component: UserComponent }
+      ]
+    });
+
+    const { container, rerender } = render(
+      h(RouterProvider, { router },
+        h(RouterView, null)
+      )
+    );
+
+    // Initially shows home (mocked window.location.pathname is '/')
+    expect(container.querySelector('[data-testid="home"]')).not.toBeNull();
+
+    // Navigate to user route
+    router.currentRoute.value = {
+      fullPath: '/users/123',
+      path: '/users/123',
+      params: { id: '123' },
+      query: {},
+      hash: '',
+      meta: {},
+      matched: [{ path: '/users/:id', name: 'user', component: UserComponent }]
+    };
+
+    rerender(
+      h(RouterProvider, { router },
+        h(RouterView, null)
+      )
+    );
+
+    // Shows user page, home should be gone
+    const userElement = container.querySelector('[data-testid="user"]');
+    expect(userElement).not.toBeNull();
+    expect(userElement?.textContent).toContain('123');
+    expect(container.querySelector('[data-testid="home"]')).toBeNull();
+
+    // Navigate back to home
+    router.currentRoute.value = {
+      fullPath: '/',
+      path: '/',
+      params: {},
+      query: {},
+      hash: '',
+      meta: {},
+      matched: [{ path: '/', name: 'home', component: HomeComponent }]
+    };
+
+    rerender(
+      h(RouterProvider, { router },
+        h(RouterView, null)
+      )
+    );
+
+    // Should show home only, user page should be gone
+    expect(container.querySelector('[data-testid="home"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="user"]')).toBeNull();
+
+    // Navigate back to user with different ID
+    router.currentRoute.value = {
+      fullPath: '/users/456',
+      path: '/users/456',
+      params: { id: '456' },
+      query: {},
+      hash: '',
+      meta: {},
+      matched: [{ path: '/users/:id', name: 'user', component: UserComponent }]
+    };
+
+    rerender(
+      h(RouterProvider, { router },
+        h(RouterView, null)
+      )
+    );
+
+    // Should show user with new ID, home should be gone
+    const userElement2 = container.querySelector('[data-testid="user"]');
+    expect(userElement2).not.toBeNull();
+    expect(userElement2?.textContent).toContain('456');
+    expect(container.querySelector('[data-testid="home"]')).toBeNull();
+  });
 });
