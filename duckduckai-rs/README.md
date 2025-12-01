@@ -1,14 +1,25 @@
 # DuckDuckGo AI Rust Client
 
-A Rust client library and CLI for interacting with the DuckDuckGo AI chat API, based on reverse engineering documentation from [duckduckgo-chat-cli](https://github.com/benoitpetit/duckduckgo-chat-cli).
+A Rust client library and CLI for interacting with the DuckDuckGo AI chat API, featuring a built-in JavaScript runtime for solving VQD challenges.
 
 ## Features
 
 - Simple Rust client library for DuckDuckGo AI
 - Streaming and non-streaming chat support
 - CLI interface for quick testing
-- Automatic VQD token management
+- **Automatic VQD challenge solving using QuickJS JavaScript runtime**
 - Error handling and token refresh logic
+
+## How It Works
+
+The DuckDuckGo AI API uses a challenge-response mechanism for anti-bot protection:
+
+1. The client fetches the `/status` endpoint which returns a challenge in the `x-vqd-hash-1` header
+2. The challenge is a base64-encoded JSON containing server hashes
+3. The client computes `client_hashes` using SHA-256 and browser fingerprint simulation
+4. The solved challenge is used as the `X-Vqd-Hash-1` header for chat requests
+
+This implementation uses [rquickjs](https://github.com/DelSkayn/rquickjs) (QuickJS bindings) to execute JavaScript-like computations and simulate browser APIs.
 
 ## Installation
 
@@ -49,7 +60,7 @@ use duckduckai::DuckDuckGoClient;
 async fn main() -> anyhow::Result<()> {
     let mut client = DuckDuckGoClient::new()?;
 
-    // Non-streaming
+    // Non-streaming - automatically handles challenge solving
     let response = client.chat("What is 2+2?", None).await?;
     println!("{}", response);
 
@@ -62,48 +73,45 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
-## Important Limitations
-
-### Anti-Bot Headers
-
-The DuckDuckGo AI API implements strong anti-bot protection that requires specific headers:
-
-- `x-vqd-hash-1`: Base64-encoded JSON with cryptographic hashes (serves as the VQD token)
-- `x-fe-signals`: Frontend telemetry signals
-- `x-fe-version`: Client version identifier
-
-**These headers are derived from real browser traffic and expire frequently.**
-
-**Important:** Some documentation incorrectly refers to `x-vqd-4` - this header does not exist. The correct header for VQD tokens is `x-vqd-hash-1`.
-
-The current implementation includes hardcoded header values that may not work if DuckDuckGo has updated their anti-bot measures. To obtain fresh headers:
-
-1. Open https://duckduckgo.com/aichat in Chrome with Developer Tools (F12)
-2. Go to Network tab and send a message in the chat
-3. Find the POST request to `/duckchat/v1/chat`
-4. In Request Headers, copy the values of:
-   - `x-vqd-hash-1` (this is the VQD token - used for both sending and receiving)
-   - `x-fe-signals`
-   - `x-fe-version`
-5. Update these constants in `src/lib.rs`:
+### Using the Challenge Solver Directly
 
 ```rust
-const INITIAL_VQD: &str = "YOUR_EXTRACTED_x-vqd-hash-1_VALUE";
-const X_FE_SIGNALS: &str = "YOUR_EXTRACTED_VALUE";
-const X_FE_VERSION: &str = "YOUR_EXTRACTED_VALUE";
+use duckduckai::ChallengeSolver;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let solver = ChallengeSolver::new()?;
+    
+    // Solve a challenge from the status endpoint
+    let challenge_b64 = "..."; // base64-encoded challenge from x-vqd-hash-1 header
+    let solved = solver.solve(challenge_b64).await?;
+    
+    // Use `solved` as the X-Vqd-Hash-1 header value
+    println!("Solved: {}", solved);
+    
+    Ok(())
+}
 ```
 
-6. Rebuild the project: `cargo build`
+## Architecture
+
+### JavaScript Runtime (js_runtime module)
+
+The `ChallengeSolver` provides a sandboxed QuickJS environment that:
+
+1. **Parses the challenge**: Decodes the base64 challenge from the status endpoint
+2. **Simulates browser APIs**: Provides `window`, `document`, `navigator`, `screen`, `atob`, `btoa`, `Date.now()`
+3. **Computes client hashes**: Generates fingerprint-like strings and hashes them with SHA-256
+4. **Produces the VQD token**: Packages the result with metadata and encodes as base64
 
 ### VQD Token Management
 
 The `x-vqd-hash-1` header serves as the VQD (Verification Query Data) token. The client automatically:
-- Uses the initial VQD token from `INITIAL_VQD` constant
-- Fetches VQD token from the `/status` endpoint headers (if available)
-- Updates VQD token from chat response headers (when provided by the API)
-- Refreshes VQD and retries (up to 3 attempts) on 418/429 errors
 
-**Note:** The VQD token is sent as `x-vqd-hash-1` header and may be updated from response headers with the same name.
+- Fetches challenges from the `/status` endpoint
+- Solves challenges using the JavaScript runtime
+- Uses the solved VQD token for chat requests
+- Refreshes VQD and retries (up to 3 attempts) on 418/429 errors
 
 ## API Reference
 
@@ -115,10 +123,16 @@ The `x-vqd-hash-1` header serves as the VQD (Verification Query Data) token. The
 - `chat(&mut self, message: &str, model: Option<&str>) -> Result<String>` - Send a chat message and get the full response
 - `chat_stream<F>(&mut self, message: &str, model: Option<&str>, callback: F) -> Result<()>` - Stream chat responses with a callback function
 
+### `ChallengeSolver`
+
+#### Methods
+
+- `new() -> Result<Self>` - Create a new challenge solver with a QuickJS runtime
+- `solve(&self, challenge_b64: &str) -> Result<String>` - Solve a base64-encoded challenge and return the VQD header value
+
 #### Available Models
 
-- `gpt-5-mini` (default)
-- `gpt-4o-mini`
+- `gpt-4o-mini` (default)
 - `claude-3-haiku-20240307`
 - `meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo`
 - `mistralai/Mixtral-8x7B-Instruct-v0.1`
@@ -126,57 +140,41 @@ The `x-vqd-hash-1` header serves as the VQD (Verification Query Data) token. The
 ## Testing
 
 ```bash
-# Run all non-ignored tests (unit tests + client initialization)
+# Run all non-ignored tests (unit tests + challenge solver tests)
 cargo test
 
-# Run ignored integration tests (requires valid API headers)
+# Run ignored integration tests (requires network access to DuckDuckGo API)
 cargo test -- --ignored
 
-# Run specific test
-cargo test test_simple_chat -- --ignored --nocapture
+# Run specific test with output
+cargo test test_challenge_solver_with_sample_data -- --nocapture
 ```
 
-**Note:** Integration tests are marked as `#[ignore]` by default because they require fresh anti-bot headers. Update the headers as described above to run them successfully.
-
-## Architecture
-
-The client implements:
-
-1. **Cookie Management**: Maintains required cookies (`5`, `dcm`, `dcs`)
-2. **Header Construction**: Builds requests with all required anti-bot headers
-3. **VQD Token Lifecycle**:
-   - Uses initial hardcoded VQD token (`x-vqd-hash-1`)
-   - Optionally fetches from `/status` endpoint response headers
-   - Updates from chat response headers (when provided)
-   - Automatic retry with VQD refresh on token expiration (418/429 errors)
-4. **SSE Parsing**: Manual Server-Sent Events stream parsing for chat responses
+**Note:** Integration tests marked with `#[ignore]` require network access to the real DuckDuckGo API.
 
 ## VQD Token Reverse Engineering
 
 For detailed information about how the `x-vqd-hash-1` header works, see:
 
-- **[VQD_REVERSE_ENGINEERING.md](VQD_REVERSE_ENGINEERING.md)** - Complete technical analysis of the VQD token generation mechanism extracted from `wpm.main.js`
-- **[VQD_QUICK_REFERENCE.md](VQD_QUICK_REFERENCE.md)** - Quick reference guide with code snippets and update procedures
-- **[VQD_CLARIFICATION.md](VQD_CLARIFICATION.md)** - Clarification about the `x-vqd-hash-1` vs `x-vqd-4` misconception
+- **[VQD_REVERSE_ENGINEERING.md](VQD_REVERSE_ENGINEERING.md)** - Complete technical analysis of the VQD token generation mechanism
+- **[VQD_QUICK_REFERENCE.md](VQD_QUICK_REFERENCE.md)** - Quick reference guide
+- **[VQD_CLARIFICATION.md](VQD_CLARIFICATION.md)** - Header naming clarification
 
 ### Key Findings
 
 The VQD token is generated through a sophisticated anti-bot mechanism:
 
-1. Server sends a base64-encoded JavaScript challenge
-2. Client executes the challenge in a sandboxed iframe
-3. Challenge code computes browser fingerprints (client_hashes)
-4. Each hash is SHA-256 encoded and base64-encoded
-5. Result is packaged with metadata (origin, stack trace, duration)
-6. Final JSON is base64-encoded to create the `x-vqd-hash-1` header value
-
-**Why our simple approach works**: The DuckDuckGo API accepts VQD tokens with reasonable validity periods, and we can fetch fresh tokens from the `/status` endpoint when needed. Full replication would require a JavaScript engine and browser environment simulation, which is impractical for a Rust client.
+1. Server sends a base64-encoded challenge (not JavaScript code, but JSON data)
+2. Client computes browser fingerprints to generate `client_hashes`
+3. Each hash is SHA-256 encoded and base64-encoded
+4. Result is packaged with metadata (origin, stack trace, duration)
+5. Final JSON is base64-encoded to create the `x-vqd-hash-1` header value
 
 ## References
 
 - [DuckDuckGo Chat CLI](https://github.com/benoitpetit/duckduckgo-chat-cli) - Original Go implementation
-- [Reverse Engineering Documentation](https://github.com/benoitpetit/duckduckgo-chat-cli/blob/master/reverse/README.md) - API details
-- [status.sh](status.sh) - Bash script to test the `/status` endpoint and extract VQD tokens
+- [rquickjs](https://github.com/DelSkayn/rquickjs) - QuickJS JavaScript engine bindings for Rust
+- [status.sh](status.sh) - Bash script to test the `/status` endpoint
 
 ## License
 
