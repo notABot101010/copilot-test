@@ -153,7 +153,9 @@ async fn start_test_server_with_websocket() -> (String, u16, TempDir, MockServer
     (base_url, port, temp_dir, mock_server)
 }
 
-/// Helper to create a test server with a real mock OpenAI server (original version without websocket)
+/// Helper to create a test server with mock OpenAI server
+/// Note: This function provides full functionality including WebSocket support
+/// but returns a simplified tuple for backward compatibility with existing tests
 async fn start_test_server_with_mock_openai() -> (String, TempDir, MockServer) {
     let (base_url, _, temp_dir, mock_server) = start_test_server_with_websocket().await;
     (base_url, temp_dir, mock_server)
@@ -512,8 +514,8 @@ async fn test_e2e_multiple_websocket_connections() {
 async fn test_e2e_websocket_subscribe_creates_session_state() {
     let (_base_url, port, _temp_dir, _mock_server) = start_test_server_with_websocket().await;
     
-    // Connect to a session that hasn't had any messages yet
-    let session_id = "new-session-id";
+    // Connect to a session that hasn't had any messages yet using a unique ID
+    let session_id = format!("test-session-{}", uuid::Uuid::new_v4());
     let ws_url = format!("ws://127.0.0.1:{}/api/sessions/{}/stream", port, session_id);
     
     let result = connect_async(&ws_url).await;
