@@ -17,8 +17,8 @@ test.describe('Chart Title Update E2E Tests', () => {
     await page.click('button:has-text("Create")');
     await page.waitForURL(/\/spreadsheets\/.+/);
     
-    // Wait for spreadsheet to load
-    await page.waitForTimeout(500);
+    // Wait for spreadsheet grid to load by waiting for the Insert button to be clickable
+    await page.waitForSelector('button:has-text("Insert")');
     
     // Click on Insert menu
     await page.click('button:has-text("Insert")');
@@ -70,8 +70,8 @@ test.describe('Chart Title Update E2E Tests', () => {
     await page.click('button:has-text("Create")');
     await page.waitForURL(/\/spreadsheets\/.+/);
     
-    // Wait for spreadsheet to load
-    await page.waitForTimeout(500);
+    // Wait for spreadsheet grid to load by waiting for the Insert button to be clickable
+    await page.waitForSelector('button:has-text("Insert")');
     
     // Create a chart
     await page.click('button:has-text("Insert")');
@@ -105,8 +105,8 @@ test.describe('Chart Title Update E2E Tests', () => {
     await page.click('button:has-text("Create")');
     await page.waitForURL(/\/spreadsheets\/.+/);
     
-    // Wait for spreadsheet to load
-    await page.waitForTimeout(500);
+    // Wait for spreadsheet grid to load by waiting for the Insert button to be clickable
+    await page.waitForSelector('button:has-text("Insert")');
     
     // Create a chart
     await page.click('button:has-text("Insert")');
@@ -143,8 +143,8 @@ test.describe('Chart Title Update E2E Tests', () => {
     await page.click('button:has-text("Create")');
     await page.waitForURL(/\/spreadsheets\/.+/);
     
-    // Wait for spreadsheet to load
-    await page.waitForTimeout(500);
+    // Wait for spreadsheet grid to load by waiting for the Insert button to be clickable
+    await page.waitForSelector('button:has-text("Insert")');
     
     // Create a chart
     await page.click('button:has-text("Insert")');
@@ -180,8 +180,8 @@ test.describe('Chart Title Update E2E Tests', () => {
     await page.click('button:has-text("Create")');
     await page.waitForURL(/\/spreadsheets\/.+/);
     
-    // Wait for spreadsheet to load
-    await page.waitForTimeout(500);
+    // Wait for spreadsheet grid to load by waiting for the Insert button to be clickable
+    await page.waitForSelector('button:has-text("Insert")');
     
     // Create a chart
     await page.click('button:has-text("Insert")');
