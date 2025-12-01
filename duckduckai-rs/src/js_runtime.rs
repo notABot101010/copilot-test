@@ -64,17 +64,19 @@ impl ChallengeSolver {
         let start_time = Instant::now();
 
         // Decode the base64 challenge
-        let challenge_json = BASE64
+        let challenge_bytes = BASE64
             .decode(challenge_b64)
             .context("Failed to decode challenge base64")?;
         let challenge_str =
-            String::from_utf8(challenge_json).context("Challenge is not valid UTF-8")?;
+            String::from_utf8(challenge_bytes).context("Challenge is not valid UTF-8")?;
 
-        tracing::debug!("Decoded challenge JSON: {}", challenge_str);
+        tracing::debug!("Decoded challenge: {}", &challenge_str[..challenge_str.len().min(200)]);
 
-        // Parse the challenge data
-        let challenge: ChallengeData =
-            serde_json::from_str(&challenge_str).context("Failed to parse challenge JSON")?;
+        // The challenge can be either:
+        // 1. JSON data directly (old format)
+        // 2. JavaScript code that returns the challenge object (new format)
+        let challenge = self.parse_or_execute_challenge(&challenge_str).await
+            .context("Failed to parse or execute challenge")?;
 
         tracing::debug!("Challenge data: {:?}", challenge);
 
@@ -88,6 +90,50 @@ impl ChallengeSolver {
         tracing::debug!("Solved challenge, result length: {}", result_b64.len());
 
         Ok(result_b64)
+    }
+
+    /// Try to parse challenge as JSON, or execute it as JavaScript if parsing fails
+    async fn parse_or_execute_challenge(&self, challenge_str: &str) -> Result<ChallengeData> {
+        // First, try to parse as JSON directly
+        if let Ok(challenge) = serde_json::from_str::<ChallengeData>(challenge_str) {
+            tracing::debug!("Challenge parsed as JSON directly");
+            return Ok(challenge);
+        }
+
+        tracing::debug!("Challenge is not JSON, executing as JavaScript");
+
+        // If not JSON, execute as JavaScript code
+        let context = AsyncContext::full(&self.runtime)
+            .await
+            .context("Failed to create JS context")?;
+
+        let challenge_code = challenge_str.to_string();
+        let challenge = context
+            .with(|ctx| {
+                // Set up browser-like environment first
+                self.setup_browser_globals(&ctx)?;
+
+                // Execute the challenge code - it should return an object
+                let result: rquickjs::Value = ctx.eval(challenge_code.as_bytes())
+                    .map_err(|e| anyhow::anyhow!("JavaScript execution error: {:?}", e))?;
+
+                // Convert the JS result to JSON string using JSON.stringify
+                let json_obj: Object = ctx.globals().get("JSON")
+                    .map_err(|e| anyhow::anyhow!("Failed to get JSON object: {:?}", e))?;
+                let stringify_fn: Function = json_obj.get("stringify")
+                    .map_err(|e| anyhow::anyhow!("Failed to get JSON.stringify: {:?}", e))?;
+                
+                let json_str: String = stringify_fn.call((result,))
+                    .map_err(|e| anyhow::anyhow!("Failed to stringify JS result: {:?}", e))?;
+
+                tracing::debug!("JavaScript result JSON: {}", &json_str[..json_str.len().min(200)]);
+
+                serde_json::from_str(&json_str)
+                    .context("Failed to parse JavaScript result as ChallengeData")
+            })
+            .await?;
+
+        Ok(challenge)
     }
 
     /// Execute the challenge and compute client hashes
@@ -356,6 +402,89 @@ mod tests {
         let decoded_json: ChallengeData = serde_json::from_slice(&decoded.unwrap()).unwrap();
         assert_eq!(decoded_json.server_hashes.len(), 3);
         assert_eq!(decoded_json.client_hashes.len(), 3);
+        assert_eq!(decoded_json.meta.origin, "https://duckduckgo.com");
+    }
+
+    #[tokio::test]
+    async fn test_solve_javascript_challenge() {
+        let solver = ChallengeSolver::new().unwrap();
+
+        // Create a JavaScript challenge that returns the challenge object
+        let js_challenge = r#"(function(){
+            return {
+                "server_hashes": ["hash1", "hash2", "hash3"],
+                "client_hashes": [],
+                "signals": {},
+                "meta": {
+                    "v": "4",
+                    "challenge_id": "js_test_challenge",
+                    "timestamp": "1764563984360",
+                    "debug": "",
+                    "origin": "https://duckduckgo.com",
+                    "stack": "Error\nat test",
+                    "duration": "5"
+                }
+            };
+        })()"#;
+
+        let challenge_b64 = BASE64.encode(js_challenge.as_bytes());
+
+        let result = solver.solve(&challenge_b64).await;
+        assert!(result.is_ok(), "JavaScript challenge solving failed: {:?}", result);
+
+        let solved = result.unwrap();
+        // Verify the result is valid base64
+        let decoded = BASE64.decode(&solved);
+        assert!(decoded.is_ok(), "Result is not valid base64");
+
+        // Verify the decoded result has expected structure
+        let decoded_json: ChallengeData = serde_json::from_slice(&decoded.unwrap()).unwrap();
+        assert_eq!(decoded_json.server_hashes.len(), 3);
+        assert_eq!(decoded_json.client_hashes.len(), 3);
+        assert_eq!(decoded_json.meta.challenge_id, "js_test_challenge");
+        assert_eq!(decoded_json.meta.origin, "https://duckduckgo.com");
+    }
+
+    #[tokio::test]
+    async fn test_solve_javascript_challenge_with_computation() {
+        let solver = ChallengeSolver::new().unwrap();
+
+        // Create a more complex JavaScript challenge that computes values
+        let js_challenge = r#"(function(){
+            var serverHashes = [];
+            for (var i = 0; i < 3; i++) {
+                serverHashes.push("computed_hash_" + i);
+            }
+            return {
+                "server_hashes": serverHashes,
+                "client_hashes": [],
+                "signals": { "computed": true },
+                "meta": {
+                    "v": "4",
+                    "challenge_id": "computed_challenge",
+                    "timestamp": String(Date.now()),
+                    "debug": "",
+                    "origin": location.origin,
+                    "stack": "",
+                    "duration": "10"
+                }
+            };
+        })()"#;
+
+        let challenge_b64 = BASE64.encode(js_challenge.as_bytes());
+
+        let result = solver.solve(&challenge_b64).await;
+        assert!(result.is_ok(), "JavaScript computation challenge failed: {:?}", result);
+
+        let solved = result.unwrap();
+        let decoded = BASE64.decode(&solved).unwrap();
+        let decoded_json: ChallengeData = serde_json::from_slice(&decoded).unwrap();
+        
+        // Verify computed values
+        assert_eq!(decoded_json.server_hashes.len(), 3);
+        assert_eq!(decoded_json.server_hashes[0], "computed_hash_0");
+        assert_eq!(decoded_json.server_hashes[1], "computed_hash_1");
+        assert_eq!(decoded_json.server_hashes[2], "computed_hash_2");
         assert_eq!(decoded_json.meta.origin, "https://duckduckgo.com");
     }
 }

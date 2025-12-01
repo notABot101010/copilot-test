@@ -247,3 +247,117 @@ async fn test_multiple_requests() {
     let response2 = result2.unwrap();
     println!("Response 2: {}", response2);
 }
+
+/// Test that the challenge solver can handle JavaScript code challenges
+/// This is the new format that DuckDuckGo uses
+#[tokio::test]
+async fn test_javascript_code_challenge() {
+    let solver = ChallengeSolver::new().expect("Failed to create solver");
+    
+    // This simulates a JavaScript challenge that DuckDuckGo might return
+    let js_challenge = r#"(function(){
+        return {
+            "server_hashes": [
+                "ServerHash1==",
+                "ServerHash2==",
+                "ServerHash3=="
+            ],
+            "client_hashes": [],
+            "signals": {},
+            "meta": {
+                "v": "4",
+                "challenge_id": "integration_test_js",
+                "timestamp": "1764563984360",
+                "debug": "",
+                "origin": "https://duckduckgo.com",
+                "stack": "Error\nat test:1:1",
+                "duration": "5"
+            }
+        };
+    })()"#;
+    
+    let challenge_b64 = BASE64.encode(js_challenge.as_bytes());
+    
+    let result = solver.solve(&challenge_b64).await;
+    assert!(result.is_ok(), "JavaScript challenge should be solved successfully: {:?}", result);
+    
+    let solved = result.unwrap();
+    
+    // Verify the result is valid base64
+    let decoded = BASE64.decode(&solved);
+    assert!(decoded.is_ok(), "Solved result should be valid base64");
+    
+    // Verify the structure
+    let decoded_json: serde_json::Value = serde_json::from_slice(&decoded.unwrap()).unwrap();
+    assert!(decoded_json.get("server_hashes").is_some(), "Should have server_hashes");
+    assert!(decoded_json.get("client_hashes").is_some(), "Should have client_hashes");
+    assert!(decoded_json.get("meta").is_some(), "Should have meta");
+    
+    // Verify client hashes were computed
+    let client_hashes = decoded_json["client_hashes"].as_array().unwrap();
+    assert_eq!(client_hashes.len(), 3, "Should have 3 client hashes");
+    
+    // Verify meta fields
+    assert_eq!(decoded_json["meta"]["challenge_id"].as_str().unwrap(), "integration_test_js");
+    assert_eq!(decoded_json["meta"]["origin"].as_str().unwrap(), "https://duckduckgo.com");
+    
+    println!("JavaScript challenge solved successfully!");
+}
+
+/// Test JavaScript challenge with browser API usage
+#[tokio::test]
+async fn test_javascript_challenge_with_browser_apis() {
+    let solver = ChallengeSolver::new().expect("Failed to create solver");
+    
+    // This challenge uses browser APIs that should be available in our QuickJS environment
+    // Note: We use more careful access patterns since the globals may have some limitations
+    let js_challenge = r#"(function(){
+        // Build the challenge response
+        var result = {
+            "server_hashes": ["api_test_1", "api_test_2"],
+            "client_hashes": [],
+            "signals": {},
+            "meta": {
+                "v": "4",
+                "challenge_id": "browser_api_test",
+                "timestamp": String(Date.now()),
+                "debug": "",
+                "origin": "",
+                "stack": "",
+                "duration": "1"
+            }
+        };
+        
+        // Try to use location if available
+        if (typeof location !== 'undefined' && location.origin) {
+            result.meta.origin = location.origin;
+            result.signals.hasLocation = true;
+        }
+        
+        // Try to use navigator if available
+        if (typeof navigator !== 'undefined') {
+            result.signals.hasNavigator = true;
+        }
+        
+        return result;
+    })()"#;
+    
+    let challenge_b64 = BASE64.encode(js_challenge.as_bytes());
+    
+    let result = solver.solve(&challenge_b64).await;
+    assert!(result.is_ok(), "Browser API challenge should be solved: {:?}", result);
+    
+    let solved = result.unwrap();
+    let decoded = BASE64.decode(&solved).unwrap();
+    let decoded_json: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
+    
+    // Verify the challenge was solved
+    assert!(decoded_json.get("server_hashes").is_some(), "Should have server_hashes");
+    assert!(decoded_json.get("client_hashes").is_some(), "Should have client_hashes");
+    
+    // Verify origin was retrieved correctly
+    assert_eq!(decoded_json["meta"]["origin"].as_str().unwrap(), "https://duckduckgo.com");
+    
+    println!("Browser API challenge solved successfully!");
+    println!("Meta: {}", serde_json::to_string_pretty(&decoded_json["meta"]).unwrap());
+}
