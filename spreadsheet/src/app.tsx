@@ -1,6 +1,7 @@
 import { createRouter, RouterProvider, RouterView } from '@copilot-test/preact-router';
 import { MantineProvider, createTheme } from '@mantine/core';
 import '@mantine/core/styles.css';
+import '@mantine/charts/styles.css';
 import { HomePage } from './pages/HomePage';
 import { SpreadsheetPage } from './pages/SpreadsheetPage';
 

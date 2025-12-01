@@ -2,6 +2,8 @@ import { signal, computed } from '@preact/signals';
 import * as Automerge from '@automerge/automerge';
 import type { SpreadsheetData, SpreadsheetListItem } from '../types/spreadsheet';
 import { getCellKey } from '../types/spreadsheet';
+import type { ChartData, ChartPosition, ChartSize, ChartDataRange, ChartType } from '../types/chart';
+import { generateChartId, DEFAULT_CHART_WIDTH, DEFAULT_CHART_HEIGHT } from '../types/chart';
 import { initSync, broadcastChanges, startServerSync, stopServerSync, getServerUrl } from './syncManager';
 
 // Automerge document type
@@ -9,6 +11,7 @@ interface AutomergeSpreadsheet {
   id: string;
   name: string;
   cells: Record<string, { value: string }>;
+  charts: Record<string, ChartData>;
   createdAt: number;
   updatedAt: number;
 }
@@ -142,6 +145,7 @@ export const currentSpreadsheet = computed<SpreadsheetData | null>(() => {
     id: String(doc.id),
     name: String(doc.name),
     cells: doc.cells,
+    charts: doc.charts || {},
     createdAt: Number(doc.createdAt),
     updatedAt: Number(doc.updatedAt),
   };
@@ -433,4 +437,156 @@ export function mergeRemoteChanges(id: string, remoteBinary: Uint8Array): void {
   
   currentSpreadsheetDoc.value = mergedDoc;
   updateSpreadsheetListItemInternal();
+}
+
+// ===== Chart Operations =====
+
+// Create a new chart
+export function createChart(
+  type: ChartType,
+  title: string,
+  dataRange: ChartDataRange,
+  position?: ChartPosition
+): string | null {
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return null;
+  
+  const chartId = generateChartId();
+  const now = Date.now();
+  
+  const chart: ChartData = {
+    id: chartId,
+    type,
+    title,
+    position: position || { x: 100, y: 100 },
+    size: { width: DEFAULT_CHART_WIDTH, height: DEFAULT_CHART_HEIGHT },
+    dataRange,
+    createdAt: now,
+    updatedAt: now,
+  };
+  
+  // Save to undo stack before making changes
+  const doc = currentSpreadsheetDoc.value;
+  if (doc) {
+    pushToUndoStack(doc);
+  }
+  
+  const newDoc = Automerge.change(clonedDoc, `Create chart ${title}`, (d) => {
+    if (!d.charts) {
+      d.charts = {};
+    }
+    d.charts[chartId] = chart;
+    d.updatedAt = now;
+  });
+  
+  currentSpreadsheetDoc.value = newDoc;
+  saveAndBroadcast(clonedDoc, newDoc);
+  
+  return chartId;
+}
+
+// Update chart position
+export function updateChartPosition(chartId: string, position: ChartPosition): void {
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
+  
+  if (!clonedDoc.charts || !clonedDoc.charts[chartId]) return;
+  
+  const newDoc = Automerge.change(clonedDoc, `Move chart`, (d) => {
+    if (d.charts && d.charts[chartId]) {
+      d.charts[chartId].position = position;
+      d.charts[chartId].updatedAt = Date.now();
+      d.updatedAt = Date.now();
+    }
+  });
+  
+  currentSpreadsheetDoc.value = newDoc;
+  saveAndBroadcast(clonedDoc, newDoc);
+}
+
+// Update chart size
+export function updateChartSize(chartId: string, size: ChartSize): void {
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
+  
+  if (!clonedDoc.charts || !clonedDoc.charts[chartId]) return;
+  
+  const newDoc = Automerge.change(clonedDoc, `Resize chart`, (d) => {
+    if (d.charts && d.charts[chartId]) {
+      d.charts[chartId].size = size;
+      d.charts[chartId].updatedAt = Date.now();
+      d.updatedAt = Date.now();
+    }
+  });
+  
+  currentSpreadsheetDoc.value = newDoc;
+  saveAndBroadcast(clonedDoc, newDoc);
+}
+
+// Update chart data range
+export function updateChartDataRange(chartId: string, dataRange: ChartDataRange): void {
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
+  
+  if (!clonedDoc.charts || !clonedDoc.charts[chartId]) return;
+  
+  // Save to undo stack before making changes
+  const doc = currentSpreadsheetDoc.value;
+  if (doc) {
+    pushToUndoStack(doc);
+  }
+  
+  const newDoc = Automerge.change(clonedDoc, `Update chart data range`, (d) => {
+    if (d.charts && d.charts[chartId]) {
+      d.charts[chartId].dataRange = dataRange;
+      d.charts[chartId].updatedAt = Date.now();
+      d.updatedAt = Date.now();
+    }
+  });
+  
+  currentSpreadsheetDoc.value = newDoc;
+  saveAndBroadcast(clonedDoc, newDoc);
+}
+
+// Update chart title
+export function updateChartTitle(chartId: string, title: string): void {
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
+  
+  if (!clonedDoc.charts || !clonedDoc.charts[chartId]) return;
+  
+  const newDoc = Automerge.change(clonedDoc, `Update chart title`, (d) => {
+    if (d.charts && d.charts[chartId]) {
+      d.charts[chartId].title = title;
+      d.charts[chartId].updatedAt = Date.now();
+      d.updatedAt = Date.now();
+    }
+  });
+  
+  currentSpreadsheetDoc.value = newDoc;
+  saveAndBroadcast(clonedDoc, newDoc);
+}
+
+// Delete a chart
+export function deleteChart(chartId: string): void {
+  const clonedDoc = getLatestClonedDoc();
+  if (!clonedDoc) return;
+  
+  if (!clonedDoc.charts || !clonedDoc.charts[chartId]) return;
+  
+  // Save to undo stack before making changes
+  const doc = currentSpreadsheetDoc.value;
+  if (doc) {
+    pushToUndoStack(doc);
+  }
+  
+  const newDoc = Automerge.change(clonedDoc, `Delete chart`, (d) => {
+    if (d.charts && d.charts[chartId]) {
+      delete d.charts[chartId];
+      d.updatedAt = Date.now();
+    }
+  });
+  
+  currentSpreadsheetDoc.value = newDoc;
+  saveAndBroadcast(clonedDoc, newDoc);
 }

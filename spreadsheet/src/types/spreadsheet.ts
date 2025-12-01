@@ -1,3 +1,5 @@
+import type { ChartData } from './chart';
+
 export interface CellData {
   value: string;
 }
@@ -6,6 +8,7 @@ export interface SpreadsheetData {
   id: string;
   name: string;
   cells: Record<string, CellData>; // Key is "row:col" format, e.g., "0:0", "1:2"
+  charts: Record<string, ChartData>; // Key is chart id
   createdAt: number;
   updatedAt: number;
 }
