@@ -16,7 +16,7 @@ use tokio::sync::{Mutex, mpsc};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
-use crate::{DEFAULT_MODEL, DuckDuckGoClient};
+use crate::{AssistantMessagePart, DEFAULT_MODEL, DuckDuckGoClient};
 
 #[derive(Debug)]
 pub struct ServerState {
@@ -124,9 +124,29 @@ async fn handle_chat_completion(
     let messages: Vec<crate::ChatMessage> = request
         .messages
         .iter()
-        .map(|msg| crate::ChatMessage {
-            role: msg.role.clone(),
-            content: msg.content.clone(),
+        .map(|msg| {
+            match msg.role.as_str() {
+                "user" => crate::ChatMessage::User {
+                    content: msg.content.clone(),
+                },
+                "assistant" => crate::ChatMessage::Assistant {
+                    content: "",
+                    parts: vec![AssistantMessagePart {
+                        r#type: "text".to_string(),
+                        text: msg.content.clone(),
+                    }],
+                },
+                // "system" => crate::ChatMessage::System { content:  msg.content.clone() },
+                "system" => crate::ChatMessage::User {
+                    content: msg.content.clone(),
+                },
+                _ => {
+                    tracing::error!("unexpected role: {}", msg.role);
+                    crate::ChatMessage::User {
+                        content: msg.content.clone(),
+                    }
+                }
+            }
         })
         .collect();
 

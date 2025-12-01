@@ -23,10 +23,35 @@ const USER_AGENT_STRING: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)
 /// Maximum length for debug output truncation
 const DEBUG_TRUNCATE_LEN: usize = 50;
 
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub struct ChatMessage {
+//     pub role: String,
+//     pub content: String,
+// #[serde(skip_serializing_if = "Option::is_none")]
+// pub parts: Option<Vec<AssistantMessagePart>
+// }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatMessage {
-    pub role: String,
-    pub content: String,
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum ChatMessage {
+    User {
+        content: String,
+    },
+    System {
+        content: String,
+    },
+    Assistant {
+        content: &'static str,
+        parts: Vec<AssistantMessagePart>,
+    },
+    // pub role: String,
+    // pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssistantMessagePart {
+    pub r#type: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -39,6 +64,8 @@ struct ToolChoice {
     local_search: bool,
     #[serde(rename = "WeatherForecast")]
     weather_forecast: bool,
+    #[serde(rename = "WebSearch")]
+    web_search: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -204,14 +231,14 @@ impl DuckDuckGoClient {
                         videos_search: false,
                         local_search: false,
                         weather_forecast: false,
+                        web_search: true,
                     },
                 },
-                messages: vec![ChatMessage {
-                    role: "user".to_string(),
+                messages: vec![ChatMessage::User {
                     content: message.to_string(),
                 }],
                 can_use_tools: true,
-                can_use_approx_location: true,
+                can_use_approx_location: false,
             };
 
             tracing::debug!("Sending chat request with model: {}", request.model);
@@ -324,14 +351,14 @@ impl DuckDuckGoClient {
                         videos_search: false,
                         local_search: false,
                         weather_forecast: false,
+                        web_search: true,
                     },
                 },
-                messages: vec![ChatMessage {
-                    role: "user".to_string(),
+                messages: vec![ChatMessage::User {
                     content: message.to_string(),
                 }],
                 can_use_tools: true,
-                can_use_approx_location: true,
+                can_use_approx_location: false,
             };
 
             tracing::debug!(
@@ -446,11 +473,12 @@ impl DuckDuckGoClient {
                         videos_search: false,
                         local_search: false,
                         weather_forecast: false,
+                        web_search: true,
                     },
                 },
                 messages: messages.clone(),
                 can_use_tools: true,
-                can_use_approx_location: true,
+                can_use_approx_location: false,
             };
 
             tracing::debug!(
@@ -483,7 +511,11 @@ impl DuckDuckGoClient {
             }
 
             if !status.is_success() {
-                return Err(anyhow!("Chat endpoint returned {}", status));
+                return Err(anyhow!(
+                    "Chat endpoint returned {}: {}",
+                    status,
+                    response.text().await.unwrap()
+                ));
             }
 
             // Parse SSE stream
@@ -569,11 +601,12 @@ impl DuckDuckGoClient {
                         videos_search: false,
                         local_search: false,
                         weather_forecast: false,
+                        web_search: true,
                     },
                 },
                 messages: messages.clone(),
                 can_use_tools: true,
-                can_use_approx_location: true,
+                can_use_approx_location: false,
             };
 
             tracing::debug!(

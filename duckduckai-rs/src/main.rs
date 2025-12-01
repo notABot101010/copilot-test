@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use duckduckai::{ChatMessage, DEFAULT_MODEL, DuckDuckGoClient, run_server};
+use duckduckai::{AssistantMessagePart, ChatMessage, DEFAULT_MODEL, DuckDuckGoClient, run_server};
 use std::io::{self, Write};
 use tracing_subscriber::EnvFilter;
 
@@ -130,8 +130,7 @@ async fn main() -> Result<()> {
                 break;
             }
 
-            messages.push(ChatMessage {
-                role: "user".to_string(),
+            messages.push(ChatMessage::User {
                 content: input.to_string(),
             });
 
@@ -150,9 +149,12 @@ async fn main() -> Result<()> {
                 {
                     Ok(response) => {
                         let response = response.trim();
-                        messages.push(ChatMessage {
-                            role: "assistant".to_string(),
-                            content: response.to_string(),
+                        messages.push(ChatMessage::Assistant {
+                            content: "",
+                            parts: vec![AssistantMessagePart {
+                                r#type: "text".to_string(),
+                                text: response.to_string(),
+                            }],
                         });
                         println!("{}\n", response);
                     }
