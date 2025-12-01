@@ -3,10 +3,10 @@
 //! This module provides a sandboxed JavaScript execution environment using QuickJS
 //! to solve the anti-bot challenges from DuckDuckGo's AI chat API.
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use aws_lc_rs::digest::{SHA256, digest};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
-use rquickjs::{AsyncContext, AsyncRuntime, CatchResultExt, Function, Object};
+use rquickjs::{AsyncContext, AsyncRuntime, Function, Object};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -263,11 +263,12 @@ impl ChallengeSolver {
     }
 
     /// Generate a browser fingerprint string for the given index
-    fn generate_fingerprint(&self, ctx: &rquickjs::Ctx, index: usize) -> Result<String> {
+    fn generate_fingerprint(&self, _ctx: &rquickjs::Ctx, index: usize) -> Result<String> {
         // Generate consistent fingerprint data based on index
         // This simulates what the browser would compute from various APIs
+        // These are hardcoded constants - not user-controlled input
 
-        let fingerprints = [
+        const FINGERPRINTS: [&str; 3] = [
             // Canvas fingerprint-like data
             "canvas:1920x1080:24:MacIntel:en-US",
             // WebGL fingerprint-like data
@@ -276,27 +277,18 @@ impl ChallengeSolver {
             "audio:124.04347657808103",
         ];
 
-        let fingerprint = fingerprints
+        let fingerprint = FINGERPRINTS
             .get(index)
             .unwrap_or(&"default-fingerprint")
             .to_string();
 
-        // We can also run some JS to enhance the fingerprint if needed
-        let result: String = ctx
-            .eval(format!(
-                r#"
-                (function() {{
-                    var base = "{}";
-                    var ts = Date.now();
-                    return base + ":" + ts;
-                }})()
-            "#,
-                fingerprint
-            ))
-            .catch(ctx)
-            .map_err(|e| anyhow!("JS evaluation error: {:?}", e))?;
+        // Add timestamp to fingerprint (pure Rust, no JS eval needed)
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
 
-        Ok(result)
+        Ok(format!("{}:{}", fingerprint, ts))
     }
 
     /// Compute SHA-256 hash and encode as base64

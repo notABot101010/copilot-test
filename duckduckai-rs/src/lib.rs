@@ -15,6 +15,9 @@ const X_FE_SIGNALS: &str = "eyJzdGFydCI6MTc1MjE1NTc3NzQ4MCwiZXZlbnRzIjpbeyJuYW1l
 const X_FE_VERSION: &str = "serp_20250710_090702_ET-70eaca6aea2948b0bb60";
 const USER_AGENT_STRING: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36";
 
+/// Maximum length for debug output truncation
+const DEBUG_TRUNCATE_LEN: usize = 50;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
@@ -136,7 +139,7 @@ impl DuckDuckGoClient {
             .context("Failed to parse x-vqd-hash-1 header")?
             .to_string();
 
-        tracing::debug!("Received challenge: {}", &challenge[..challenge.len().min(50)]);
+        tracing::debug!("Received challenge: {}", &challenge[..challenge.len().min(DEBUG_TRUNCATE_LEN)]);
 
         // Solve the challenge using the JavaScript runtime
         let solver = ChallengeSolver::new().context("Failed to create challenge solver")?;
@@ -145,7 +148,7 @@ impl DuckDuckGoClient {
             .await
             .context("Failed to solve VQD challenge")?;
 
-        tracing::debug!("Solved VQD token: {}", &vqd[..vqd.len().min(50)]);
+        tracing::debug!("Solved VQD token: {}", &vqd[..vqd.len().min(DEBUG_TRUNCATE_LEN)]);
         self.vqd = Some(vqd.clone());
 
         Ok(vqd)
