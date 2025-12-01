@@ -12,10 +12,12 @@
     "@automerge/automerge": "^3.2.0",
     "@copilot-test/preact-router": "*",
     "@emotion/react": "^11.14.0",
+    "@mantine/charts": "^8.3.9",
     "@mantine/core": "^8.3.9",
     "@mantine/hooks": "^8.3.9",
     "@preact/signals": "^2.5.1",
-    "preact": "^10.27.2"
+    "preact": "^10.27.2",
+    "recharts": "^2.15.3"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.2",
