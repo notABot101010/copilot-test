@@ -10,6 +10,7 @@ mod database;
 mod error;
 mod git_ops;
 mod http_server;
+mod sandbox;
 mod ssh_server;
 
 use config::Config;

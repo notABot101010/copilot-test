@@ -1,11 +1,14 @@
 //! Git operations using the git2 crate and git commands for HTTP protocol.
 //! This module provides all git functionality, using subprocess for HTTP smart protocol.
+//! All git subprocess operations are sandboxed using Landlock to restrict filesystem access.
 
 use git2::{
     BranchType, Commit, DiffFormat, DiffOptions, ObjectType, Oid, Repository,
     RepositoryInitOptions, Signature, Sort,
 };
 use std::path::Path;
+
+use crate::sandbox::{create_repo_sandbox, validate_path_within_base};
 
 /// Error type for git operations
 #[derive(Debug, thiserror::Error)]
@@ -18,6 +21,8 @@ pub enum GitError {
     NotFound(String),
     #[error("Invalid reference: {0}")]
     InvalidRef(String),
+    #[error("Sandbox error: {0}")]
+    Sandbox(String),
 }
 
 /// File entry in a repository
@@ -47,6 +52,35 @@ pub struct FileDiff {
     pub additions: i32,
     pub deletions: i32,
     pub diff: String,
+}
+
+/// Validate that a repository path is safe and within the base repos directory.
+/// 
+/// This function performs security checks to prevent path traversal attacks:
+/// - Validates that org, project, and repo names don't contain path traversal patterns
+/// - Ensures the final path is within the repos base directory
+pub fn validate_repo_path_safe(
+    repos_base: &Path,
+    org: &str,
+    project: &str,
+    repo: &str,
+) -> Result<std::path::PathBuf, GitError> {
+    use crate::sandbox::validate_repo_path;
+    
+    // Validate path components
+    validate_repo_path(org, project, repo)
+        .map_err(|err| GitError::Sandbox(err.to_string()))?;
+    
+    // Construct and validate the full path
+    let repo_path = repos_base.join(org).join(project).join(format!("{}.git", repo));
+    
+    // If the path exists, validate it's within the base
+    if repo_path.exists() {
+        validate_path_within_base(&repo_path, repos_base)
+            .map_err(|err| GitError::Sandbox(err.to_string()))?;
+    }
+    
+    Ok(repo_path)
 }
 
 /// Initialize a bare git repository with a default branch
@@ -569,26 +603,126 @@ pub struct RefInfo {
     pub oid: String,
 }
 
-/// Get advertised refs using git command (more reliable for HTTP protocol)
-pub fn get_advertised_refs(repo_path: &Path, service: &str) -> Result<Vec<u8>, GitError> {
+/// Helper to run a sandboxed git command
+/// 
+/// This function spawns a git subprocess with Landlock restrictions applied
+/// to limit filesystem access to only the repository directory.
+#[cfg(target_os = "linux")]
+fn run_sandboxed_git_command(
+    repo_path: &Path,
+    args: &[&str],
+    stdin_data: Option<&[u8]>,
+) -> Result<Vec<u8>, GitError> {
+    use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
+    use std::io::Write;
     
-    let output = Command::new("git")
-        .arg(service)
-        .arg("--stateless-rpc")
-        .arg("--advertise-refs")
+    // Create sandbox configuration
+    let sandbox = create_repo_sandbox(repo_path);
+    
+    let mut cmd = Command::new("git");
+    cmd.args(args)
         .arg(repo_path)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| GitError::Io(e))?;
+        .stderr(Stdio::piped());
     
-    if !output.status.success() {
-        // If git command fails (e.g., empty repo), fall back to git2 implementation
-        return get_advertised_refs_git2(repo_path, service);
+    if stdin_data.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
+    
+    // Apply sandbox before exec using pre_exec hook
+    // SAFETY: This closure runs after fork() but before exec().
+    // It only calls Landlock syscalls which are async-signal-safe equivalent.
+    unsafe {
+        cmd.pre_exec(move || {
+            match sandbox.apply() {
+                Ok(_) => Ok(()),
+                Err(err) => {
+                    // Log the error but don't fail - allow graceful degradation
+                    // on systems without Landlock support
+                    eprintln!("Warning: Failed to apply sandbox: {}", err);
+                    Ok(())
+                }
+            }
+        });
+    }
+    
+    let mut child = cmd.spawn().map_err(GitError::Io)?;
+    
+    // Write stdin data if provided
+    if let Some(data) = stdin_data {
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(data).map_err(GitError::Io)?;
+        }
+    }
+    
+    let output = child.wait_with_output().map_err(GitError::Io)?;
+    
+    if !output.status.success() && output.stdout.is_empty() {
+        let err_msg = String::from_utf8_lossy(&output.stderr);
+        return Err(GitError::Git(git2::Error::from_str(&format!(
+            "git command failed: {}",
+            err_msg
+        ))));
     }
     
     Ok(output.stdout)
+}
+
+/// Fallback for non-Linux systems (no sandbox)
+#[cfg(not(target_os = "linux"))]
+fn run_sandboxed_git_command(
+    repo_path: &Path,
+    args: &[&str],
+    stdin_data: Option<&[u8]>,
+) -> Result<Vec<u8>, GitError> {
+    use std::process::{Command, Stdio};
+    use std::io::Write;
+    
+    let mut cmd = Command::new("git");
+    cmd.args(args)
+        .arg(repo_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    
+    if stdin_data.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
+    
+    let mut child = cmd.spawn().map_err(GitError::Io)?;
+    
+    // Write stdin data if provided
+    if let Some(data) = stdin_data {
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(data).map_err(GitError::Io)?;
+        }
+    }
+    
+    let output = child.wait_with_output().map_err(GitError::Io)?;
+    
+    if !output.status.success() && output.stdout.is_empty() {
+        let err_msg = String::from_utf8_lossy(&output.stderr);
+        return Err(GitError::Git(git2::Error::from_str(&format!(
+            "git command failed: {}",
+            err_msg
+        ))));
+    }
+    
+    Ok(output.stdout)
+}
+
+/// Get advertised refs using git command (more reliable for HTTP protocol)
+/// The git subprocess is sandboxed to only access the repository directory.
+pub fn get_advertised_refs(repo_path: &Path, service: &str) -> Result<Vec<u8>, GitError> {
+    let args = [service, "--stateless-rpc", "--advertise-refs"];
+    
+    match run_sandboxed_git_command(repo_path, &args, None) {
+        Ok(output) => Ok(output),
+        Err(_) => {
+            // If git command fails (e.g., empty repo), fall back to git2 implementation
+            get_advertised_refs_git2(repo_path, service)
+        }
+    }
 }
 
 /// Fallback implementation using git2 for when git command fails
@@ -649,71 +783,25 @@ fn get_advertised_refs_git2(repo_path: &Path, service: &str) -> Result<Vec<u8>, 
 }
 
 /// Process upload-pack request (client wants to fetch objects)
-/// Uses git command for proper HTTP protocol handling
+/// Uses git command for proper HTTP protocol handling.
+/// The git subprocess is sandboxed to only access the repository directory.
 pub fn process_upload_pack_request(
     repo_path: &Path,
     request_body: &[u8],
 ) -> Result<Vec<u8>, GitError> {
-    use std::process::{Command, Stdio};
-    use std::io::Write;
-    
-    let mut child = Command::new("git")
-        .arg("upload-pack")
-        .arg("--stateless-rpc")
-        .arg(repo_path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| GitError::Io(e))?;
-    
-    // Write request body to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(request_body).map_err(|e| GitError::Io(e))?;
-    }
-    
-    let output = child.wait_with_output().map_err(|e| GitError::Io(e))?;
-    
-    if !output.status.success() && output.stdout.is_empty() {
-        let err_msg = String::from_utf8_lossy(&output.stderr);
-        return Err(GitError::Git(git2::Error::from_str(&format!("git upload-pack failed: {}", err_msg))));
-    }
-    
-    Ok(output.stdout)
+    let args = ["upload-pack", "--stateless-rpc"];
+    run_sandboxed_git_command(repo_path, &args, Some(request_body))
 }
 
 /// Process receive-pack request (client wants to push objects)
-/// Uses git command for proper HTTP protocol handling
+/// Uses git command for proper HTTP protocol handling.
+/// The git subprocess is sandboxed to only access the repository directory.
 pub fn process_receive_pack_request(
     repo_path: &Path,
     request_body: &[u8],
 ) -> Result<Vec<u8>, GitError> {
-    use std::process::{Command, Stdio};
-    use std::io::Write;
-    
-    let mut child = Command::new("git")
-        .arg("receive-pack")
-        .arg("--stateless-rpc")
-        .arg(repo_path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| GitError::Io(e))?;
-    
-    // Write request body to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(request_body).map_err(|e| GitError::Io(e))?;
-    }
-    
-    let output = child.wait_with_output().map_err(|e| GitError::Io(e))?;
-    
-    if !output.status.success() && output.stdout.is_empty() {
-        let err_msg = String::from_utf8_lossy(&output.stderr);
-        return Err(GitError::Git(git2::Error::from_str(&format!("git receive-pack failed: {}", err_msg))));
-    }
-    
-    Ok(output.stdout)
+    let args = ["receive-pack", "--stateless-rpc"];
+    run_sandboxed_git_command(repo_path, &args, Some(request_body))
 }
 
 /// SSH protocol handler state - collects input and produces output
