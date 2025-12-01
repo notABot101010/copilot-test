@@ -6,18 +6,19 @@ use axum::{
     routing::post,
     Router,
 };
-use futures::stream::{Stream, StreamExt};
+use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc;
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
-use crate::DuckDuckGoClient;
+use crate::{DuckDuckGoClient, DEFAULT_MODEL};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ServerState {
     api_key: String,
+    client: Arc<Mutex<DuckDuckGoClient>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,16 +128,16 @@ async fn handle_chat_completion(
     let model = request
         .model
         .as_deref()
-        .unwrap_or("gpt-4o-mini")
+        .unwrap_or(DEFAULT_MODEL)
         .to_string();
 
     if request.stream {
         // Streaming response
-        let stream = create_streaming_response(user_message.content.clone(), model);
+        let stream = create_streaming_response(state.client.clone(), user_message.content.clone(), model);
         Ok(Sse::new(stream).into_response())
     } else {
         // Non-streaming response
-        let response = create_non_streaming_response(user_message.content.clone(), model)
+        let response = create_non_streaming_response(state.client.clone(), user_message.content.clone(), model)
             .await
             .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
 
@@ -145,19 +146,16 @@ async fn handle_chat_completion(
 }
 
 async fn create_non_streaming_response(
+    client: Arc<Mutex<DuckDuckGoClient>>,
     message: String,
     model: String,
 ) -> Result<ChatCompletionResponse> {
-    let client = Arc::new(Mutex::new(DuckDuckGoClient::new()?));
-    let client_clone = Arc::clone(&client);
-
-    let content = tokio::task::spawn_blocking(move || {
-        tokio::runtime::Handle::current().block_on(async {
-            let mut client = client_clone.lock().unwrap();
-            client.chat(&message, Some(&model)).await
-        })
-    })
-    .await??;
+    let model_for_response = model.clone();
+    
+    let content = {
+        let mut client = client.lock().await;
+        client.chat(&message, Some(&model)).await?
+    };
 
     let id = format!("chatcmpl-{}", Uuid::new_v4());
     let created = std::time::SystemTime::now()
@@ -169,7 +167,7 @@ async fn create_non_streaming_response(
         id,
         object: "chat.completion".to_string(),
         created,
-        model,
+        model: model_for_response,
         choices: vec![ChatCompletionChoice {
             index: 0,
             message: ChatCompletionResponseMessage {
@@ -182,6 +180,7 @@ async fn create_non_streaming_response(
 }
 
 fn create_streaming_response(
+    client: Arc<Mutex<DuckDuckGoClient>>,
     message: String,
     model: String,
 ) -> impl Stream<Item = Result<Event, anyhow::Error>> {
@@ -214,17 +213,21 @@ fn create_streaming_response(
             let _ = tx.send(Ok(Event::default().data(json))).await;
         }
 
-        // Create client and stream response
-        let client_result = DuckDuckGoClient::new();
-        if let Ok(mut client) = client_result {
-            let tx_clone = tx.clone();
+        // Clone values needed for the closure before borrowing
+        let id_for_closure = id.clone();
+        let model_for_closure = model.clone();
+        let tx_clone = tx.clone();
+        
+        // Use the shared client
+        {
+            let mut client = client.lock().await;
             let result = client
                 .chat_stream(&message, Some(&model), move |chunk| {
                     let chunk_data = ChatCompletionChunk {
-                        id: id.clone(),
+                        id: id_for_closure.clone(),
                         object: "chat.completion.chunk".to_string(),
                         created,
-                        model: model.clone(),
+                        model: model_for_closure.clone(),
                         choices: vec![ChatCompletionChunkChoice {
                             index: 0,
                             delta: ChatCompletionChunkDelta {
@@ -281,7 +284,13 @@ fn create_streaming_response(
 }
 
 pub async fn run_server(host: &str, port: u16, api_key: String) -> Result<()> {
-    let state = Arc::new(ServerState { api_key });
+    // Create a single DuckDuckGoClient to be shared across all requests
+    let client = DuckDuckGoClient::new()?;
+    
+    let state = Arc::new(ServerState { 
+        api_key,
+        client: Arc::new(Mutex::new(client)),
+    });
 
     let app = Router::new()
         .route("/v1/chat/completions", post(handle_chat_completion))

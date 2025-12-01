@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use duckduckai::{DuckDuckGoClient, run_server};
+use duckduckai::{DuckDuckGoClient, run_server, DEFAULT_MODEL};
 use std::io::{self, Write};
 use tracing_subscriber::EnvFilter;
 
@@ -15,8 +15,8 @@ struct Args {
     #[arg(short, long)]
     message: Option<String>,
 
-    /// The model to use (default: gpt-4o-mini)
-    #[arg(long, default_value = "gpt-4o-mini")]
+    /// The model to use (default: gpt5-mini)
+    #[arg(long, default_value = DEFAULT_MODEL)]
     model: String,
 
     /// Enable streaming output
