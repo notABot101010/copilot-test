@@ -10,6 +10,9 @@ use rquickjs::{AsyncContext, AsyncRuntime, Function, Object};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
+/// Maximum length for debug output truncation
+const DEBUG_TRUNCATE_LEN: usize = 200;
+
 /// Structure representing the challenge data from the server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChallengeData {
@@ -70,7 +73,7 @@ impl ChallengeSolver {
         let challenge_str =
             String::from_utf8(challenge_bytes).context("Challenge is not valid UTF-8")?;
 
-        tracing::debug!("Decoded challenge: {}", &challenge_str[..challenge_str.len().min(200)]);
+        tracing::debug!("Decoded challenge: {}", &challenge_str[..challenge_str.len().min(DEBUG_TRUNCATE_LEN)]);
 
         // The challenge can be either:
         // 1. JSON data directly (old format)
@@ -126,7 +129,7 @@ impl ChallengeSolver {
                 let json_str: String = stringify_fn.call((result,))
                     .map_err(|e| anyhow::anyhow!("Failed to stringify JS result: {:?}", e))?;
 
-                tracing::debug!("JavaScript result JSON: {}", &json_str[..json_str.len().min(200)]);
+                tracing::debug!("JavaScript result JSON: {}", &json_str[..json_str.len().min(DEBUG_TRUNCATE_LEN)]);
 
                 serde_json::from_str(&json_str)
                     .context("Failed to parse JavaScript result as ChallengeData")
