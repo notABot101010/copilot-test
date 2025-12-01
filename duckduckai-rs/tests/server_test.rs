@@ -2,7 +2,7 @@ use async_openai::{
     types::{ChatCompletionRequestMessage, CreateChatCompletionRequestArgs},
     Client, config::OpenAIConfig,
 };
-use duckduckai::run_server;
+use duckduckai::{run_server, DEFAULT_MODEL};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -36,7 +36,7 @@ async fn test_server_non_streaming_chat_completion() {
     let client = create_test_client();
 
     let request = CreateChatCompletionRequestArgs::default()
-        .model("gpt-4o-mini")
+        .model(DEFAULT_MODEL)
         .messages(vec![ChatCompletionRequestMessage::User(
             async_openai::types::ChatCompletionRequestUserMessage {
                 content: async_openai::types::ChatCompletionRequestUserMessageContent::Text(
@@ -82,7 +82,7 @@ async fn test_server_streaming_chat_completion() {
     let client = create_test_client();
 
     let request = CreateChatCompletionRequestArgs::default()
-        .model("gpt-4o-mini")
+        .model(DEFAULT_MODEL)
         .messages(vec![ChatCompletionRequestMessage::User(
             async_openai::types::ChatCompletionRequestUserMessage {
                 content: async_openai::types::ChatCompletionRequestUserMessageContent::Text(
@@ -146,7 +146,7 @@ async fn test_server_with_invalid_api_key() {
     let client = Client::with_config(config);
 
     let request = CreateChatCompletionRequestArgs::default()
-        .model("gpt-4o-mini")
+        .model(DEFAULT_MODEL)
         .messages(vec![ChatCompletionRequestMessage::User(
             async_openai::types::ChatCompletionRequestUserMessage {
                 content: async_openai::types::ChatCompletionRequestUserMessageContent::Text(
@@ -173,7 +173,7 @@ async fn test_server_with_different_models() {
 
     let client = create_test_client();
 
-    let models = vec!["gpt-4o-mini", "claude-3-haiku"];
+    let models = vec![DEFAULT_MODEL, "claude-3-haiku"];
 
     for model in models {
         println!("Testing with model: {}", model);
@@ -218,7 +218,7 @@ async fn test_server_multiple_sequential_requests() {
         println!("Request {}", i);
 
         let request = CreateChatCompletionRequestArgs::default()
-            .model("gpt-4o-mini")
+            .model(DEFAULT_MODEL)
             .messages(vec![ChatCompletionRequestMessage::User(
                 async_openai::types::ChatCompletionRequestUserMessage {
                     content: async_openai::types::ChatCompletionRequestUserMessageContent::Text(

@@ -3,6 +3,9 @@ use futures::StreamExt;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
 
+/// Default model for DuckDuckGo AI chat
+pub const DEFAULT_MODEL: &str = "gpt5-mini";
+
 pub mod js_runtime;
 pub mod server;
 
@@ -171,7 +174,7 @@ impl DuckDuckGoClient {
             let vqd = self.vqd.as_ref().unwrap().clone();
 
             let request = ChatRequest {
-                model: model.unwrap_or("gpt-4o-mini").to_string(),
+                model: model.unwrap_or(DEFAULT_MODEL).to_string(),
                 metadata: Metadata {
                     tool_choice: ToolChoice {
                         news_search: false,
@@ -291,7 +294,7 @@ impl DuckDuckGoClient {
             let vqd = self.vqd.as_ref().unwrap().clone();
 
             let request = ChatRequest {
-                model: model.unwrap_or("gpt-4o-mini").to_string(),
+                model: model.unwrap_or(DEFAULT_MODEL).to_string(),
                 metadata: Metadata {
                     tool_choice: ToolChoice {
                         news_search: false,
