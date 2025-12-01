@@ -3,16 +3,17 @@ use futures::StreamExt;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
 
+pub mod js_runtime;
+
+pub use js_runtime::ChallengeSolver;
+
 const STATUS_URL: &str = "https://duckduckgo.com/duckchat/v1/status";
 const CHAT_URL: &str = "https://duckduckgo.com/duckchat/v1/chat";
 
 // Static headers based on reverse engineering
-// const X_VQD_HASH_1: &str = "eyJzZXJ2ZXJfaGFzaGVzIjpbIkdKTVJYUzNNeklVNnoxdnBrcFVBaWIxQkdWS2FHN1NnYTBkcVhMSndieUU9IiwidG5samExTVY5N1hCYVNBZ1Q4VjhnT3pEd0RtSnpJS2w1cnhpNVpnaUluVT0iLCJodFJOMnh5K3BjT0JVMXg1WGZ6bE42d0Q4SFQxZDErd2hreHNibjRFUnlFPSJdLCJjbGllbnRfaGFzaGVzIjpbInhISm9VY1JQU2xVZWtHdnBVZENadkRPZmVONk5EeCtrWFM0bm1xdysvdjg9IiwiRWtaQXZ5ZVNvTTNPTEFUaE15YldlL0FUdXNiT1ZHWVdzRWlJNThUbWhqRT0iLCIzTXM4VXVmSG4zQXo0ZW9HNnQrUy9aQy8xN0MxYzMzQXdsRWFEaFk0Y3ZVPSJdLCJzaWduYWxzIjp7fSwibWV0YSI6eyJ2IjoiNCIsImNoYWxsZW5nZV9pZCI6IjVmMGE3ZWJiYTI1ZWQxYjFhZWRlYmE5NjY5YmVmYjBjMTUwNDc0ODc5MTNmZWM4Yzk5MjhkMDljMDE5MDdhYjNweGp6ciIsInRpbWVzdGFtcCI6IjE3NjQ1NjI1MDU0MzEiLCJkZWJ1ZyI6Ilx1MDAxZkgiLCJvcmlnaW4iOiJodHRwczovL2R1Y2tkdWNrZ28uY29tIiwic3RhY2siOiJFcnJvclxuYXQgbCAoaHR0cHM6Ly9kdWNrZHVja2dvLmNvbS9kaXN0L3dwbS5tYWluLjc1OGI1OGU1Mjk1MTczYTlkODljLmpzOjE6NDI0MTAzKVxuYXQgYXN5bmMgaHR0cHM6Ly9kdWNrZHVja2dvLmNvbS9kaXN0L3dwbS5tYWluLjc1OGI1OGU1Mjk1MTczYTlkODljLmpzOjE6MzU2MTY0IiwiZHVyYXRpb24iOiIxNCJ9fQ==";
 const X_FE_SIGNALS: &str = "eyJzdGFydCI6MTc1MjE1NTc3NzQ4MCwiZXZlbnRzIjpbeyJuYW1lIjoic3RhcnROZXdDaGF0IiwiZGVsdGEiOjc1fSx7Im5hbWUiOiJyZWNlbnRDaGF0c0xpc3RJbXByZXNzaW9uIiwiZGVsdGEiOjEyNH1dLCJlbmQiOjQzNDN9";
 const X_FE_VERSION: &str = "serp_20250710_090702_ET-70eaca6aea2948b0bb60";
 const USER_AGENT_STRING: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36";
-// Initial VQD value (will be updated from responses)
-// const INITIAL_VQD: &str = "eyJzZXJ2ZXJfaGFzaGVzIjpbIkdKTVJYUzNNeklVNnoxdnBrcFVBaWIxQkdWS2FHN1NnYTBkcVhMSndieUU9IiwidG5samExTVY5N1hCYVNBZ1Q4VjhnT3pEd0RtSnpJS2w1cnhpNVpnaUluVT0iLCJodFJOMnh5K3BjT0JVMXg1WGZ6bE42d0Q4SFQxZDErd2hreHNibjRFUnlFPSJdLCJjbGllbnRfaGFzaGVzIjpbInhISm9VY1JQU2xVZWtHdnBVZENadkRPZmVONk5EeCtrWFM0bm1xdysvdjg9IiwiRWtaQXZ5ZVNvTTNPTEFUaE15YldlL0FUdXNiT1ZHWVdzRWlJNThUbWhqRT0iLCIzTXM4VXVmSG4zQXo0ZW9HNnQrUy9aQy8xN0MxYzMzQXdsRWFEaFk0Y3ZVPSJdLCJzaWduYWxzIjp7fSwibWV0YSI6eyJ2IjoiNCIsImNoYWxsZW5nZV9pZCI6IjVmMGE3ZWJiYTI1ZWQxYjFhZWRlYmE5NjY5YmVmYjBjMTUwNDc0ODc5MTNmZWM4Yzk5MjhkMDljMDE5MDdhYjNweGp6ciIsInRpbWVzdGFtcCI6IjE3NjQ1NjI1MDU0MzEiLCJkZWJ1ZyI6Ilx1MDAxZkgiLCJvcmlnaW4iOiJodHRwczovL2R1Y2tkdWNrZ28uY29tIiwic3RhY2siOiJFcnJvclxuYXQgbCAoaHR0cHM6Ly9kdWNrZHVja2dvLmNvbS9kaXN0L3dwbS5tYWluLjc1OGI1OGU1Mjk1MTczYTlkODljLmpzOjE6NDI0MTAzKVxuYXQgYXN5bmMgaHR0cHM6Ly9kdWNrZHVja2dvLmNvbS9kaXN0L3dwbS5tYWluLjc1OGI1OGU1Mjk1MTczYTlkODljLmpzOjE6MzU2MTY0IiwiZHVyYXRpb24iOiIxNCJ9fQ==";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -59,11 +60,6 @@ impl DuckDuckGoClient {
     pub fn new() -> Result<Self> {
         let jar = reqwest::cookie::Jar::default();
 
-        // Add required cookies
-        // jar.add_cookie_str("5=1", &STATUS_URL.parse()?);
-        // jar.add_cookie_str("dcm=3", &STATUS_URL.parse()?);
-        // jar.add_cookie_str("dcs=1", &STATUS_URL.parse()?);
-
         let client = reqwest::Client::builder()
             .cookie_provider(jar.into())
             .build()
@@ -77,8 +73,6 @@ impl DuckDuckGoClient {
 
         headers.insert(USER_AGENT, HeaderValue::from_static(USER_AGENT_STRING));
         headers.insert("x-vqd-hash-1", HeaderValue::from_str(vqd)?);
-        // headers.insert("x-vqd-4", HeaderValue::from_str(vqd)?);
-        // headers.insert("x-vqd-hash-1", HeaderValue::from_static(X_VQD_HASH_1));
         headers.insert("x-fe-signals", HeaderValue::from_static(X_FE_SIGNALS));
         headers.insert("x-fe-version", HeaderValue::from_static(X_FE_VERSION));
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -125,8 +119,6 @@ impl DuckDuckGoClient {
             .client
             .get(STATUS_URL)
             .headers(self.build_status_headers()?)
-            // .header("x-vqd-accept","1")
-            // .header("x-vqd-hash-1", X_VQD_HASH_1)
             .send()
             .await
             .context("Failed to fetch status")?;
@@ -135,19 +127,25 @@ impl DuckDuckGoClient {
             return Err(anyhow!("Status endpoint returned {}", response.status()));
         }
 
-        // println!("{:?}", response.headers());
+        // Extract challenge from x-vqd-hash-1 header
+        let challenge = response
+            .headers()
+            .get("x-vqd-hash-1")
+            .ok_or_else(|| anyhow!("x-vqd-hash-1 header is missing"))?
+            .to_str()
+            .context("Failed to parse x-vqd-hash-1 header")?
+            .to_string();
 
-        // Try to extract VQD token from response headers
-        // let vqd = response
-        //     .headers()
-        //     .get("x-vqd-hash-1")
-        //     .ok_or(anyhow!("x-vqd-hash-1 header is missing"))?
-        //     .to_str()
-        //     .context("Failed to parse x-vqd-hash-1 header")?
-        //     .to_string();
-        let vqd = "eyJzZXJ2ZXJfaGFzaGVzIjpbIkQ2dHcxQ1RTZnpmWHhaQXp1cThGVFd3WWhOTys3SUxqMTY3YnVDZ0Ewa0U9IiwiellUS1dhQ29hcURnOEVicEt2aHVqN0o3bWJqRUI4YVUwK2t6MXpFbmk1Yz0iLCI0cStTUUMrZ3pZdFNUeWU4YVZVRWw5dFZPWWpTRFdlR3JsbmxzenIxeWZvPSJdLCJjbGllbnRfaGFzaGVzIjpbInhISm9VY1JQU2xVZWtHdnBVZENadkRPZmVONk5EeCtrWFM0bm1xdysvdjg9IiwiQVBQS0xzaGtBWDV3TWlnWG5iU1BJVm9rSmdXUHhNbHdxdGd3dkc3WU0rUT0iLCJDYlZ2SWVQRU53ck1GYW5uYnRRR1QxRFFZSVcyTVBleTV6YllxUXMybVNNPSJdLCJzaWduYWxzIjp7fSwibWV0YSI6eyJ2IjoiNCIsImNoYWxsZW5nZV9pZCI6ImY0NTExNGZlZTA3MWZkODY5OTAwNDYwYzg3Y2IwM2VmZTBiNTc1OTYzMDc3NzQxNzFiOWNiNTgzNWViOTBkNmZweGp6ciIsInRpbWVzdGFtcCI6IjE3NjQ1NjM5ODQzNjAiLCJkZWJ1ZyI6Ilx1MDAxOVx1MDAxZiIsIm9yaWdpbiI6Imh0dHBzOi8vZHVja2R1Y2tnby5jb20iLCJzdGFjayI6IkVycm9yXG5hdCBsIChodHRwczovL2R1Y2tkdWNrZ28uY29tL2Rpc3Qvd3BtLm1haW4uNzU4YjU4ZTUyOTUxNzNhOWQ4OWMuanM6MTo0MjQxMDMpXG5hdCBhc3luYyBodHRwczovL2R1Y2tkdWNrZ28uY29tL2Rpc3Qvd3BtLm1haW4uNzU4YjU4ZTUyOTUxNzNhOWQ4OWMuanM6MTozNTYxNjQiLCJkdXJhdGlvbiI6IjkifX0=".to_string();
+        tracing::debug!("Received challenge: {}", &challenge[..challenge.len().min(50)]);
 
-        tracing::debug!("Using VQD token: {}", vqd);
+        // Solve the challenge using the JavaScript runtime
+        let solver = ChallengeSolver::new().context("Failed to create challenge solver")?;
+        let vqd = solver
+            .solve(&challenge)
+            .await
+            .context("Failed to solve VQD challenge")?;
+
+        tracing::debug!("Solved VQD token: {}", &vqd[..vqd.len().min(50)]);
         self.vqd = Some(vqd.clone());
 
         Ok(vqd)
@@ -212,14 +210,6 @@ impl DuckDuckGoClient {
             if !status.is_success() {
                 return Err(anyhow!("Chat endpoint returned {}", status));
             }
-
-            // // Update VQD token from response headers if present
-            // if let Some(new_vqd) = response.headers().get("x-vqd-hash-1") {
-            //     if let Ok(new_vqd_str) = new_vqd.to_str() {
-            //         tracing::debug!("Updating VQD token from response: {}", new_vqd_str);
-            //         self.vqd = Some(new_vqd_str.to_string());
-            //     }
-            // }
 
             // Parse SSE stream
             let mut stream = response.bytes_stream();
@@ -342,14 +332,6 @@ impl DuckDuckGoClient {
                 return Err(anyhow!("Chat endpoint returned {}", status));
             }
 
-            // // Update VQD token from response headers if present
-            // if let Some(new_vqd) = response.headers().get("x-vqd-hash-1") {
-            //     if let Ok(new_vqd_str) = new_vqd.to_str() {
-            //         tracing::debug!("Updating VQD token from response: {}", new_vqd_str);
-            //         self.vqd = Some(new_vqd_str.to_string());
-            //     }
-            // }
-
             // Parse SSE stream
             let mut stream = response.bytes_stream();
             let mut buffer = String::new();
@@ -419,6 +401,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore] // Requires network access
     async fn test_fetch_vqd() {
         let mut client = DuckDuckGoClient::new().unwrap();
         let result = client.fetch_vqd().await;
