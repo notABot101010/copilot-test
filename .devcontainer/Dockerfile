@@ -1,6 +1,6 @@
 FROM node:24-bookworm-slim as node
 
-FROM ubuntu:24.04
+FROM debian:13
 
 ENV TZ="UTC"
 RUN echo "${TZ}" > /etc/timezone
@@ -10,22 +10,21 @@ RUN apt-get update && apt upgrade -y
 RUN apt-get install -y --no-install-recommends \
     # base system. psmisc for killall. openssh-client for git over SSH. socat for docker
     bash curl wget psmisc ca-certificates lsb-release openssh-client socat \
-    # dev tools. dnsutils for dig. linux-tools-generic for perf. bsdmainutils for hexdump.
-    git vim make binutils coreutils build-essential pkg-config linux-tools-generic \
-    zip htop wrk zstd gdb dnsutils jq b3sum gnupg libimage-exiftool-perl bsdmainutils \
+    # dev tools. dnsutils for dig. bsdmainutils for hexdump.
+    git vim make binutils coreutils build-essential pkg-config linux-perf \
+    zip htop wrk zstd gdb dnsutils jq b3sum gnupg libimage-exiftool-perl bsdmainutils lsof net-tools iproute2 \
     # Rust toolchain
     rustup libfindbin-libs-perl lld mold gcc g++ musl musl-dev musl-tools libc6-dev cmake clang libclang-dev \
     openssl libssl-dev \
     gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 gcc-x86-64-linux-gnu g++-x86-64-linux-gnu \
     # useful data. mailcap for mimetypes. tzdata for timezones.
-    mailcap tzdata libpcre3-dev \
+    mailcap tzdata libpcre2-dev \
     # pingoo specific dependencies
     sqlite3 \
     # pingoo-server / webapp specific dependencies
-    postgresql-client-16 \
+    postgresql-client-17 \
     # for headless chrome
     chromium chromium-driver fonts-liberation
-
 
 # setup node
 COPY --from=node /usr/local/bin/node /usr/local/bin/
