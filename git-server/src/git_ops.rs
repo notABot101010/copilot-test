@@ -22,6 +22,7 @@ pub enum GitError {
     #[error("Invalid reference: {0}")]
     InvalidRef(String),
     #[error("Sandbox error: {0}")]
+    #[allow(dead_code)]
     Sandbox(String),
 }
 
@@ -59,6 +60,7 @@ pub struct FileDiff {
 /// This function performs security checks to prevent path traversal attacks:
 /// - Validates that org, project, and repo names don't contain path traversal patterns
 /// - Ensures the final path is within the repos base directory
+#[allow(dead_code)]
 pub fn validate_repo_path_safe(
     repos_base: &Path,
     org: &str,

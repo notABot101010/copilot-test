@@ -13,6 +13,7 @@ use tracing::{debug, error, info, warn};
 use crate::config::Config;
 use crate::database::Database;
 use crate::git_ops;
+use crate::sandbox::{validate_repo_path, validate_path_within_base};
 
 /// SSH server for git operations
 pub struct GitServer {
@@ -166,11 +167,9 @@ impl russh::server::Handler for GitSessionHandler {
         let project_name = repo_parts[1];
         let repo_name = repo_parts[2];
 
-        // Validate repository name contains no path traversal sequences
-        if org_name.contains("..") || org_name.starts_with('/') || org_name.contains('\0') ||
-           project_name.contains("..") || project_name.starts_with('/') || project_name.contains('\0') ||
-           repo_name.contains("..") || repo_name.starts_with('/') || repo_name.contains('\0') {
-            warn!("Invalid repository name (potential path traversal): {}", repo_path_str);
+        // Use sandbox validation for repository path components
+        if let Err(err) = validate_repo_path(org_name, project_name, repo_name) {
+            warn!("Invalid repository name (sandbox validation failed): {} - {}", repo_path_str, err);
             session.channel_failure(channel)?;
             return Ok(());
         }
@@ -199,28 +198,15 @@ impl russh::server::Handler for GitSessionHandler {
 
         let repo_path = self.repos_path.join(&repo.path);
 
-        // Verify the resolved path is within the repos directory
-        let canonical_repos = match self.repos_path.canonicalize() {
+        // Verify the resolved path is within the repos directory using sandbox validation
+        let canonical_repo = match validate_path_within_base(&repo_path, &self.repos_path) {
             Ok(p) => p,
             Err(e) => {
-                error!("Failed to canonicalize repos path: {}", e);
+                warn!("Repository path escape attempt detected: {} - {}", repo.path, e);
                 session.channel_failure(channel)?;
                 return Ok(());
             }
         };
-        let canonical_repo = match repo_path.canonicalize() {
-            Ok(p) => p,
-            Err(e) => {
-                error!("Failed to canonicalize repository path: {}", e);
-                session.channel_failure(channel)?;
-                return Ok(());
-            }
-        };
-        if !canonical_repo.starts_with(&canonical_repos) {
-            warn!("Repository path escape attempt: {:?}", canonical_repo);
-            session.channel_failure(channel)?;
-            return Ok(());
-        }
 
         // Create git2 protocol handler
         let handler = git_ops::SshProtocolHandler::new(&canonical_repo, git_cmd);
