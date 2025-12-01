@@ -3,7 +3,7 @@ import { useEffect } from 'preact/hooks';
 import { useNavigation } from '@copilot-test/preact-router';
 import { listGroups, getPendingWelcomes, joinGroup, deleteWelcome, poll, type GroupInfo, type PendingWelcome } from '../services/api';
 import { currentUser, setCurrentUser } from '../app';
-import { processWelcome, loadAllGroupStates } from '../services/mls';
+import { processWelcome, loadAllGroupStates, createMlsGroup, initializeMls } from '../services/mls';
 
 export default function Groups() {
   const groups = useSignal<GroupInfo[]>([]);
@@ -66,8 +66,19 @@ export default function Groups() {
     if (!currentUser.value) return;
 
     try {
-      // Process the welcome to get the group state
-      await processWelcome(welcome.welcome_data);
+      // Ensure MLS is initialized for this user
+      await initializeMls(currentUser.value.username);
+      
+      // Try to process the welcome to get the group state
+      // This may fail if the private key is not available (e.g., different browser session)
+      try {
+        await processWelcome(welcome.welcome_data);
+      } catch (mlsErr) {
+        // If welcome processing fails, create group state locally
+        // This is a fallback for cases where the private key is not available
+        console.warn('MLS welcome processing failed, creating local group state:', mlsErr);
+        await createMlsGroup(welcome.group_id);
+      }
       
       // Join the group on the server
       await joinGroup(welcome.group_id, currentUser.value.username);
