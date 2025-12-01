@@ -3,9 +3,29 @@
 //! These tests verify the HTTP API works correctly with mock LLM responses.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use reqwest::StatusCode;
 use tempfile::TempDir;
+
+/// Wait for server to be ready by polling the health endpoint
+async fn wait_for_server(base_url: &str, max_attempts: u32) -> bool {
+    let client = reqwest::Client::new();
+    for _ in 0..max_attempts {
+        if let Ok(response) = client
+            .get(format!("{}/api/sessions", base_url))
+            .timeout(Duration::from_millis(100))
+            .send()
+            .await
+        {
+            if response.status().is_success() {
+                return true;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    false
+}
 
 /// Helper to create a test server with mock LLM
 async fn start_test_server() -> (String, TempDir) {
@@ -69,10 +89,11 @@ async fn start_test_server() -> (String, TempDir) {
         axum::serve(listener, app).await.expect("Server error");
     });
     
-    // Wait for server to start
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    
     let base_url = format!("http://127.0.0.1:{}", port);
+    
+    // Wait for server to be ready with retry logic
+    assert!(wait_for_server(&base_url, 20).await, "Server failed to start");
+    
     (base_url, temp_dir)
 }
 

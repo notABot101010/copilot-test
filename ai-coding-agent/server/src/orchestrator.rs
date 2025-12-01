@@ -215,36 +215,10 @@ Now classify this request:"#;
 
         match self.llm_client.chat(messages).await {
             Ok(response) => {
-                // Parse LLM response for tasks
+                // Parse LLM response for tasks with robust error handling
                 for line in response.lines() {
-                    let line = line.trim();
-                    if line.starts_with("TASK:") {
-                        let parts: Vec<&str> = line[5..].splitn(3, ':').collect();
-                        if parts.len() >= 3 {
-                            let subagent = match parts[0] {
-                                "code_editor" => SubAgentType::CodeEditor,
-                                "test_runner" => SubAgentType::TestRunner,
-                                "documentation" => SubAgentType::Documentation,
-                                "research" => SubAgentType::Research,
-                                _ => SubAgentType::CodeEditor,
-                            };
-                            let priority = match parts[1] {
-                                "high" => TaskPriority::High,
-                                "low" => TaskPriority::Low,
-                                _ => TaskPriority::Medium,
-                            };
-                            let description = parts[2].to_string();
-
-                            tasks.push(Task {
-                                id: Uuid::new_v4().to_string(),
-                                session_id: String::new(),
-                                subagent,
-                                description,
-                                priority,
-                                status: TaskStatus::Pending,
-                                result: None,
-                            });
-                        }
+                    if let Some(task) = self.parse_task_line(line) {
+                        tasks.push(task);
                     }
                 }
             }
@@ -259,6 +233,60 @@ Now classify this request:"#;
         }
 
         tasks
+    }
+
+    /// Parse a single task line from LLM response.
+    /// Expected format: TASK:<subagent>:<priority>:<description>
+    fn parse_task_line(&self, line: &str) -> Option<Task> {
+        let line = line.trim();
+        if !line.starts_with("TASK:") {
+            return None;
+        }
+
+        let rest = &line[5..];
+        let parts: Vec<&str> = rest.splitn(3, ':').collect();
+        
+        if parts.len() < 3 {
+            tracing::debug!("Malformed task line (expected 3 parts): {}", line);
+            return None;
+        }
+
+        let subagent = match parts[0].trim().to_lowercase().as_str() {
+            "code_editor" => SubAgentType::CodeEditor,
+            "test_runner" => SubAgentType::TestRunner,
+            "documentation" => SubAgentType::Documentation,
+            "research" => SubAgentType::Research,
+            unknown => {
+                tracing::debug!("Unknown subagent type '{}', defaulting to CodeEditor", unknown);
+                SubAgentType::CodeEditor
+            }
+        };
+
+        let priority = match parts[1].trim().to_lowercase().as_str() {
+            "high" => TaskPriority::High,
+            "low" => TaskPriority::Low,
+            "medium" => TaskPriority::Medium,
+            unknown => {
+                tracing::debug!("Unknown priority '{}', defaulting to Medium", unknown);
+                TaskPriority::Medium
+            }
+        };
+
+        let description = parts[2].trim().to_string();
+        if description.is_empty() {
+            tracing::debug!("Empty task description in line: {}", line);
+            return None;
+        }
+
+        Some(Task {
+            id: Uuid::new_v4().to_string(),
+            session_id: String::new(),
+            subagent,
+            description,
+            priority,
+            status: TaskStatus::Pending,
+            result: None,
+        })
     }
 
     fn classify_with_keywords(&self, content: &str) -> Vec<Task> {

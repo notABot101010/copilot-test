@@ -173,6 +173,9 @@ impl OpenAiLlmClient {
                     })
                 }
                 MessageRole::Assistant => {
+                    // Note: function_call field is deprecated in async-openai but still required
+                    // in the struct. Using #[allow(deprecated)] to suppress the warning until
+                    // the library removes the field.
                     #[allow(deprecated)]
                     ChatCompletionRequestMessage::Assistant(
                         async_openai::types::chat::ChatCompletionRequestAssistantMessage {

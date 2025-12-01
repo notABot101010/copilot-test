@@ -4,11 +4,50 @@
 //! a response from the AI agent.
 
 use std::sync::Arc;
+use std::time::Duration;
 use tempfile::TempDir;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{method, path},
 };
+
+/// Wait for server to be ready by polling
+async fn wait_for_server(base_url: &str, max_attempts: u32) -> bool {
+    let client = reqwest::Client::new();
+    for _ in 0..max_attempts {
+        if let Ok(response) = client
+            .get(format!("{}/api/sessions", base_url))
+            .timeout(Duration::from_millis(100))
+            .send()
+            .await
+        {
+            if response.status().is_success() {
+                return true;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    false
+}
+
+/// Wait for messages to be processed by polling
+async fn wait_for_messages(client: &reqwest::Client, base_url: &str, session_id: &str, min_count: usize, max_attempts: u32) -> Vec<serde_json::Value> {
+    for _ in 0..max_attempts {
+        if let Ok(response) = client
+            .get(format!("{}/api/sessions/{}/messages", base_url, session_id))
+            .send()
+            .await
+        {
+            if let Ok(messages) = response.json::<Vec<serde_json::Value>>().await {
+                if messages.len() >= min_count {
+                    return messages;
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    Vec::new()
+}
 
 /// Helper to create a test server with a real mock OpenAI server
 async fn start_test_server_with_mock_openai() -> (String, TempDir, MockServer) {
@@ -103,10 +142,11 @@ async fn start_test_server_with_mock_openai() -> (String, TempDir, MockServer) {
         axum::serve(listener, app).await.expect("Server error");
     });
     
-    // Wait for server to start
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    
     let base_url = format!("http://127.0.0.1:{}", port);
+    
+    // Wait for server to be ready with retry logic
+    assert!(wait_for_server(&base_url, 20).await, "Server failed to start");
+    
     (base_url, temp_dir, mock_server)
 }
 
@@ -142,19 +182,8 @@ async fn test_e2e_conversation_flow() {
     let message: serde_json::Value = send_response.json().await.expect("Failed to parse");
     assert_eq!(message.get("role").and_then(|v| v.as_str()), Some("user"));
     
-    // Step 3: Wait for processing and get messages
-    // Note: The orchestrator processes asynchronously, so we need to wait
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    
-    let messages_response = client
-        .get(format!("{}/api/sessions/{}/messages", base_url, session_id))
-        .send()
-        .await
-        .expect("Request failed");
-    
-    assert_eq!(messages_response.status(), reqwest::StatusCode::OK);
-    
-    let messages: Vec<serde_json::Value> = messages_response.json().await.expect("Failed to parse");
+    // Step 3: Wait for processing and get messages using polling
+    let messages = wait_for_messages(&client, &base_url, session_id, 1, 20).await;
     
     // Should have at least the user message
     assert!(!messages.is_empty());
@@ -194,17 +223,8 @@ async fn test_e2e_multi_turn_conversation() {
         .await
         .expect("Request failed");
     
-    // Wait for processing
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    
-    // Get all messages
-    let messages_response = client
-        .get(format!("{}/api/sessions/{}/messages", base_url, session_id))
-        .send()
-        .await
-        .expect("Request failed");
-    
-    let messages: Vec<serde_json::Value> = messages_response.json().await.expect("Failed to parse");
+    // Wait for messages using polling - expect at least 2 user messages
+    let messages = wait_for_messages(&client, &base_url, session_id, 2, 20).await;
     
     // Should have at least 2 user messages
     let user_messages: Vec<_> = messages
