@@ -147,7 +147,18 @@ export function RouterView({ name, props: additionalProps, notFound: NotFoundCom
   const router = useRouter();
   const route = useRoute();
 
-  // Read route directly from signal for immediate reactivity
+  // Force re-render when the signal changes by using a counter
+  // This is needed because reading .value directly doesn't subscribe to signal changes in render
+  const [, forceUpdate] = useState(0);
+  
+  useSignalEffect(() => {
+    // Subscribe to the currentRoute signal - accessing .value here creates the subscription
+    const _currentRoute = router.currentRoute.value;
+    // Force a re-render when the route changes by incrementing counter
+    forceUpdate(count => count + 1);
+  });
+
+  // Now read the current values - these will be fresh after each re-render
   const currentRoute = router.currentRoute.value;
   const matched = currentRoute.matched;
 
