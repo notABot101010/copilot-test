@@ -4,23 +4,18 @@ use axum::{
     routing::{get, post, put},
 };
 use clap::Parser;
-use sqlx::sqlite::SqlitePool;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod db;
-mod handlers;
-mod models;
-mod orchestrator;
-mod subagents;
-mod templates;
-mod tools;
-
+use ai_coding_agent_server::{
+    db, handlers, llm, orchestrator, templates,
+};
 use handlers::{
     sessions::{create_session, get_session, list_sessions, send_message, get_messages, steer_session},
     templates::{list_templates, update_template},
     websocket::session_stream,
 };
+use llm::{LlmConfig, OpenAiLlmClient, LlmClient};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -33,12 +28,18 @@ struct Args {
 
     #[arg(long, default_value = "agent.db")]
     database: String,
-}
 
-pub struct AppState {
-    pub db: SqlitePool,
-    pub templates: Arc<tokio::sync::RwLock<templates::TemplateManager>>,
-    pub orchestrator: Arc<orchestrator::Orchestrator>,
+    /// OpenAI-compatible API base URL
+    #[arg(long, env = "OPENAI_BASE_URL", default_value = "https://api.openai.com/v1")]
+    api_base: String,
+
+    /// API key for authentication
+    #[arg(long, env = "OPENAI_API_KEY", default_value = "")]
+    api_key: String,
+
+    /// Model to use for completions
+    #[arg(long, env = "OPENAI_MODEL", default_value = "gpt-4")]
+    model: String,
 }
 
 #[tokio::main]
@@ -55,12 +56,22 @@ async fn main() -> AppResult<()> {
     let db = db::init_db(&args.database).await?;
     
     let templates = Arc::new(tokio::sync::RwLock::new(templates::TemplateManager::new()));
-    let orchestrator = Arc::new(orchestrator::Orchestrator::new());
+    
+    // Configure LLM client
+    let llm_config = LlmConfig::new()
+        .with_api_base(&args.api_base)
+        .with_api_key(&args.api_key)
+        .with_model(&args.model);
+    
+    let llm_client: Arc<dyn LlmClient> = Arc::new(OpenAiLlmClient::new(llm_config));
+    
+    let orchestrator = Arc::new(orchestrator::Orchestrator::new(llm_client.clone()));
 
-    let state = Arc::new(AppState {
+    let state = Arc::new(ai_coding_agent_server::AppState {
         db,
         templates,
         orchestrator,
+        llm_client,
     });
 
     let app = Router::new()
@@ -79,6 +90,7 @@ async fn main() -> AppResult<()> {
 
     let addr = format!("{}:{}", args.host, args.port);
     tracing::info!("Starting AI Coding Agent server on {}", addr);
+    tracing::info!("Using API base: {}", args.api_base);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;

@@ -5,6 +5,10 @@ edition = "2021"
 description = "Async AI Coding Agent Server"
 license = "MIT"
 
+[lib]
+name = "ai_coding_agent_server"
+path = "src/lib.rs"
+
 [[bin]]
 name = "ai-coding-agent"
 path = "src/main.rs"
@@ -21,13 +25,15 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "trace"] }
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 async-trait = "0.1"
 futures-util = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }
+async-openai = { version = "0.31.1", features = ["chat-completion"] }
 
 [dev-dependencies]
 tempfile = "3.10"
 reqwest = { version = "0.12", features = ["json"] }
+wiremock = "0.6"
