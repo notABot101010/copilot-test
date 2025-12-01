@@ -24,6 +24,27 @@ pub enum SandboxError {
     PathValidation(String),
 }
 
+impl SandboxError {
+    /// Check if this error is due to Landlock not being supported on the system.
+    /// This is used to distinguish between "feature not available" (graceful degradation)
+    /// vs "configuration error" (should fail).
+    pub fn is_unsupported(&self) -> bool {
+        match self {
+            // Landlock errors from kernel not supporting it
+            SandboxError::Landlock(err) => {
+                // RulesetError variants that indicate unsupported
+                matches!(err, landlock::RulesetError::CreateRuleset { .. })
+            }
+            // Path FD errors when landlock isn't supported
+            SandboxError::PathFd(_) => false,
+            // IO errors could indicate various issues
+            SandboxError::Io(err) => err.kind() == std::io::ErrorKind::Unsupported,
+            // Path validation is always a configuration error
+            SandboxError::PathValidation(_) => false,
+        }
+    }
+}
+
 /// Represents a sandbox configuration for restricting filesystem access
 #[derive(Debug, Clone)]
 pub struct Sandbox {
@@ -255,14 +276,8 @@ pub fn is_safe_path_component(component: &str) -> bool {
     if component.contains('/') || component.contains('\\') {
         return false;
     }
-    // Reject hidden files/directories (those starting with .)
-    // unless they are git directories
-    if component.starts_with('.') && !component.starts_with(".git") {
-        // Allow .git but reject other hidden paths
-        if component != ".git" && !component.starts_with(".git/") {
-            return true; // Actually allow other dotfiles like .gitignore
-        }
-    }
+    // All other components (including dotfiles like .gitignore) are allowed
+    // for repository content. Git-related dotfiles are common and safe.
     true
 }
 

@@ -640,10 +640,15 @@ fn run_sandboxed_git_command(
             match sandbox.apply() {
                 Ok(_) => Ok(()),
                 Err(err) => {
-                    // Log the error but don't fail - allow graceful degradation
-                    // on systems without Landlock support
-                    eprintln!("Warning: Failed to apply sandbox: {}", err);
-                    Ok(())
+                    // Only allow graceful degradation if Landlock is not supported.
+                    // Configuration errors should cause the operation to fail.
+                    if err.is_unsupported() {
+                        // Landlock not available on this kernel - allow operation to proceed
+                        Ok(())
+                    } else {
+                        // Real configuration error - fail the operation
+                        Err(std::io::Error::other(format!("Sandbox error: {}", err)))
+                    }
                 }
             }
         });
