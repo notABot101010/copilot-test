@@ -33,7 +33,7 @@ export function DocumentPage() {
   // Update title input when document changes
   useEffect(() => {
     if (currentDocument.value) {
-      titleInput.value = currentDocument.value.title;
+      titleInput.value = String(currentDocument.value.title);
     }
   }, [currentDocument.value?.title]);
 
@@ -113,7 +113,7 @@ export function DocumentPage() {
                     if (event.key === 'Enter') {
                       handleTitleSubmit();
                     } else if (event.key === 'Escape') {
-                      titleInput.value = currentDocument.value?.title || '';
+                      titleInput.value = String(currentDocument.value?.title || '');
                       isEditingTitle.value = false;
                     }
                   }}
@@ -126,7 +126,7 @@ export function DocumentPage() {
                   onClick={() => isEditingTitle.value = true}
                   title="Click to edit title"
                 >
-                  {currentDocument.value.title}
+                  {String(currentDocument.value.title)}
                 </h1>
               )}
             </Group>
