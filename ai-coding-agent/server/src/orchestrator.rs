@@ -5,6 +5,7 @@ use sqlx::sqlite::SqlitePool;
 use tokio::sync::{broadcast, RwLock};
 use uuid::Uuid;
 
+use crate::llm::{ChatMessage, LlmClient};
 use crate::models::{
     SteerCommand, StreamEvent, StreamEventType, SubAgentType, Task, TaskPriority, TaskStatus,
 };
@@ -14,6 +15,7 @@ use crate::templates::TemplateManager;
 pub struct Orchestrator {
     sessions: RwLock<HashMap<String, SessionState>>,
     subagents: Vec<Box<dyn SubAgent>>,
+    llm_client: Arc<dyn LlmClient>,
 }
 
 struct SessionState {
@@ -31,15 +33,16 @@ enum SessionStatus {
 }
 
 impl Orchestrator {
-    pub fn new() -> Self {
+    pub fn new(llm_client: Arc<dyn LlmClient>) -> Self {
         Self {
             sessions: RwLock::new(HashMap::new()),
             subagents: vec![
-                Box::new(crate::subagents::CodeEditorAgent::new()),
-                Box::new(crate::subagents::TestRunnerAgent::new()),
-                Box::new(crate::subagents::DocumentationAgent::new()),
-                Box::new(crate::subagents::ResearchAgent::new()),
+                Box::new(crate::subagents::CodeEditorAgent::new(llm_client.clone())),
+                Box::new(crate::subagents::TestRunnerAgent::new(llm_client.clone())),
+                Box::new(crate::subagents::DocumentationAgent::new(llm_client.clone())),
+                Box::new(crate::subagents::ResearchAgent::new(llm_client.clone())),
             ],
+            llm_client,
         }
     }
 
@@ -183,7 +186,110 @@ impl Orchestrator {
     }
 
     async fn classify_and_plan(&self, content: &str) -> Vec<Task> {
-        // Simple intent classification (in production, use LLM)
+        // Use LLM for intent classification
+        let classification_prompt = r#"You are an AI task classifier. Analyze the user's request and classify it into tasks.
+
+For each task you identify, output ONE LINE in exactly this format (no other text):
+TASK:<subagent>:<priority>:<description>
+
+Where:
+- subagent is one of: code_editor, test_runner, documentation, research
+- priority is one of: high, medium, low
+- description is a brief task description
+
+Example output:
+TASK:code_editor:high:Implement the user authentication feature
+TASK:test_runner:medium:Write unit tests for authentication
+
+If the request is unclear, default to:
+TASK:code_editor:medium:<user request>
+
+Now classify this request:"#;
+
+        let messages = vec![
+            ChatMessage::system(classification_prompt),
+            ChatMessage::user(content),
+        ];
+
+        let mut tasks = Vec::new();
+
+        match self.llm_client.chat(messages).await {
+            Ok(response) => {
+                // Parse LLM response for tasks with robust error handling
+                for line in response.lines() {
+                    if let Some(task) = self.parse_task_line(line) {
+                        tasks.push(task);
+                    }
+                }
+            }
+            Err(err) => {
+                tracing::warn!("LLM classification failed, using fallback: {}", err);
+            }
+        }
+
+        // Fallback to keyword-based classification if LLM fails or returns no tasks
+        if tasks.is_empty() {
+            tasks = self.classify_with_keywords(content);
+        }
+
+        tasks
+    }
+
+    /// Parse a single task line from LLM response.
+    /// Expected format: TASK:<subagent>:<priority>:<description>
+    fn parse_task_line(&self, line: &str) -> Option<Task> {
+        let line = line.trim();
+        if !line.starts_with("TASK:") {
+            return None;
+        }
+
+        let rest = &line[5..];
+        let parts: Vec<&str> = rest.splitn(3, ':').collect();
+        
+        if parts.len() < 3 {
+            tracing::debug!("Malformed task line (expected 3 parts): {}", line);
+            return None;
+        }
+
+        let subagent = match parts[0].trim().to_lowercase().as_str() {
+            "code_editor" => SubAgentType::CodeEditor,
+            "test_runner" => SubAgentType::TestRunner,
+            "documentation" => SubAgentType::Documentation,
+            "research" => SubAgentType::Research,
+            unknown => {
+                tracing::debug!("Unknown subagent type '{}', defaulting to CodeEditor", unknown);
+                SubAgentType::CodeEditor
+            }
+        };
+
+        let priority = match parts[1].trim().to_lowercase().as_str() {
+            "high" => TaskPriority::High,
+            "low" => TaskPriority::Low,
+            "medium" => TaskPriority::Medium,
+            unknown => {
+                tracing::debug!("Unknown priority '{}', defaulting to Medium", unknown);
+                TaskPriority::Medium
+            }
+        };
+
+        let description = parts[2].trim().to_string();
+        if description.is_empty() {
+            tracing::debug!("Empty task description in line: {}", line);
+            return None;
+        }
+
+        Some(Task {
+            id: Uuid::new_v4().to_string(),
+            session_id: String::new(),
+            subagent,
+            description,
+            priority,
+            status: TaskStatus::Pending,
+            result: None,
+        })
+    }
+
+    fn classify_with_keywords(&self, content: &str) -> Vec<Task> {
         let mut tasks = Vec::new();
         let content_lower = content.to_lowercase();
 
