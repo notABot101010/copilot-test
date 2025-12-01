@@ -14,6 +14,17 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::net::UdpSocket;
 
+/// Maximum iterations for connection establishment loops
+const CONNECTION_MAX_ITERATIONS: i32 = 50;
+/// Maximum iterations for data exchange loops
+const EXCHANGE_MAX_ITERATIONS: i32 = 100;
+/// Maximum iterations for long-running exchange tests
+const EXTENDED_MAX_ITERATIONS: i32 = 200;
+/// Receive buffer size - larger than MTU to handle UDP reassembly
+const RECV_BUF_SIZE: usize = 65535;
+/// Client-initiated bidirectional streams increment by 4 in QUIC
+const STREAM_ID_INCREMENT: u64 = 4;
+
 /// Helper struct for managing test certificates
 struct TestCerts {
     #[allow(dead_code)]
@@ -129,8 +140,8 @@ async fn test_quic_connection_establishment() {
         .await
         .expect("Failed to send to server");
 
-    // Receive at server
-    let mut recv_buf = vec![0u8; 65535];
+    // Receive at server (buffer larger than MTU for UDP reassembly)
+    let mut recv_buf = vec![0u8; RECV_BUF_SIZE];
     let (len, from) = server_socket
         .recv_from(&mut recv_buf)
         .await
@@ -164,12 +175,11 @@ async fn test_quic_connection_establishment() {
 
     // Exchange packets until connection is established
     let mut iterations = 0;
-    const MAX_ITERATIONS: i32 = 50;
 
     while !client_conn.is_established() || !server_conn.is_established() {
         iterations += 1;
-        if iterations > MAX_ITERATIONS {
-            panic!("Connection not established after {} iterations", MAX_ITERATIONS);
+        if iterations > CONNECTION_MAX_ITERATIONS {
+            panic!("Connection not established after {} iterations", CONNECTION_MAX_ITERATIONS);
         }
 
         // Server sends

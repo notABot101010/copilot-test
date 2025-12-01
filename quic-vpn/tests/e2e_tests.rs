@@ -15,6 +15,15 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::net::UdpSocket;
 
+/// Maximum iterations for connection establishment loops
+const CONNECTION_MAX_ITERATIONS: i32 = 100;
+/// Maximum iterations for data exchange loops
+const EXCHANGE_MAX_ITERATIONS: i32 = 200;
+/// Receive buffer size - larger than MTU to handle UDP reassembly
+const RECV_BUF_SIZE: usize = 65535;
+/// Client-initiated bidirectional streams increment by 4 in QUIC
+const STREAM_ID_INCREMENT: u64 = 4;
+
 /// Helper struct for managing test certificates
 struct TestCerts {
     #[allow(dead_code)]
@@ -774,16 +783,16 @@ async fn test_packet_ordering() {
         establish_connection(&certs).await;
 
     let mut out_buf = vec![0u8; MAX_DATAGRAM_SIZE];
-    let mut recv_buf = vec![0u8; 65535];
+    let mut recv_buf = vec![0u8; RECV_BUF_SIZE];
 
-    // Send numbered packets to verify ordering
     // Send numbered packets on separate streams to verify ordering
     let num_packets = 20;
 
     for idx in 0..num_packets {
         let data = format!("{:04}", idx); // Zero-padded number
         let packet = VpnPacket::new_data(Bytes::from(data));
-        let stream_id = (idx as u64) * 4; // Each packet on separate stream
+        // Client-initiated bidirectional streams: 0, 4, 8, 12, etc.
+        let stream_id = (idx as u64) * STREAM_ID_INCREMENT;
         client_conn
             .stream_send(stream_id, &packet.encode(), false)
             .expect("Failed to send");
