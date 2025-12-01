@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --strictPort --port 4000 --host",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@automerge/automerge": "^3.2.0",
@@ -22,10 +24,13 @@
   "devDependencies": {
     "@preact/preset-vite": "^2.10.2",
     "@tailwindcss/vite": "^4.1.17",
+    "@testing-library/preact": "^3.2.4",
     "@types/node": "^24.10.1",
+    "jsdom": "^27.2.0",
     "tailwindcss": "^4.1.17",
     "typescript": "~5.9.3",
     "vite": "^7.2.4",
-    "vite-plugin-wasm": "^3.5.0"
+    "vite-plugin-wasm": "^3.5.0",
+    "vitest": "^4.0.14"
   }
 }
