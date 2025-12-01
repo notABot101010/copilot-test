@@ -391,20 +391,17 @@ Now classify this request:"#;
         Ok(())
     }
 
-    pub fn subscribe(&self, session_id: &str) -> broadcast::Receiver<StreamEvent> {
-        let rt = tokio::runtime::Handle::current();
-        rt.block_on(async {
-            let mut sessions = self.sessions.write().await;
-            let state = sessions.entry(session_id.to_string()).or_insert_with(|| {
-                let (tx, _) = broadcast::channel(100);
-                SessionState {
-                    tasks: Vec::new(),
-                    status: SessionStatus::Idle,
-                    sender: tx,
-                }
-            });
-            state.sender.subscribe()
-        })
+    pub async fn subscribe(&self, session_id: &str) -> broadcast::Receiver<StreamEvent> {
+        let mut sessions = self.sessions.write().await;
+        let state = sessions.entry(session_id.to_string()).or_insert_with(|| {
+            let (tx, _) = broadcast::channel(100);
+            SessionState {
+                tasks: Vec::new(),
+                status: SessionStatus::Idle,
+                sender: tx,
+            }
+        });
+        state.sender.subscribe()
     }
 
     pub fn unsubscribe(&self, _session_id: &str) {

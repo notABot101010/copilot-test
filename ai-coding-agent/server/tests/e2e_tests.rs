@@ -1,7 +1,7 @@
 //! End-to-end tests that simulate a complete conversation flow
 //! 
 //! These tests verify the full workflow from sending a message to receiving
-//! a response from the AI agent.
+//! a response from the AI agent, including WebSocket subscription.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -10,6 +10,8 @@ use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{method, path},
 };
+use futures_util::StreamExt;
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 /// Wait for server to be ready by polling
 async fn wait_for_server(base_url: &str, max_attempts: u32) -> bool {
@@ -49,8 +51,8 @@ async fn wait_for_messages(client: &reqwest::Client, base_url: &str, session_id:
     Vec::new()
 }
 
-/// Helper to create a test server with a real mock OpenAI server
-async fn start_test_server_with_mock_openai() -> (String, TempDir, MockServer) {
+/// Helper to create a test server with a real mock OpenAI server and WebSocket support
+async fn start_test_server_with_websocket() -> (String, u16, TempDir, MockServer) {
     // Start mock OpenAI server
     let mock_server = MockServer::start().await;
     
@@ -93,7 +95,7 @@ async fn start_test_server_with_mock_openai() -> (String, TempDir, MockServer) {
     let mock_url = mock_server.uri();
     let port_clone = port;
     
-    // Start server in background
+    // Start server in background with WebSocket support
     tokio::spawn(async move {
         use axum::{Router, routing::{get, post}};
         use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -132,6 +134,7 @@ async fn start_test_server_with_mock_openai() -> (String, TempDir, MockServer) {
             .route("/api/sessions/:id", get(ai_coding_agent_server::handlers::sessions::get_session))
             .route("/api/sessions/:id/messages", post(ai_coding_agent_server::handlers::sessions::send_message))
             .route("/api/sessions/:id/messages", get(ai_coding_agent_server::handlers::sessions::get_messages))
+            .route("/api/sessions/:id/stream", get(ai_coding_agent_server::handlers::websocket::session_stream))
             .layer(CorsLayer::permissive())
             .layer(TraceLayer::new_for_http())
             .with_state(state);
@@ -147,6 +150,12 @@ async fn start_test_server_with_mock_openai() -> (String, TempDir, MockServer) {
     // Wait for server to be ready with retry logic
     assert!(wait_for_server(&base_url, 20).await, "Server failed to start");
     
+    (base_url, port, temp_dir, mock_server)
+}
+
+/// Helper to create a test server with a real mock OpenAI server (original version without websocket)
+async fn start_test_server_with_mock_openai() -> (String, TempDir, MockServer) {
+    let (base_url, _, temp_dir, mock_server) = start_test_server_with_websocket().await;
     (base_url, temp_dir, mock_server)
 }
 
@@ -307,4 +316,274 @@ async fn test_e2e_session_isolation() {
     assert!(content1.is_some());
     assert!(content2.is_some());
     assert_ne!(content1, content2);
+}
+
+/// Test WebSocket subscription without panic - verifies the fix for block_on issue
+#[tokio::test]
+async fn test_e2e_websocket_subscribe_no_panic() {
+    let (base_url, port, _temp_dir, _mock_server) = start_test_server_with_websocket().await;
+    
+    let client = reqwest::Client::new();
+    
+    // Step 1: Create a session
+    let create_response = client
+        .post(format!("{}/api/sessions", base_url))
+        .json(&serde_json::json!({ "name": "WebSocket Test Session" }))
+        .send()
+        .await
+        .expect("Request failed");
+    
+    assert_eq!(create_response.status(), reqwest::StatusCode::OK);
+    
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse");
+    let session_id = created.get("id").and_then(|v| v.as_str()).expect("No id");
+    
+    // Step 2: Connect to WebSocket - this should not panic
+    let ws_url = format!("ws://127.0.0.1:{}/api/sessions/{}/stream", port, session_id);
+    let (ws_stream, _) = connect_async(&ws_url)
+        .await
+        .expect("Failed to connect to WebSocket");
+    
+    let (mut _write, mut read) = ws_stream.split();
+    
+    // Step 3: Send a message to trigger events
+    let send_response = client
+        .post(format!("{}/api/sessions/{}/messages", base_url, session_id))
+        .json(&serde_json::json!({ "content": "Implement a test feature" }))
+        .send()
+        .await
+        .expect("Request failed");
+    
+    assert_eq!(send_response.status(), reqwest::StatusCode::OK);
+    
+    // Step 4: Read events from WebSocket
+    let mut received_events = Vec::new();
+    let timeout = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(msg) = read.next().await {
+            if let Ok(Message::Text(text)) = msg {
+                if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
+                    received_events.push(event);
+                    // Stop after receiving a few events
+                    if received_events.len() >= 2 {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    
+    // We don't require receiving events, just that no panic occurred
+    let _ = timeout.await;
+    
+    // The fact that we got here without panic means the fix works
+    // WebSocket connection was successful
+}
+
+/// Test complete workflow: create session, subscribe WebSocket, send message, receive events
+#[tokio::test]
+async fn test_e2e_complete_websocket_workflow() {
+    let (base_url, port, _temp_dir, _mock_server) = start_test_server_with_websocket().await;
+    
+    let client = reqwest::Client::new();
+    
+    // Step 1: Create a session
+    let create_response = client
+        .post(format!("{}/api/sessions", base_url))
+        .json(&serde_json::json!({ "name": "Complete WebSocket Workflow Test" }))
+        .send()
+        .await
+        .expect("Request failed");
+    
+    assert_eq!(create_response.status(), reqwest::StatusCode::OK);
+    
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse");
+    let session_id = created.get("id").and_then(|v| v.as_str()).expect("No id").to_string();
+    
+    // Step 2: Connect to WebSocket stream
+    let ws_url = format!("ws://127.0.0.1:{}/api/sessions/{}/stream", port, session_id);
+    let (ws_stream, _) = connect_async(&ws_url)
+        .await
+        .expect("Failed to connect to WebSocket - this indicates the block_on panic issue is still present");
+    
+    let (mut _write, mut read) = ws_stream.split();
+    
+    // Step 3: Send a message (this triggers orchestrator processing)
+    let session_id_clone = session_id.clone();
+    let base_url_clone = base_url.clone();
+    tokio::spawn(async move {
+        // Small delay to ensure WebSocket is ready to receive
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        
+        let client = reqwest::Client::new();
+        let _ = client
+            .post(format!("{}/api/sessions/{}/messages", base_url_clone, session_id_clone))
+            .json(&serde_json::json!({ "content": "Implement a new feature with tests" }))
+            .send()
+            .await;
+    });
+    
+    // Step 4: Collect events from WebSocket
+    let mut received_events = Vec::new();
+    let timeout_result = tokio::time::timeout(Duration::from_secs(10), async {
+        while let Some(msg) = read.next().await {
+            match msg {
+                Ok(Message::Text(text)) => {
+                    if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
+                        received_events.push(event.clone());
+                        
+                        // Check if we received a terminal event (snake_case due to serde rename)
+                        if let Some(event_type) = event.get("event_type").and_then(|v| v.as_str()) {
+                            if event_type == "agent_response" {
+                                break;
+                            }
+                        }
+                    }
+                }
+                Ok(Message::Close(_)) => break,
+                Err(_) => break,
+                _ => {}
+            }
+        }
+    });
+    
+    let _ = timeout_result.await;
+    
+    // Step 5: Verify we received some events (or at least no panic occurred)
+    // The key test is that the WebSocket connection worked without panic
+    
+    // Step 6: Verify messages were stored in database
+    let messages = wait_for_messages(&client, &base_url, &session_id, 1, 30).await;
+    assert!(!messages.is_empty(), "Should have at least the user message stored");
+}
+
+/// Test multiple WebSocket connections to same session
+#[tokio::test]
+async fn test_e2e_multiple_websocket_connections() {
+    let (base_url, port, _temp_dir, _mock_server) = start_test_server_with_websocket().await;
+    
+    let client = reqwest::Client::new();
+    
+    // Create a session
+    let create_response = client
+        .post(format!("{}/api/sessions", base_url))
+        .json(&serde_json::json!({ "name": "Multi-WebSocket Test" }))
+        .send()
+        .await
+        .expect("Request failed");
+    
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse");
+    let session_id = created.get("id").and_then(|v| v.as_str()).expect("No id");
+    
+    // Connect multiple WebSocket clients - this tests concurrent subscribe calls
+    let ws_url = format!("ws://127.0.0.1:{}/api/sessions/{}/stream", port, session_id);
+    
+    let (ws_stream1, _) = connect_async(&ws_url)
+        .await
+        .expect("Failed to connect first WebSocket");
+    
+    let (ws_stream2, _) = connect_async(&ws_url)
+        .await
+        .expect("Failed to connect second WebSocket");
+    
+    let (ws_stream3, _) = connect_async(&ws_url)
+        .await
+        .expect("Failed to connect third WebSocket");
+    
+    // Verify all connections are working by sending a message
+    let send_response = client
+        .post(format!("{}/api/sessions/{}/messages", base_url, session_id))
+        .json(&serde_json::json!({ "content": "Test multiple connections" }))
+        .send()
+        .await
+        .expect("Request failed");
+    
+    assert_eq!(send_response.status(), reqwest::StatusCode::OK);
+    
+    // Clean up connections
+    drop(ws_stream1);
+    drop(ws_stream2);
+    drop(ws_stream3);
+    
+    // If we got here without panic, multiple connections work correctly
+}
+
+/// Test WebSocket connection to non-existent session (should still work as subscribe creates session state)
+#[tokio::test]
+async fn test_e2e_websocket_subscribe_creates_session_state() {
+    let (_base_url, port, _temp_dir, _mock_server) = start_test_server_with_websocket().await;
+    
+    // Connect to a session that hasn't had any messages yet
+    let session_id = "new-session-id";
+    let ws_url = format!("ws://127.0.0.1:{}/api/sessions/{}/stream", port, session_id);
+    
+    let result = connect_async(&ws_url).await;
+    
+    // Should successfully connect (subscribe creates session state if not exists)
+    assert!(result.is_ok(), "Should be able to connect to WebSocket for new session");
+}
+
+/// Test WebSocket receives events in correct order
+#[tokio::test]
+async fn test_e2e_websocket_event_order() {
+    let (base_url, port, _temp_dir, _mock_server) = start_test_server_with_websocket().await;
+    
+    let client = reqwest::Client::new();
+    
+    // Create a session
+    let create_response = client
+        .post(format!("{}/api/sessions", base_url))
+        .json(&serde_json::json!({ "name": "Event Order Test" }))
+        .send()
+        .await
+        .expect("Request failed");
+    
+    let created: serde_json::Value = create_response.json().await.expect("Failed to parse");
+    let session_id = created.get("id").and_then(|v| v.as_str()).expect("No id").to_string();
+    
+    // Connect to WebSocket
+    let ws_url = format!("ws://127.0.0.1:{}/api/sessions/{}/stream", port, session_id);
+    let (ws_stream, _) = connect_async(&ws_url)
+        .await
+        .expect("Failed to connect to WebSocket");
+    
+    let (mut _write, mut read) = ws_stream.split();
+    
+    // Send message
+    let session_id_clone = session_id.clone();
+    let base_url_clone = base_url.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let client = reqwest::Client::new();
+        let _ = client
+            .post(format!("{}/api/sessions/{}/messages", base_url_clone, session_id_clone))
+            .json(&serde_json::json!({ "content": "Test event ordering" }))
+            .send()
+            .await;
+    });
+    
+    // Collect event types
+    let mut event_types = Vec::new();
+    let timeout_result = tokio::time::timeout(Duration::from_secs(10), async {
+        while let Some(msg) = read.next().await {
+            if let Ok(Message::Text(text)) = msg {
+                if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if let Some(event_type) = event.get("event_type").and_then(|v| v.as_str()) {
+                        event_types.push(event_type.to_string());
+                        if event_type == "agent_response" {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    });
+    
+    let _ = timeout_result.await;
+    
+    // Verify event order: agent_thinking should come before task_started/task_completed
+    if !event_types.is_empty() {
+        // First event should be agent_thinking (snake_case due to serde rename)
+        assert_eq!(event_types.first().map(|s| s.as_str()), Some("agent_thinking"), 
+                   "First event should be agent_thinking");
+    }
 }

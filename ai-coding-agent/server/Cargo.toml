@@ -37,3 +37,4 @@ async-openai = { version = "0.31.1", features = ["chat-completion"] }
 tempfile = "3.10"
 reqwest = { version = "0.12", features = ["json"] }
 wiremock = "0.6"
+tokio-tungstenite = "0.24"
