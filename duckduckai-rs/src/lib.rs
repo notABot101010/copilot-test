@@ -4,7 +4,7 @@ use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
 
 /// Default model for DuckDuckGo AI chat
-pub const DEFAULT_MODEL: &str = "gpt5-mini";
+pub const DEFAULT_MODEL: &str = "gpt-5-mini";
 
 pub mod js_runtime;
 pub mod server;
