@@ -22,7 +22,7 @@ async fn handle_socket(socket: WebSocket, session_id: String, state: Arc<AppStat
     let (mut sender, mut receiver) = socket.split();
 
     // Subscribe to session events
-    let mut rx = state.orchestrator.subscribe(&session_id);
+    let mut rx = state.orchestrator.subscribe(&session_id).await;
 
     // Task to send events to client
     let send_task = tokio::spawn(async move {
