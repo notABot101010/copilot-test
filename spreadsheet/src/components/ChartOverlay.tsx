@@ -4,7 +4,8 @@ import type { ChartData } from '../types/chart';
 import { MIN_CHART_WIDTH, MIN_CHART_HEIGHT } from '../types/chart';
 import type { CellData } from '../types/spreadsheet';
 import { ChartRenderer } from './ChartRenderer';
-import { updateChartPosition, updateChartSize, deleteChart } from '../store/spreadsheetStore';
+import { updateChartPosition, updateChartSize, deleteChart, updateChartTitle } from '../store/spreadsheetStore';
+import { EditChartTitleModal } from './EditChartTitleModal';
 
 interface ChartOverlayProps {
   chart: ChartData;
@@ -25,6 +26,7 @@ export function ChartOverlay({
 }: ChartOverlayProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [isEditTitleModalOpen, setIsEditTitleModalOpen] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0, chartX: 0, chartY: 0 });
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
   const chartRef = useRef<HTMLDivElement>(null);
@@ -99,10 +101,22 @@ export function ChartOverlay({
   }, [chart.id, chart.size.width, chart.size.height]);
 
   // Handle delete
-  const handleDelete = useCallback((e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleDelete = useCallback((event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
     deleteChart(chart.id);
+  }, [chart.id]);
+
+  // Handle edit title
+  const handleEditTitle = useCallback((event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsEditTitleModalOpen(true);
+  }, []);
+
+  // Handle save title
+  const handleSaveTitle = useCallback((newTitle: string) => {
+    updateChartTitle(chart.id, newTitle);
   }, [chart.id]);
 
   // Calculate position accounting for scroll
@@ -136,10 +150,20 @@ export function ChartOverlay({
     >
       {/* Title bar */}
       <div className="flex items-center justify-between px-3 py-2 bg-gray-700 rounded-t-lg border-b border-gray-600">
-        <Text size="sm" fw={500} className="text-white truncate flex-1">
+        <Text size="sm" fw={500} className="text-white truncate flex-1" data-testid="chart-title">
           {chart.title}
         </Text>
         <div className="chart-actions flex gap-1 ml-2">
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            color="blue"
+            onClick={handleEditTitle}
+            title="Edit chart title"
+            data-testid="edit-chart-title-button"
+          >
+            <span className="text-xs">✎</span>
+          </ActionIcon>
           <ActionIcon
             variant="subtle"
             size="sm"
@@ -169,6 +193,14 @@ export function ChartOverlay({
         style={{
           background: 'linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.3) 50%)',
         }}
+      />
+
+      {/* Edit Title Modal */}
+      <EditChartTitleModal
+        opened={isEditTitleModalOpen}
+        onClose={() => setIsEditTitleModalOpen(false)}
+        onSubmit={handleSaveTitle}
+        currentTitle={chart.title}
       />
     </div>
   );
