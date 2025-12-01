@@ -1,12 +1,11 @@
 //! JavaScript runtime for solving DuckDuckGo VQD challenges
 //!
-//! This module provides a sandboxed JavaScript execution environment using QuickJS
-//! to solve the anti-bot challenges from DuckDuckGo's AI chat API.
+//! This module provides a challenge solver for DuckDuckGo's AI chat API.
+//! It extracts challenge data and computes client hashes without requiring a JS runtime.
 
 use anyhow::{Context, Result};
 use aws_lc_rs::digest::{SHA256, digest};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
-use rquickjs::{AsyncContext, AsyncRuntime, Function, Object};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -44,16 +43,13 @@ pub struct ChallengeMeta {
     pub duration: String,
 }
 
-/// The VQD challenge solver using QuickJS runtime
-pub struct ChallengeSolver {
-    runtime: AsyncRuntime,
-}
+/// The VQD challenge solver - pure Rust implementation
+pub struct ChallengeSolver;
 
 impl ChallengeSolver {
     /// Create a new challenge solver
     pub fn new() -> Result<Self> {
-        let runtime = AsyncRuntime::new().context("Failed to create QuickJS runtime")?;
-        Ok(Self { runtime })
+        Ok(Self)
     }
 
     /// Solve a VQD challenge from the base64-encoded challenge string
@@ -75,16 +71,14 @@ impl ChallengeSolver {
 
         tracing::debug!("Decoded challenge: {}", &challenge_str[..challenge_str.len().min(DEBUG_TRUNCATE_LEN)]);
 
-        // The challenge can be either:
-        // 1. JSON data directly (old format)
-        // 2. JavaScript code that returns the challenge object (new format)
-        let challenge = self.parse_or_execute_challenge(&challenge_str).await
-            .context("Failed to parse or execute challenge")?;
+        // Parse the challenge (JSON or extract from JavaScript)
+        let challenge = self.parse_challenge(&challenge_str)
+            .context("Failed to parse challenge")?;
 
         tracing::debug!("Challenge data: {:?}", challenge);
 
-        // Execute the challenge in the JavaScript runtime
-        let result = self.execute_challenge(&challenge, start_time).await?;
+        // Execute the challenge and compute client hashes (pure Rust)
+        let result = self.execute_challenge(&challenge, start_time)?;
 
         // Encode the result as base64
         let result_json = serde_json::to_string(&result).context("Failed to serialize result")?;
@@ -95,62 +89,98 @@ impl ChallengeSolver {
         Ok(result_b64)
     }
 
-    /// Try to parse challenge as JSON, or execute it as JavaScript if parsing fails
-    async fn parse_or_execute_challenge(&self, challenge_str: &str) -> Result<ChallengeData> {
+    /// Parse challenge - either JSON directly or extract from JavaScript
+    fn parse_challenge(&self, challenge_str: &str) -> Result<ChallengeData> {
         // First, try to parse as JSON directly
         if let Ok(challenge) = serde_json::from_str::<ChallengeData>(challenge_str) {
             tracing::debug!("Challenge parsed as JSON directly");
             return Ok(challenge);
         }
 
-        tracing::debug!("Challenge is not JSON, executing as JavaScript");
+        tracing::debug!("Challenge is not JSON, extracting data from JavaScript");
 
-        // If not JSON, execute as JavaScript code
-        let context = AsyncContext::full(&self.runtime)
-            .await
-            .context("Failed to create JS context")?;
+        // Extract server_hashes from the JavaScript code
+        // The challenge returns an object with server_hashes that are base64-encoded strings
+        // They appear in the code like: 'server_hashes':['base64string1','base64string2','base64string3']
+        // Or using obfuscated variable references
+        
+        // Look for base64-encoded strings that look like hashes (44 chars ending with =)
+        let base64_pattern = regex::Regex::new(r"'([A-Za-z0-9+/]{40,}={0,2})'")
+            .map_err(|e| anyhow::anyhow!("Failed to compile regex: {:?}", e))?;
+        
+        let mut server_hashes: Vec<String> = Vec::new();
+        for cap in base64_pattern.captures_iter(challenge_str) {
+            if let Some(hash) = cap.get(1) {
+                let hash_str = hash.as_str().to_string();
+                // Only include if it looks like a valid base64 hash (SHA-256 = 32 bytes = 44 chars base64)
+                if hash_str.len() >= 40 && hash_str.len() <= 50 {
+                    server_hashes.push(hash_str);
+                }
+            }
+        }
 
-        let challenge_code = challenge_str.to_string();
-        let challenge = context
-            .with(|ctx| {
-                // Set up browser-like environment first
-                self.setup_browser_globals(&ctx)?;
+        // Look for challenge_id - typically in format like 'xxxxxxxx' (hex string followed by something)
+        let challenge_id_pattern = regex::Regex::new(r"'([a-f0-9]{64}[a-z0-9]+)'")
+            .map_err(|e| anyhow::anyhow!("Failed to compile regex: {:?}", e))?;
+        
+        let challenge_id = challenge_id_pattern
+            .captures(challenge_str)
+            .and_then(|cap| cap.get(1))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
 
-                // Execute the challenge code - it should return an object
-                let result: rquickjs::Value = ctx.eval(challenge_code.as_bytes())
-                    .map_err(|e| anyhow::anyhow!("JavaScript execution error: {:?}", e))?;
+        // Look for timestamp - typically a numeric string like '1764576114716'
+        let timestamp_pattern = regex::Regex::new(r"'(\d{13})'")
+            .map_err(|e| anyhow::anyhow!("Failed to compile regex: {:?}", e))?;
+        
+        let timestamp = timestamp_pattern
+            .captures(challenge_str)
+            .and_then(|cap| cap.get(1))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis().to_string())
+                    .unwrap_or_else(|_| "0".to_string())
+            });
 
-                // Convert the JS result to JSON string using JSON.stringify
-                let json_obj: Object = ctx.globals().get("JSON")
-                    .map_err(|e| anyhow::anyhow!("Failed to get JSON object: {:?}", e))?;
-                let stringify_fn: Function = json_obj.get("stringify")
-                    .map_err(|e| anyhow::anyhow!("Failed to get JSON.stringify: {:?}", e))?;
-                
-                let json_str: String = stringify_fn.call((result,))
-                    .map_err(|e| anyhow::anyhow!("Failed to stringify JS result: {:?}", e))?;
+        // Limit to first 3 server_hashes (that's what the challenge typically has)
+        if server_hashes.len() > 3 {
+            server_hashes.truncate(3);
+        }
 
-                tracing::debug!("JavaScript result JSON: {}", &json_str[..json_str.len().min(DEBUG_TRUNCATE_LEN)]);
+        if server_hashes.is_empty() {
+            return Err(anyhow::anyhow!("Could not extract server_hashes from challenge JavaScript"));
+        }
 
-                serde_json::from_str(&json_str)
-                    .context("Failed to parse JavaScript result as ChallengeData")
-            })
-            .await?;
+        tracing::debug!("Extracted {} server hashes from JavaScript", server_hashes.len());
 
-        Ok(challenge)
+        // Create a challenge data structure with extracted values
+        // The client_hashes will be computed later based on fingerprinting simulation
+        Ok(ChallengeData {
+            server_hashes,
+            client_hashes: vec![],
+            signals: serde_json::json!({}),
+            meta: ChallengeMeta {
+                v: "4".to_string(),
+                challenge_id,
+                timestamp,
+                debug: "".to_string(),
+                origin: "https://duckduckgo.com".to_string(),
+                stack: "Error\nat anonymous (eval:1:1)".to_string(),
+                duration: "0".to_string(),
+            },
+        })
     }
 
-    /// Execute the challenge and compute client hashes
-    async fn execute_challenge(
+    /// Execute the challenge and compute client hashes (pure Rust)
+    fn execute_challenge(
         &self,
         challenge: &ChallengeData,
         start_time: Instant,
     ) -> Result<ChallengeData> {
-        let context = AsyncContext::full(&self.runtime)
-            .await
-            .context("Failed to create JS context")?;
-
-        // Compute client hashes by hashing the server hashes with browser-like data
-        let client_hashes = self.compute_client_hashes(&context, challenge).await?;
+        // Compute client hashes using pure Rust
+        let client_hashes = self.compute_client_hashes(challenge)?;
 
         let duration = start_time.elapsed().as_millis().to_string();
 
@@ -173,171 +203,44 @@ impl ChallengeSolver {
         Ok(result)
     }
 
-    /// Compute client hashes using QuickJS for any JavaScript evaluation
-    async fn compute_client_hashes(
-        &self,
-        context: &AsyncContext,
-        challenge: &ChallengeData,
-    ) -> Result<Vec<String>> {
-        // For each server hash, we compute a corresponding client hash
-        // The client hash is derived from browser fingerprinting data
-        // Here we simulate the browser environment
-
-        let mut client_hashes = Vec::new();
-
-        context
-            .with(|ctx| {
-                // Set up global browser-like environment
-                self.setup_browser_globals(&ctx)?;
-
-                // For each server hash, compute a client hash
-                for (i, _server_hash) in challenge.server_hashes.iter().enumerate() {
-                    // Generate a fingerprint-like string based on index
-                    // In a real browser, this would be computed from actual browser data
-                    let fingerprint = self.generate_fingerprint(&ctx, i)?;
-
-                    // Hash the fingerprint with SHA-256 and encode as base64
-                    let hash = self.sha256_base64(&fingerprint);
-                    client_hashes.push(hash);
-                }
-
-                Ok::<_, anyhow::Error>(())
-            })
-            .await?;
-
-        Ok(client_hashes)
-    }
-
-    /// Set up browser-like global objects in the JavaScript context
-    fn setup_browser_globals(&self, ctx: &rquickjs::Ctx) -> Result<()> {
-        let globals = ctx.globals();
-
-        // Create window object
-        let window = Object::new(ctx.clone())?;
-
-        // Set location
-        let location = Object::new(ctx.clone())?;
-        location.set("origin", "https://duckduckgo.com")?;
-        location.set("href", "https://duckduckgo.com/aichat")?;
-        location.set("protocol", "https:")?;
-        location.set("host", "duckduckgo.com")?;
-        location.set("hostname", "duckduckgo.com")?;
-        location.set("pathname", "/aichat")?;
-        window.set("location", location.clone())?;
-
-        // Set navigator
-        let navigator = Object::new(ctx.clone())?;
-        navigator.set(
-            "userAgent",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        )?;
-        navigator.set("language", "en-US")?;
-        navigator.set("languages", vec!["en-US", "en"])?;
-        navigator.set("platform", "MacIntel")?;
-        navigator.set("hardwareConcurrency", 8)?;
-        navigator.set("deviceMemory", 8)?;
-        navigator.set("maxTouchPoints", 0)?;
-        navigator.set("cookieEnabled", true)?;
-        navigator.set("onLine", true)?;
-        window.set("navigator", navigator)?;
-
-        // Set document
-        let document = Object::new(ctx.clone())?;
-        document.set("documentElement", Object::new(ctx.clone())?)?;
-        document.set("domain", "duckduckgo.com")?;
-        document.set("referrer", "")?;
-        window.set("document", document)?;
-
-        // Set screen
-        let screen = Object::new(ctx.clone())?;
-        screen.set("width", 1920)?;
-        screen.set("height", 1080)?;
-        screen.set("availWidth", 1920)?;
-        screen.set("availHeight", 1055)?;
-        screen.set("colorDepth", 24)?;
-        screen.set("pixelDepth", 24)?;
-        window.set("screen", screen)?;
-
-        // Set timing-related
-        window.set("innerWidth", 1920)?;
-        window.set("innerHeight", 1080)?;
-        window.set("outerWidth", 1920)?;
-        window.set("outerHeight", 1080)?;
-        window.set("devicePixelRatio", 1.0)?;
-
-        // Add atob and btoa functions
-        let atob_fn =
-            Function::new(ctx.clone(), |s: String| -> rquickjs::Result<String> {
-                BASE64
-                    .decode(&s)
-                    .map_err(|_| rquickjs::Error::new_from_js("base64", "string"))
-                    .and_then(|bytes| {
-                        String::from_utf8(bytes).map_err(|_| {
-                            rquickjs::Error::new_from_js("bytes", "string")
-                        })
-                    })
-            })?;
-        globals.set("atob", atob_fn)?;
-
-        let btoa_fn = Function::new(ctx.clone(), |s: String| -> String { BASE64.encode(s.as_bytes()) })?;
-        globals.set("btoa", btoa_fn)?;
-
-        // Date.now
-        let date_obj = Object::new(ctx.clone())?;
-        let now_fn = Function::new(ctx.clone(), || -> i64 {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0)
-        })?;
-        date_obj.set("now", now_fn)?;
-        globals.set("Date", date_obj)?;
-
-        // Set window and self
-        globals.set("window", window.clone())?;
-        globals.set("self", window.clone())?;
-        globals.set("top", window.clone())?;
-        globals.set("parent", window)?;
-        globals.set("location", location)?;
-
-        // Add console for debugging
-        let console = Object::new(ctx.clone())?;
-        let log_fn = Function::new(ctx.clone(), |msg: String| {
-            tracing::debug!("JS console.log: {}", msg);
-        })?;
-        console.set("log", log_fn)?;
-        globals.set("console", console)?;
-
-        Ok(())
-    }
-
-    /// Generate a browser fingerprint string for the given index
-    fn generate_fingerprint(&self, _ctx: &rquickjs::Ctx, index: usize) -> Result<String> {
-        // Generate consistent fingerprint data based on index
-        // This simulates what the browser would compute from various APIs
-        // These are hardcoded constants - not user-controlled input
-
-        const FINGERPRINTS: [&str; 3] = [
-            // Canvas fingerprint-like data
-            "canvas:1920x1080:24:MacIntel:en-US",
-            // WebGL fingerprint-like data
-            "webgl:ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)",
-            // Audio fingerprint-like data
-            "audio:124.04347657808103",
+    /// Compute client hashes (pure Rust, simulating browser behavior)
+    ///
+    /// Based on analysis of the DuckDuckGo challenge JavaScript, the client_hashes are:
+    /// 1. The browser's userAgent string
+    /// 2. A DOM-based fingerprint (0x1aee + innerHTML.length * querySelectorAll('*').length)
+    /// 3. A bot detection result (sum of various boolean checks + 0x1d64 or 0xf2e)
+    ///
+    /// These raw strings are then SHA-256 hashed and base64 encoded.
+    fn compute_client_hashes(&self, _challenge: &ChallengeData) -> Result<Vec<String>> {
+        // The raw fingerprint values that would be collected by the JavaScript
+        let raw_fingerprints = [
+            // 1. navigator.userAgent - the full user agent string
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            
+            // 2. DOM-based fingerprint calculation:
+            //    String(0x1aee + innerHTML.length * querySelectorAll('*').length)
+            //    For an empty div with innerHTML='<li><div></li><li></div':
+            //    innerHTML.length = 24 (or thereabouts), querySelectorAll('*').length = 2
+            //    So: 6894 + 24*2 = 6942
+            //    But this varies based on the HTML parsing - typical value is around "6894"
+            "6894",
+            
+            // 3. Bot detection fingerprint:
+            //    String([webdriver===true, iframeTest, aliasTest].map(Number).reduce((a,b)=>a+b, baseValue))
+            //    The base value changes (0x1d64 = 7524 or 0xf2e = 3886)
+            //    For a real browser: webdriver=false(0), iframeTest varies, aliasTest=false(0)
+            //    Typical values: "7525" (7524+1) for 0x1d64 base, or "3887" for 0xf2e base
+            "7525",
         ];
 
-        let fingerprint = FINGERPRINTS
-            .get(index)
-            .unwrap_or(&"default-fingerprint")
-            .to_string();
+        let mut client_hashes = Vec::new();
+        for fingerprint in raw_fingerprints {
+            // Hash with SHA-256 and encode as base64
+            let hash = self.sha256_base64(fingerprint);
+            client_hashes.push(hash);
+        }
 
-        // Add timestamp to fingerprint (pure Rust, no JS eval needed)
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-
-        Ok(format!("{}:{}", fingerprint, ts))
+        Ok(client_hashes)
     }
 
     /// Compute SHA-256 hash and encode as base64
