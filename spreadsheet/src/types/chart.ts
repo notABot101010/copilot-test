@@ -57,5 +57,5 @@ export const CHART_TYPE_LABELS: Record<ChartType, string> = {
 };
 
 export function generateChartId(): string {
-  return `chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return `chart-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 }

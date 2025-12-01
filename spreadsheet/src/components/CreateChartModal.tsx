@@ -77,21 +77,25 @@ export function CreateChartModal({ opened, onClose, onSubmit }: CreateChartModal
         />
 
         <TextInput
-          label="Labels Range"
+          label={chartType === 'scatter' ? 'Y Values Range' : 'Labels Range'}
           value={labelsRange}
           onChange={(e: Event) => setLabelsRange((e.target as HTMLInputElement).value)}
           placeholder="e.g., A1:A10"
-          description="Cell range for category labels (e.g., A1:A10)"
+          description={
+            chartType === 'scatter'
+              ? 'Cell range for Y axis values'
+              : 'Cell range for category labels (e.g., A1:A10)'
+          }
         />
 
         <TextInput
-          label="Data Range"
+          label={chartType === 'scatter' ? 'X Values Range' : 'Data Range'}
           value={dataRange}
           onChange={(e: Event) => setDataRange((e.target as HTMLInputElement).value)}
           placeholder="e.g., B1:B10"
           description={
             chartType === 'scatter'
-              ? 'For scatter: X values range (Y values will be from labels range)'
+              ? 'Cell range for X axis values'
               : chartType === 'heatmap'
               ? 'Full data range for heatmap (e.g., A1:E5)'
               : 'Cell range for data values'
