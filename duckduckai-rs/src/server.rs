@@ -112,18 +112,23 @@ async fn handle_chat_completion(
         return Err((StatusCode::UNAUTHORIZED, "Invalid API key".to_string()));
     }
 
-    // Extract the last user message
-    let user_message = request
+    // Validate that we have at least one message
+    if request.messages.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "No messages provided".to_string(),
+        ));
+    }
+
+    // Convert OpenAI-format messages to DuckDuckGo ChatMessage format
+    let messages: Vec<crate::ChatMessage> = request
         .messages
         .iter()
-        .rev()
-        .find(|msg| msg.role == "user")
-        .ok_or_else(|| {
-            (
-                StatusCode::BAD_REQUEST,
-                "No user message found".to_string(),
-            )
-        })?;
+        .map(|msg| crate::ChatMessage {
+            role: msg.role.clone(),
+            content: msg.content.clone(),
+        })
+        .collect();
 
     let model = request
         .model
@@ -133,11 +138,11 @@ async fn handle_chat_completion(
 
     if request.stream {
         // Streaming response
-        let stream = create_streaming_response(state.client.clone(), user_message.content.clone(), model);
+        let stream = create_streaming_response(state.client.clone(), messages, model);
         Ok(Sse::new(stream).into_response())
     } else {
         // Non-streaming response
-        let response = create_non_streaming_response(state.client.clone(), user_message.content.clone(), model)
+        let response = create_non_streaming_response(state.client.clone(), messages, model)
             .await
             .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
 
@@ -147,14 +152,14 @@ async fn handle_chat_completion(
 
 async fn create_non_streaming_response(
     client: Arc<Mutex<DuckDuckGoClient>>,
-    message: String,
+    messages: Vec<crate::ChatMessage>,
     model: String,
 ) -> Result<ChatCompletionResponse> {
     let model_for_response = model.clone();
     
     let content = {
         let mut client = client.lock().await;
-        client.chat(&message, Some(&model)).await?
+        client.chat_with_messages(messages, Some(&model)).await?
     };
 
     let id = format!("chatcmpl-{}", Uuid::new_v4());
@@ -181,7 +186,7 @@ async fn create_non_streaming_response(
 
 fn create_streaming_response(
     client: Arc<Mutex<DuckDuckGoClient>>,
-    message: String,
+    messages: Vec<crate::ChatMessage>,
     model: String,
 ) -> impl Stream<Item = Result<Event, anyhow::Error>> {
     let (tx, mut rx) = mpsc::channel(100);
@@ -222,7 +227,7 @@ fn create_streaming_response(
         {
             let mut client = client.lock().await;
             let result = client
-                .chat_stream(&message, Some(&model), move |chunk| {
+                .chat_stream_with_messages(messages, Some(&model), move |chunk| {
                     let chunk_data = ChatCompletionChunk {
                         id: id_for_closure.clone(),
                         object: "chat.completion.chunk".to_string(),

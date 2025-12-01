@@ -392,6 +392,250 @@ impl DuckDuckGoClient {
             "Failed to complete streaming chat request after retries"
         ))
     }
+
+    /// Chat with the AI using a list of messages for conversation history.
+    /// This allows maintaining context across multiple turns of conversation.
+    pub async fn chat_with_messages(
+        &mut self,
+        messages: Vec<ChatMessage>,
+        model: Option<&str>,
+    ) -> Result<String> {
+        let model_str = model.unwrap_or(DEFAULT_MODEL).to_string();
+        
+        // Retry logic for VQD token refresh
+        for attempt in 0..3 {
+            if attempt > 0 {
+                tracing::debug!("Retry attempt {} after VQD refresh", attempt);
+            }
+
+            // Ensure we have a VQD token
+            if self.vqd.is_none() {
+                self.fetch_vqd().await?;
+            }
+
+            let vqd = self.vqd.as_ref().unwrap().clone();
+
+            let request = ChatRequest {
+                model: model_str.clone(),
+                metadata: Metadata {
+                    tool_choice: ToolChoice {
+                        news_search: false,
+                        videos_search: false,
+                        local_search: false,
+                        weather_forecast: false,
+                    },
+                },
+                messages: messages.clone(),
+                can_use_tools: true,
+                can_use_approx_location: true,
+            };
+
+            tracing::debug!(
+                "Sending chat request with {} messages, model: {}",
+                request.messages.len(),
+                request.model
+            );
+
+            let headers = self.build_headers(&vqd)?;
+
+            let response = self
+                .client
+                .post(CHAT_URL)
+                .headers(headers)
+                .json(&request)
+                .send()
+                .await
+                .context("Failed to send chat request")?;
+
+            let status = response.status();
+
+            if status == 418 || status == 429 {
+                let body = response.text().await.unwrap_or_default();
+                tracing::warn!("Received status {} with body: {}", status, body);
+                self.fetch_vqd().await?;
+                if attempt < 2 {
+                    continue; // Retry
+                }
+                return Err(anyhow!("VQD token expired or rate limited after retries"));
+            }
+
+            if !status.is_success() {
+                return Err(anyhow!("Chat endpoint returned {}", status));
+            }
+
+            // Parse SSE stream
+            let mut stream = response.bytes_stream();
+            let mut buffer = String::new();
+            let mut full_response = String::new();
+
+            while let Some(chunk_result) = stream.next().await {
+                match chunk_result {
+                    Ok(chunk) => {
+                        let text = String::from_utf8_lossy(&chunk);
+                        buffer.push_str(&text);
+
+                        // Process complete SSE events
+                        while let Some(event_end) = buffer.find("\n\n") {
+                            let event = buffer[..event_end].to_string();
+                            buffer.drain(..event_end + 2);
+
+                            // Parse SSE event
+                            for line in event.lines() {
+                                if let Some(data) = line.strip_prefix("data: ") {
+                                    if data == "[DONE]" {
+                                        return Ok(full_response);
+                                    }
+
+                                    if let Ok(json) =
+                                        serde_json::from_str::<serde_json::Value>(data)
+                                    {
+                                        if let Some(message) = json.get("message") {
+                                            if let Some(content) = message.as_str() {
+                                                full_response.push_str(content);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        tracing::warn!("Stream error: {}", err);
+                        break;
+                    }
+                }
+            }
+
+            return Ok(full_response);
+        }
+
+        Err(anyhow!("Failed to complete chat request after retries"))
+    }
+
+    /// Stream chat responses using a list of messages for conversation history.
+    /// This allows maintaining context across multiple turns of conversation.
+    pub async fn chat_stream_with_messages<F>(
+        &mut self,
+        messages: Vec<ChatMessage>,
+        model: Option<&str>,
+        mut callback: F,
+    ) -> Result<()>
+    where
+        F: FnMut(&str),
+    {
+        let model_str = model.unwrap_or(DEFAULT_MODEL).to_string();
+        
+        // Retry logic for VQD token refresh
+        for attempt in 0..3 {
+            if attempt > 0 {
+                tracing::debug!("Retry attempt {} after VQD refresh", attempt);
+            }
+
+            // Ensure we have a VQD token
+            if self.vqd.is_none() {
+                self.fetch_vqd().await?;
+            }
+
+            let vqd = self.vqd.as_ref().unwrap().clone();
+
+            let request = ChatRequest {
+                model: model_str.clone(),
+                metadata: Metadata {
+                    tool_choice: ToolChoice {
+                        news_search: false,
+                        videos_search: false,
+                        local_search: false,
+                        weather_forecast: false,
+                    },
+                },
+                messages: messages.clone(),
+                can_use_tools: true,
+                can_use_approx_location: true,
+            };
+
+            tracing::debug!(
+                "Sending streaming chat request with {} messages, model: {}",
+                request.messages.len(),
+                request.model
+            );
+
+            let headers = self.build_headers(&vqd)?;
+
+            let response = self
+                .client
+                .post(CHAT_URL)
+                .headers(headers)
+                .json(&request)
+                .send()
+                .await
+                .context("Failed to send chat request")?;
+
+            let status = response.status();
+
+            if status == 418 || status == 429 {
+                tracing::warn!("Received status {}, refreshing VQD token", status);
+                self.fetch_vqd().await?;
+                if attempt < 2 {
+                    // Clone messages for next retry - but we can't easily do this
+                    // with the callback pattern, so just continue the loop
+                    continue;
+                }
+                return Err(anyhow!("VQD token expired or rate limited after retries"));
+            }
+
+            if !status.is_success() {
+                return Err(anyhow!("Chat endpoint returned {}", status));
+            }
+
+            // Parse SSE stream
+            let mut stream = response.bytes_stream();
+            let mut buffer = String::new();
+
+            while let Some(chunk_result) = stream.next().await {
+                match chunk_result {
+                    Ok(chunk) => {
+                        let text = String::from_utf8_lossy(&chunk);
+                        buffer.push_str(&text);
+
+                        // Process complete SSE events
+                        while let Some(event_end) = buffer.find("\n\n") {
+                            let event = buffer[..event_end].to_string();
+                            buffer.drain(..event_end + 2);
+
+                            // Parse SSE event
+                            for line in event.lines() {
+                                if let Some(data) = line.strip_prefix("data: ") {
+                                    if data == "[DONE]" {
+                                        return Ok(());
+                                    }
+
+                                    if let Ok(json) =
+                                        serde_json::from_str::<serde_json::Value>(data)
+                                    {
+                                        if let Some(message) = json.get("message") {
+                                            if let Some(content) = message.as_str() {
+                                                callback(content);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        tracing::warn!("Stream error: {}", err);
+                        break;
+                    }
+                }
+            }
+
+            return Ok(());
+        }
+
+        Err(anyhow!(
+            "Failed to complete streaming chat request after retries"
+        ))
+    }
 }
 
 impl Default for DuckDuckGoClient {
