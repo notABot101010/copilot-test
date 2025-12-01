@@ -8,6 +8,7 @@ import {
   closeDocument, 
   updateDocumentContent, 
   updateDocumentTitle,
+
 } from '../store/documentStore';
 
 export function DocumentPage() {
@@ -16,8 +17,8 @@ export function DocumentPage() {
   const documentId = route.value.params?.id as string;
   
   // Create local document state - this is scoped to this component instance
-  const documentState = useMemo(() => createDocumentState(), []);
-  
+  const documentState = useMemo(() => createDocumentState(), []);  
+
   const isEditingTitle = useSignal(false);
   const titleInput = useSignal('');
   const lastSyncedContent = useSignal('');
@@ -26,7 +27,7 @@ export function DocumentPage() {
     if (documentId) {
       loadDocument(documentId, documentState);
     }
-    
+
     return () => {
       closeDocument(documentState);
     };
@@ -53,7 +54,7 @@ export function DocumentPage() {
   const handleContentChange = (event: Event) => {
     const target = event.target as HTMLTextAreaElement;
     const newContent = target.value;
-    
+
     // Only update if content actually changed
     if (newContent !== lastSyncedContent.value) {
       lastSyncedContent.value = newContent;
@@ -96,14 +97,16 @@ export function DocumentPage() {
         <Container size="lg" className="py-4">
           <Group justify="space-between" align="center">
             <Group align="center" gap="md">
-              <ActionIcon
-                variant="subtle"
-                onClick={handleGoBack}
-                className="text-gray-400 hover:text-white"
-              >
-                <span className="text-xl">←</span>
-              </ActionIcon>
-              
+              <a href="/">
+                <ActionIcon
+                  variant="subtle"
+                  onClick={handleGoBack}
+                  className="text-gray-400 hover:text-white"
+                >
+                  <span className="text-xl">←</span>
+                </ActionIcon>
+              </a>
+
               {isEditingTitle.value ? (
                 <TextInput
                   value={titleInput.value}
@@ -132,7 +135,7 @@ export function DocumentPage() {
                 </h1>
               )}
             </Group>
-            
+
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-500">
                 ID: {documentId.substring(0, 8)}...
@@ -154,7 +157,7 @@ export function DocumentPage() {
               <span>Use **bold**, *italic*, # headers, - lists, etc.</span>
             </div>
           </div>
-          
+
           {/* Content Area */}
           <div className="flex-1 flex">
             {/* Editor */}
@@ -167,7 +170,7 @@ export function DocumentPage() {
                 spellcheck={false}
               />
             </div>
-            
+
             {/* Preview */}
             <div className="flex-1 border-l border-gray-700 p-4 overflow-auto">
               <div className="prose prose-invert max-w-none">

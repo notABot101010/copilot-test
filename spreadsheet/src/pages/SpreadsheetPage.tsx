@@ -79,12 +79,12 @@ interface SelectionBorders {
 function getSelectionBorders(row: number, col: number, selection: Selection | null): SelectionBorders | null {
   if (!selection) return null;
   const norm = normalizeSelection(selection);
-  
+
   // Check if cell is in selection
   if (row < norm.start.row || row > norm.end.row || col < norm.start.col || col > norm.end.col) {
     return null;
   }
-  
+
   return {
     top: row === norm.start.row,
     right: col === norm.end.col,
@@ -97,33 +97,33 @@ export function SpreadsheetPage() {
   const router = useRouter();
   const route = useRoute();
   const id = route.value.params.id;
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState('');
-  
+
   // Selection state
   const [selection, setSelection] = useState<Selection | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
-  
+
   // Inline editing state
   const [editingCell, setEditingCell] = useState<{ row: number; col: number } | null>(null);
   const [editValue, setEditValue] = useState('');
-  
+
   // Column widths
   const [columnWidths, setColumnWidths] = useState<ColumnWidths>({});
   const [resizingColumn, setResizingColumn] = useState<number | null>(null);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(0);
-  
+
   // Virtual scrolling state
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
   const [containerWidth, setContainerWidth] = useState(800);
-  
+
   // Formula bar ref
   const formulaInputRef = useRef<HTMLInputElement>(null);
   const cellInputRef = useRef<HTMLInputElement>(null);
@@ -137,7 +137,7 @@ export function SpreadsheetPage() {
       setIsLoading(false);
       return;
     }
-    
+
     const load = async () => {
       const success = await loadSpreadsheet(id);
       if (!success) {
@@ -145,7 +145,7 @@ export function SpreadsheetPage() {
       }
       setIsLoading(false);
     };
-    
+
     load();
   }, [id]);
 
@@ -157,7 +157,7 @@ export function SpreadsheetPage() {
         setContainerWidth(containerRef.current.clientWidth);
       }
     };
-    
+
     updateDimensions();
     window.addEventListener('resize', updateDimensions);
     return () => window.removeEventListener('resize', updateDimensions);
@@ -233,13 +233,13 @@ export function SpreadsheetPage() {
   // Cell click handler
   const handleCellMouseDown = useCallback((row: number, col: number, e: MouseEvent) => {
     e.preventDefault();
-    
+
     if (editingCell) {
       // Save current edit
       updateCell(editingCell.row, editingCell.col, editValue);
       setEditingCell(null);
     }
-    
+
     if (e.shiftKey && selection) {
       // Extend selection
       setSelection({
@@ -271,7 +271,7 @@ export function SpreadsheetPage() {
     const handleMouseUp = () => {
       setIsSelecting(false);
     };
-    
+
     window.addEventListener('mouseup', handleMouseUp);
     return () => window.removeEventListener('mouseup', handleMouseUp);
   }, []);
@@ -296,33 +296,33 @@ export function SpreadsheetPage() {
 
   // Handle typing to start editing
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (!selection || editingCell) return;
-    
+    if (!selection || editingCell || isChartModalOpen) return;
+
     // Arrow key navigation
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault();
       const newRow = selection.end.row + (e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0);
       const newCol = selection.end.col + (e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0);
-      
+
       if (newRow >= 0 && newRow < TOTAL_ROWS && newCol >= 0 && newCol < TOTAL_COLS) {
         if (e.shiftKey) {
           setSelection({ start: selection.start, end: { row: newRow, col: newCol } });
         } else {
           setSelection({ start: { row: newRow, col: newCol }, end: { row: newRow, col: newCol } });
         }
-        
+
         // Scroll into view if needed
         const targetTop = newRow * CELL_HEIGHT;
         const targetLeft = columnPositions[newCol];
         const targetRight = columnPositions[newCol + 1];
-        
+
         if (containerRef.current) {
           if (targetTop < scrollTop) {
             containerRef.current.scrollTop = targetTop;
           } else if (targetTop + CELL_HEIGHT > scrollTop + containerHeight - 50) {
             containerRef.current.scrollTop = targetTop - containerHeight + CELL_HEIGHT + 50;
           }
-          
+
           if (targetLeft < scrollLeft + ROW_HEADER_WIDTH) {
             containerRef.current.scrollLeft = targetLeft - ROW_HEADER_WIDTH;
           } else if (targetRight > scrollLeft + containerWidth - 20) {
@@ -332,7 +332,7 @@ export function SpreadsheetPage() {
       }
       return;
     }
-    
+
     // Tab navigation
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -343,7 +343,7 @@ export function SpreadsheetPage() {
       }
       return;
     }
-    
+
     // Enter to move down or start editing
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -360,7 +360,7 @@ export function SpreadsheetPage() {
       }
       return;
     }
-    
+
     // Delete/Backspace to clear cells
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
@@ -374,7 +374,7 @@ export function SpreadsheetPage() {
       updateMultipleCells(updates);
       return;
     }
-    
+
     // Undo/Redo
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
       e.preventDefault();
@@ -385,13 +385,13 @@ export function SpreadsheetPage() {
       }
       return;
     }
-    
+
     if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
       e.preventDefault();
       redo();
       return;
     }
-    
+
     // Start typing to edit
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const key = getCellKey(selection.end.row, selection.end.col);
@@ -409,7 +409,7 @@ export function SpreadsheetPage() {
         }
       }, 0);
     }
-    
+
     // F2 to edit
     if (e.key === 'F2') {
       e.preventDefault();
@@ -427,7 +427,7 @@ export function SpreadsheetPage() {
         }
       }, 0);
     }
-  }, [selection, editingCell, spreadsheet, scrollTop, scrollLeft, containerHeight, containerWidth, columnPositions]);
+  }, [selection, editingCell, spreadsheet, scrollTop, scrollLeft, containerHeight, containerWidth, columnPositions, isChartModalOpen]);
 
   // Handler for cell input value changes (broadcasts live to other clients)
   const handleCellInputChange = useCallback((value: string) => {
@@ -441,12 +441,12 @@ export function SpreadsheetPage() {
   // Inline edit key handler
   const handleEditKeyDown = useCallback((e: KeyboardEvent) => {
     if (!editingCell) return;
-    
+
     if (e.key === 'Enter') {
       e.preventDefault();
       updateCell(editingCell.row, editingCell.col, editValue);
       setEditingCell(null);
-      
+
       // Move to next row
       const newRow = editingCell.row + 1;
       if (newRow < TOTAL_ROWS) {
@@ -456,7 +456,7 @@ export function SpreadsheetPage() {
       e.preventDefault();
       updateCell(editingCell.row, editingCell.col, editValue);
       setEditingCell(null);
-      
+
       // Move to next column
       const newCol = e.shiftKey ? editingCell.col - 1 : editingCell.col + 1;
       if (newCol >= 0 && newCol < TOTAL_COLS) {
@@ -477,11 +477,11 @@ export function SpreadsheetPage() {
   // Copy/Paste handlers
   useEffect(() => {
     const handleCopy = (e: ClipboardEvent) => {
-      if (!selection || editingCell) return;
-      
+      if (!selection || editingCell || isChartModalOpen) return;
+
       const norm = normalizeSelection(selection);
       const lines: string[] = [];
-      
+
       for (let r = norm.start.row; r <= norm.end.row; r++) {
         const rowValues: string[] = [];
         for (let c = norm.start.col; c <= norm.end.col; c++) {
@@ -490,22 +490,22 @@ export function SpreadsheetPage() {
         }
         lines.push(rowValues.join('\t'));
       }
-      
+
       e.clipboardData?.setData('text/plain', lines.join('\n'));
       e.preventDefault();
     };
-    
+
     const handlePaste = async (e: ClipboardEvent) => {
-      if (!selection || editingCell) return;
-      
+      if (!selection || editingCell || isChartModalOpen) return;
+
       const text = e.clipboardData?.getData('text/plain');
       if (!text) return;
-      
+
       e.preventDefault();
-      
+
       const lines = text.split('\n');
       const updates: { row: number; col: number; value: string }[] = [];
-      
+
       for (let r = 0; r < lines.length; r++) {
         const values = lines[r].split('\t');
         for (let c = 0; c < values.length; c++) {
@@ -516,18 +516,18 @@ export function SpreadsheetPage() {
           }
         }
       }
-      
+
       updateMultipleCells(updates);
     };
-    
+
     document.addEventListener('copy', handleCopy);
     document.addEventListener('paste', handlePaste);
-    
+
     return () => {
       document.removeEventListener('copy', handleCopy);
       document.removeEventListener('paste', handlePaste);
     };
-  }, [selection, editingCell, spreadsheet]);
+  }, [selection, editingCell, spreadsheet, isChartModalOpen]);
 
   // Column resize handlers
   const handleColumnResizeStart = useCallback((col: number, e: MouseEvent) => {
@@ -540,20 +540,20 @@ export function SpreadsheetPage() {
 
   useEffect(() => {
     if (resizingColumn === null) return;
-    
+
     const handleMouseMove = (e: MouseEvent) => {
       const diff = e.clientX - resizeStartX.current;
       const newWidth = Math.max(40, resizeStartWidth.current + diff);
       setColumnWidths(prev => ({ ...prev, [resizingColumn]: newWidth }));
     };
-    
+
     const handleMouseUp = () => {
       setResizingColumn(null);
     };
-    
+
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-    
+
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
@@ -697,7 +697,7 @@ export function SpreadsheetPage() {
         <ActionIcon onClick={handleBack} variant="subtle" size="lg">
           <span className="text-xl">←</span>
         </ActionIcon>
-        
+
         {isEditingName ? (
           <TextInput
             value={editName}
@@ -716,7 +716,7 @@ export function SpreadsheetPage() {
             {spreadsheet.name}
           </div>
         )}
-        
+
         {/* File Menu */}
         <Menu shadow="md" width={200}>
           <Menu.Target>
@@ -733,7 +733,7 @@ export function SpreadsheetPage() {
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
-        
+
         {/* Insert Menu */}
         <Menu shadow="md" width={200}>
           <Menu.Target>
@@ -747,7 +747,7 @@ export function SpreadsheetPage() {
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
-        
+
         {/* Toolbar */}
         <Group gap="xs" className="ml-4">
           <Tooltip label="Undo (Ctrl+Z)">
@@ -769,7 +769,7 @@ export function SpreadsheetPage() {
             </ActionIcon>
           </Tooltip>
         </Group>
-        
+
         <Group gap="sm" className="ml-auto">
           <Text size="sm" c="dimmed">
             ID: {spreadsheet.id.substring(0, 8)}...
@@ -797,7 +797,7 @@ export function SpreadsheetPage() {
       </div>
 
       {/* Spreadsheet Grid */}
-      <div 
+      <div
         ref={containerRef}
         className="flex-1 overflow-auto relative"
         onScroll={handleScroll}
@@ -805,15 +805,15 @@ export function SpreadsheetPage() {
         {/* Virtual content */}
         <div style={{ width: totalWidth + ROW_HEADER_WIDTH, height: totalHeight + CELL_HEIGHT, position: 'relative' }}>
           {/* Column headers */}
-          <div 
-            className="sticky top-0 z-20 flex" 
+          <div
+            className="sticky top-0 z-20 flex"
             style={{ height: CELL_HEIGHT, marginLeft: ROW_HEADER_WIDTH }}
           >
             {Array.from({ length: visibleColEnd - visibleColStart }, (_, i) => {
               const col = visibleColStart + i;
               const width = columnWidths[col] || DEFAULT_COLUMN_WIDTH;
               const left = columnPositions[col];
-              
+
               return (
                 <div
                   key={col}
@@ -838,9 +838,9 @@ export function SpreadsheetPage() {
           </div>
 
           {/* Row headers */}
-          <div 
-            className="sticky left-0 z-10" 
-            style={{ 
+          <div
+            className="sticky left-0 z-10"
+            style={{
               position: 'absolute',
               top: CELL_HEIGHT,
               width: ROW_HEADER_WIDTH,
@@ -873,8 +873,8 @@ export function SpreadsheetPage() {
           />
 
           {/* Cells */}
-          <div 
-            style={{ 
+          <div
+            style={{
               position: 'absolute',
               top: CELL_HEIGHT,
               left: ROW_HEADER_WIDTH,
@@ -882,7 +882,7 @@ export function SpreadsheetPage() {
           >
             {Array.from({ length: visibleRowEnd - visibleRowStart }, (_, ri) => {
               const row = visibleRowStart + ri;
-              
+
               return Array.from({ length: visibleColEnd - visibleColStart }, (_, ci) => {
                 const col = visibleColStart + ci;
                 const key = getCellKey(row, col);
@@ -896,7 +896,7 @@ export function SpreadsheetPage() {
                 const width = columnWidths[col] || DEFAULT_COLUMN_WIDTH;
                 const left = columnPositions[col];
                 const selectionBorders = getSelectionBorders(row, col, selection);
-                
+
                 // Build border styles for selection (only outer edges)
                 const borderStyle: Record<string, string> = {};
                 if (isActiveCell) {
@@ -907,16 +907,16 @@ export function SpreadsheetPage() {
                   borderStyle.borderBottom = selectionBorders.bottom ? `2px solid ${SELECTION_BORDER_COLOR}` : `1px solid ${DEFAULT_BORDER_COLOR}`;
                   borderStyle.borderLeft = selectionBorders.left ? `2px solid ${SELECTION_BORDER_COLOR}` : `1px solid ${DEFAULT_BORDER_COLOR}`;
                 }
-                
+
                 return (
                   <div
                     key={`${row}:${col}`}
                     className={`
                       absolute text-white text-sm px-1 flex items-center
-                      ${isActiveCell 
-                        ? 'bg-blue-900/50' 
-                        : isSelected 
-                          ? 'bg-blue-900/30' 
+                      ${isActiveCell
+                        ? 'bg-blue-900/50'
+                        : isSelected
+                          ? 'bg-blue-900/30'
                           : 'border border-gray-700 bg-gray-900 hover:bg-gray-800'
                       }
                       ${isFormula && !isEditing ? 'text-green-400' : ''}
@@ -975,7 +975,7 @@ export function SpreadsheetPage() {
       {/* Status Bar */}
       <div className="bg-gray-800 border-t border-gray-700 px-4 py-1 flex items-center justify-between text-xs text-gray-400">
         <span>
-          {selection 
+          {selection
             ? `Selected: ${getColumnLabel(selection.start.col)}${selection.start.row + 1}` +
               (selection.start.row !== selection.end.row || selection.start.col !== selection.end.col
                 ? `:${getColumnLabel(selection.end.col)}${selection.end.row + 1}`
