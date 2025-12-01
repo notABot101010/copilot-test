@@ -13,6 +13,6 @@ clap = { version = "4.5", features = ["derive"] }
 futures = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-rquickjs = { version = "0.10", features = ["full-async"] }
 base64 = "0.22"
 aws-lc-rs = "1"
+headless_chrome = "1"
