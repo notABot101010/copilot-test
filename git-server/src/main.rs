@@ -10,6 +10,7 @@ mod database;
 mod error;
 mod git_ops;
 mod http_server;
+mod sandbox;
 mod ssh_server;
 
 use config::Config;
@@ -95,6 +96,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         Config::default_config()
     };
+
+    // Check and log Landlock support
+    if sandbox::is_landlock_supported() {
+        info!("Landlock security sandbox is supported and will be used for git operations");
+    } else {
+        warn!("Landlock security sandbox is NOT supported on this system - git operations will run without additional sandboxing");
+    }
 
     // Create repos directory if it doesn't exist
     if !cli.repos_path.exists() {
