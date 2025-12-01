@@ -779,4 +779,101 @@ describe('Edge cases', () => {
     expect(userElement2?.textContent).toContain('456');
     expect(container.querySelector('[data-testid="home"]')).toBeNull();
   });
+
+  it('should properly react to signal changes without page stacking', async () => {
+    const router = createRouter({
+      routes: [
+        { path: '/', name: 'home', component: HomeComponent },
+        { path: '/about', name: 'about', component: AboutComponent }
+      ]
+    });
+
+    const { container } = render(
+      h(RouterProvider, { router },
+        h(RouterView, null)
+      )
+    );
+
+    // Initially shows home
+    expect(container.querySelector('[data-testid="home"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="about"]')).toBeNull();
+
+    // Update the signal directly (simulating popstate/back button behavior)
+    router.currentRoute.value = {
+      fullPath: '/about',
+      path: '/about',
+      params: {},
+      query: {},
+      hash: '',
+      meta: {},
+      matched: [{ path: '/about', name: 'about', component: AboutComponent }]
+    };
+
+    // Wait for signal effect to trigger re-render
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Verify only about page is shown, home should be completely gone (no stacking)
+    expect(container.querySelector('[data-testid="about"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="home"]')).toBeNull();
+  });
+
+  it('should handle multiple rapid route changes without stacking', async () => {
+    const router = createRouter({
+      routes: [
+        { path: '/', name: 'home', component: HomeComponent },
+        { path: '/about', name: 'about', component: AboutComponent },
+        { path: '/users/:id', name: 'user', component: UserComponent }
+      ]
+    });
+
+    const { container } = render(
+      h(RouterProvider, { router },
+        h(RouterView, null)
+      )
+    );
+
+    // Initially shows home
+    expect(container.querySelector('[data-testid="home"]')).not.toBeNull();
+
+    // Navigate to about
+    router.currentRoute.value = {
+      fullPath: '/about',
+      path: '/about',
+      params: {},
+      query: {},
+      hash: '',
+      meta: {},
+      matched: [{ path: '/about', name: 'about', component: AboutComponent }]
+    };
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Navigate to user
+    router.currentRoute.value = {
+      fullPath: '/users/123',
+      path: '/users/123',
+      params: { id: '123' },
+      query: {},
+      hash: '',
+      meta: {},
+      matched: [{ path: '/users/:id', name: 'user', component: UserComponent }]
+    };
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Navigate back to home
+    router.currentRoute.value = {
+      fullPath: '/',
+      path: '/',
+      params: {},
+      query: {},
+      hash: '',
+      meta: {},
+      matched: [{ path: '/', name: 'home', component: HomeComponent }]
+    };
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Verify only home is shown - no stacking of any previous pages
+    expect(container.querySelector('[data-testid="home"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="about"]')).toBeNull();
+    expect(container.querySelector('[data-testid="user"]')).toBeNull();
+  });
 });
