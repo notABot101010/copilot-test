@@ -16,3 +16,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 base64 = "0.22"
 aws-lc-rs = "1"
 regex = "1"
+headless_chrome = "1"

@@ -202,7 +202,9 @@ impl DuckDuckGoClient {
             let status = response.status();
 
             if status == 418 || status == 429 {
-                tracing::warn!("Received status {}, refreshing VQD token", status);
+                // Log the response body for debugging
+                let body = response.text().await.unwrap_or_default();
+                tracing::warn!("Received status {} with body: {}", status, body);
                 self.fetch_vqd().await?;
                 if attempt < 2 {
                     continue; // Retry
