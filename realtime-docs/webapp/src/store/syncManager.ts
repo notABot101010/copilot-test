@@ -62,6 +62,14 @@ let ws: WebSocket | null = null;
 let reconnectTimeoutId: number | null = null;
 let clientId: string | null = null;
 
+/**
+ * Set or clear the sync update callback
+ * This allows components to register/unregister their callback dynamically
+ */
+export function setSyncUpdateCallback(callback: UpdateCallback | null): void {
+  updateCallback = callback;
+}
+
 // Generate a unique client ID using crypto.randomUUID if available
 function generateClientId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -90,16 +98,15 @@ function base64ToUint8Array(base64: string): Uint8Array {
 }
 
 /**
- * Initialize the sync manager with callbacks
- * @param onUpdate - Called when remote changes are received
+ * Initialize the sync manager
+ * The update callback can be set later via setSyncUpdateCallback
  */
-export function initSync(onUpdate: UpdateCallback): void {
+export function initSync(): void {
   if (channel) {
     // Already initialized
     return;
   }
 
-  updateCallback = onUpdate;
   clientId = generateClientId();
 
   // Initialize BroadcastChannel for same-browser tab sync
