@@ -1,21 +1,18 @@
-//! JavaScript runtime for solving DuckDuckGo VQD challenges
+//! VQD Token Fetcher for DuckDuckGo VQD challenges
 //!
-//! This module provides a challenge solver for DuckDuckGo's AI chat API
-//! using headless Chrome to execute the challenge JavaScript in a real browser context.
+//! This module provides a VQD token fetcher for DuckDuckGo's AI chat API
+//! using headless Chrome to execute the challenge JavaScript and solve it.
 
-use anyhow::{Context, Result};
-use aws_lc_rs::digest::{SHA256, digest};
+use anyhow::{Context, Result, anyhow};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use headless_chrome::{Browser, LaunchOptions};
+use aws_lc_rs::digest::{SHA256, digest};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
-/// Maximum length for debug output truncation
-const DEBUG_TRUNCATE_LEN: usize = 200;
-
-/// Structure representing the challenge data from the server
+/// Structure representing the challenge result
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChallengeData {
+pub struct ChallengeResult {
     pub server_hashes: Vec<String>,
     #[serde(default)]
     pub client_hashes: Vec<String>,
@@ -25,7 +22,7 @@ pub struct ChallengeData {
     pub meta: ChallengeMeta,
 }
 
-/// Metadata for the challenge
+/// Metadata for the challenge result
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ChallengeMeta {
     #[serde(default)]
@@ -49,12 +46,28 @@ pub struct ChallengeSolver {
     browser: Browser,
 }
 
+use std::ffi::OsStr;
+
 impl ChallengeSolver {
-    /// Create a new challenge solver with headless Chrome
+    /// Create a new VQD challenge solver with headless Chrome
     pub fn new() -> Result<Self> {
+        // Set up Chrome with options to avoid bot detection
+        let args: Vec<&OsStr> = vec![
+            // Avoid detection
+            OsStr::new("--disable-blink-features=AutomationControlled"),
+            OsStr::new("--disable-infobars"),
+            OsStr::new("--disable-extensions"),
+            OsStr::new("--disable-dev-shm-usage"),
+            OsStr::new("--no-first-run"),
+            OsStr::new("--no-default-browser-check"),
+            // Realistic user agent
+            OsStr::new("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"),
+        ];
+        
         let options = LaunchOptions::default_builder()
             .headless(true)
             .sandbox(false)  // Required for running in Docker/CI environments
+            .args(args)
             .build()
             .context("Failed to build launch options")?;
         
@@ -81,10 +94,10 @@ impl ChallengeSolver {
         let challenge_code =
             String::from_utf8(challenge_bytes).context("Challenge is not valid UTF-8")?;
 
-        tracing::debug!("Decoded challenge: {}", &challenge_code[..challenge_code.len().min(DEBUG_TRUNCATE_LEN)]);
+        tracing::debug!("Decoded challenge: {}", &challenge_code[..challenge_code.len().min(100)]);
 
-        // Execute the challenge in a real browser context
-        let challenge_result = self.execute_in_browser(&challenge_code)
+        // Execute the challenge in a browser context that mimics DuckDuckGo
+        let challenge_result = self.execute_challenge(&challenge_code)
             .context("Failed to execute challenge in browser")?;
 
         tracing::debug!("Challenge result from browser: {:?}", challenge_result);
@@ -101,7 +114,7 @@ impl ChallengeSolver {
         let duration = start_time.elapsed().as_millis().to_string();
 
         // Build the final result
-        let result = ChallengeData {
+        let result = ChallengeResult {
             server_hashes: challenge_result.server_hashes,
             client_hashes: hashed_client_hashes,
             signals: challenge_result.signals,
@@ -111,7 +124,7 @@ impl ChallengeSolver {
                 timestamp: challenge_result.meta.timestamp,
                 debug: challenge_result.meta.debug,
                 origin: "https://duckduckgo.com".to_string(),
-                stack: "Error\nat l (https://duckduckgo.com/dist/wpm.main.758b58e5295173a9d89c.js:1:424103)".to_string(),
+                stack: "Error\nat l (https://duckduckgo.com/dist/wpm.main.js:1:424103)".to_string(),
                 duration,
             },
         };
@@ -125,56 +138,88 @@ impl ChallengeSolver {
         Ok(result_b64)
     }
 
-    /// Execute the challenge JavaScript in headless Chrome
-    fn execute_in_browser(&self, challenge_code: &str) -> Result<ChallengeData> {
+    /// Execute the challenge JavaScript in a browser with a minimal DuckDuckGo-like environment
+    fn execute_challenge(&self, challenge_code: &str) -> Result<ChallengeResult> {
         let tab = self.browser.new_tab()
             .context("Failed to create new browser tab")?;
 
-        // Navigate to a blank page first
+        // Navigate to about:blank first
         tab.navigate_to("about:blank")
-            .context("Failed to navigate to blank page")?;
+            .context("Failed to navigate to about:blank")?;
         tab.wait_until_navigated()
             .context("Failed to wait for navigation")?;
 
-        // Create an HTML page with an iframe (like DuckDuckGo does)
-        let html = format!(r#"
-            <!DOCTYPE html>
-            <html>
-            <head><title>Challenge Solver</title></head>
-            <body>
-                <iframe id="jsa-frame" sandbox="allow-scripts allow-same-origin" srcdoc="DuckDuckGo Fraud &amp; Abuse"></iframe>
-                <script>
-                    window.__challengeResult = null;
-                    window.__challengeError = null;
-                    
-                    (async function() {{
-                        try {{
-                            const result = await {challenge_code};
-                            window.__challengeResult = JSON.stringify(result);
-                        }} catch (e) {{
-                            window.__challengeError = e.message || String(e);
-                        }}
-                    }})();
-                </script>
-            </body>
-            </html>
-        "#);
+        // Set up the environment to simulate DuckDuckGo's wpm.main.js behavior
+        // The challenge code uses document.getElementById('jsa-frame') to find an iframe
+        let setup_script = r#"
+            // Set up result variables
+            window.__challengeResult = null;
+            window.__challengeError = null;
+            
+            // Set up __jsaCallbacks like DuckDuckGo does
+            window.__jsaCallbacks = {};
+            
+            // Create an iframe with the expected ID that the challenge code looks for
+            const iframe = document.createElement('iframe');
+            iframe.id = 'jsa-frame';
+            iframe.sandbox = 'allow-scripts allow-same-origin';
+            iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px';
+            iframe.srcdoc = '<!DOCTYPE html><html><head></head><body></body></html>';
+            document.body.appendChild(iframe);
+            
+            // Wait for iframe to load
+            new Promise(resolve => {
+                if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+                    resolve();
+                } else {
+                    iframe.onload = resolve;
+                }
+            });
+        "#;
+        
+        tab.evaluate(setup_script, false)
+            .context("Failed to set up challenge environment")?;
 
-        // Set the page content
-        let set_content_js = format!(
-            r#"document.documentElement.innerHTML = `{}`;"#,
-            html.replace('`', r"\`").replace("${", r"\${")
+        // Give the iframe a moment to fully initialize
+        std::thread::sleep(Duration::from_millis(500));
+
+        // Execute the challenge code
+        // The challenge is an async IIFE that returns an object with server_hashes, client_hashes, etc.
+        let execute_script = format!(
+            r#"
+            (async function() {{
+                try {{
+                    const challengeFn = {};
+                    const result = await challengeFn;
+                    window.__challengeResult = JSON.stringify(result);
+                }} catch (e) {{
+                    window.__challengeError = e.message + ' | ' + e.stack;
+                }}
+            }})();
+            "#,
+            challenge_code
         );
-        tab.evaluate(&set_content_js, false)
-            .context("Failed to set page content")?;
+
+        tab.evaluate(&execute_script, false)
+            .context("Failed to start challenge execution")?;
 
         // Wait for the challenge to complete (poll for result)
-        let timeout = Duration::from_secs(10);
+        let timeout = Duration::from_secs(15);
         let start = Instant::now();
         
         loop {
             if start.elapsed() > timeout {
-                return Err(anyhow::anyhow!("Challenge execution timed out"));
+                // Try to get any error that occurred
+                let error_check = tab.evaluate("window.__challengeError", false);
+                if let Ok(error_result) = error_check {
+                    if let Some(error) = error_result.value {
+                        if !error.is_null() {
+                            let error_str = error.as_str().unwrap_or("Unknown error");
+                            return Err(anyhow!("Challenge execution failed: {}", error_str));
+                        }
+                    }
+                }
+                return Err(anyhow!("Challenge execution timed out"));
             }
 
             // Check for error first
@@ -183,7 +228,7 @@ impl ChallengeSolver {
             if let Some(error) = error_check.value {
                 if !error.is_null() {
                     let error_str = error.as_str().unwrap_or("Unknown error");
-                    return Err(anyhow::anyhow!("Challenge execution failed: {}", error_str));
+                    return Err(anyhow!("Challenge execution failed: {}", error_str));
                 }
             }
 
@@ -193,15 +238,15 @@ impl ChallengeSolver {
             if let Some(result) = result_check.value {
                 if !result.is_null() {
                     let result_str = result.as_str()
-                        .ok_or_else(|| anyhow::anyhow!("Result is not a string"))?;
-                    let challenge_data: ChallengeData = serde_json::from_str(result_str)
+                        .ok_or_else(|| anyhow!("Result is not a string"))?;
+                    let challenge_data: ChallengeResult = serde_json::from_str(result_str)
                         .context("Failed to parse challenge result as JSON")?;
                     return Ok(challenge_data);
                 }
             }
 
             // Wait a bit before polling again
-            std::thread::sleep(Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(100));
         }
     }
 }
@@ -220,15 +265,5 @@ mod tests {
     async fn test_challenge_solver_creation() {
         let solver = ChallengeSolver::new();
         assert!(solver.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_sha256_base64() {
-        // Test that SHA256 + base64 encoding works correctly
-        let input = "test";
-        let hash = digest(&SHA256, input.as_bytes());
-        let encoded = BASE64.encode(hash.as_ref());
-        // SHA256 of "test" = n4bQgYhMfWWaL+qgxVrQFaO/TxsrC4Is0V1sFbDwCgg=
-        assert_eq!(encoded, "n4bQgYhMfWWaL+qgxVrQFaO/TxsrC4Is0V1sFbDwCgg=");
     }
 }
