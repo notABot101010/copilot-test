@@ -113,20 +113,6 @@ Next Request:
   x-fe-version: <same version>
 ```
 
-## Update Checklist
-
-When headers need refreshing:
-
-- [ ] Open https://duckduckgo.com/aichat in browser
-- [ ] Open DevTools → Network tab
-- [ ] Send a message in AI Chat
-- [ ] Find POST `/duckchat/v1/chat`
-- [ ] Copy `x-vqd-hash-1` header → update `INITIAL_VQD` in src/lib.rs
-- [ ] Copy `x-fe-signals` header → update `X_FE_SIGNALS` in src/lib.rs
-- [ ] Copy `x-fe-version` header → update `X_FE_VERSION` in src/lib.rs
-- [ ] Run `cargo check` to verify syntax
-- [ ] Run `cargo test` to verify functionality
-- [ ] Commit changes with descriptive message
 
 ## Token Anatomy
 
