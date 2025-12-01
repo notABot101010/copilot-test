@@ -10,6 +10,7 @@
     "git-server/webapp",
     "s3ui",
     "encrypted-chat/webapp",
-    "realtime-docs/webapp"
+    "realtime-docs/webapp",
+    "chesssite/webapp"
   ]
 }
