@@ -117,11 +117,12 @@ export default function InviteMembers() {
         ) : (
           <div class="bg-white rounded-lg shadow divide-y">
             {users.value.map((user) => (
-              <div key={user.id} class="p-4 flex justify-between items-center">
+              <div key={user.id} class="p-4 flex justify-between items-center" data-user={user.username}>
                 <span class="font-medium">{user.username}</span>
                 <button
                   onClick={() => handleInvite(user)}
                   disabled={inviting.value !== null}
+                  data-invite-user={user.username}
                   class="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
                 >
                   {inviting.value === user.id ? 'Inviting...' : 'Invite'}

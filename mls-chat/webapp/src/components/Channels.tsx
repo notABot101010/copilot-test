@@ -181,6 +181,7 @@ export default function Channels() {
                       <button
                         onClick={() => handleSubscribe(channel)}
                         disabled={subscribing.value !== null}
+                        data-subscribe-channel={channel.name}
                         class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                       >
                         {subscribing.value === channel.group_id ? 'Subscribing...' : 'Subscribe'}
