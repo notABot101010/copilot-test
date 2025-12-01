@@ -1,6 +1,7 @@
 //! Tests for base64 encoding and decoding.
 
 use super::*;
+use rand::{Rng, SeedableRng};
 
 #[test]
 fn test_encoded_len() {
@@ -499,5 +500,278 @@ fn test_conformance_roundtrip_with_external_crate() {
             "External encode -> our decode failed for len {}",
             data.len()
         );
+    }
+}
+
+// Random vector tests
+#[test]
+fn test_random_roundtrip_various_sizes() {
+    // Use a seeded RNG for reproducible tests
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+    // Test various sizes including edge cases
+    let sizes = [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 15, 16, 17, 23, 24, 25, 31, 32, 33, 47, 48, 49, 63, 64, 65,
+        100, 127, 128, 255, 256, 500, 1000, 1024, 2048,
+    ];
+
+    for &size in &sizes {
+        let data: Vec<u8> = (0..size).map(|_| rng.gen()).collect();
+
+        // Test with padding
+        let encoded = encode_with(&data, Alphabet::Standard, true);
+        let decoded = decode_with(&encoded, Alphabet::Standard).unwrap();
+        assert_eq!(decoded, data, "Roundtrip failed for random data of size {}", size);
+
+        // Test without padding
+        let encoded_no_pad = encode_with(&data, Alphabet::Standard, false);
+        let decoded_no_pad = decode_with(&encoded_no_pad, Alphabet::Standard).unwrap();
+        assert_eq!(
+            decoded_no_pad, data,
+            "Roundtrip without padding failed for random data of size {}",
+            size
+        );
+    }
+}
+
+#[test]
+fn test_random_roundtrip_url_alphabet() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(123);
+
+    for size in [0, 1, 10, 50, 100, 255, 1000] {
+        let data: Vec<u8> = (0..size).map(|_| rng.gen()).collect();
+
+        // Test with padding
+        let encoded = encode_with(&data, Alphabet::Url, true);
+        let decoded = decode_with(&encoded, Alphabet::Url).unwrap();
+        assert_eq!(
+            decoded, data,
+            "URL alphabet roundtrip failed for random data of size {}",
+            size
+        );
+
+        // Ensure no + or / characters in URL-safe encoding
+        assert!(!encoded.contains('+') && !encoded.contains('/'));
+    }
+}
+
+#[test]
+fn test_random_avx2_roundtrip() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(456);
+
+    // Test sizes that exercise AVX2 code paths
+    let sizes = [0, 1, 10, 27, 28, 29, 48, 50, 100, 256, 500, 1000, 2048];
+
+    for &size in &sizes {
+        let data: Vec<u8> = (0..size).map(|_| rng.gen()).collect();
+
+        let encoded = encode_with_avx2(&data, Alphabet::Standard, true);
+        let decoded = decode_with_avx2(&encoded, Alphabet::Standard).unwrap();
+        assert_eq!(
+            decoded, data,
+            "AVX2 roundtrip failed for random data of size {}",
+            size
+        );
+    }
+}
+
+#[test]
+fn test_random_avx2_matches_scalar() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(789);
+
+    for size in [0, 1, 10, 28, 45, 50, 100, 256, 1000] {
+        let data: Vec<u8> = (0..size).map(|_| rng.gen()).collect();
+
+        // Test encoding
+        let scalar_encoded = encode_with(&data, Alphabet::Standard, true);
+        let avx2_encoded = encode_with_avx2(&data, Alphabet::Standard, true);
+        assert_eq!(
+            scalar_encoded, avx2_encoded,
+            "AVX2 encode mismatch with scalar for random data of size {}",
+            size
+        );
+
+        // Test decoding
+        let encoded = encode_with(&data, Alphabet::Standard, true);
+        let scalar_decoded = decode_with(&encoded, Alphabet::Standard).unwrap();
+        let avx2_decoded = decode_with_avx2(&encoded, Alphabet::Standard).unwrap();
+        assert_eq!(
+            scalar_decoded, avx2_decoded,
+            "AVX2 decode mismatch with scalar for random data of size {}",
+            size
+        );
+    }
+}
+
+#[test]
+fn test_random_conformance_with_external_crate() {
+    use base64_external::{engine::general_purpose::STANDARD, Engine};
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(999);
+
+    for size in [0, 1, 5, 10, 50, 100, 255, 500, 1000] {
+        let data: Vec<u8> = (0..size).map(|_| rng.gen()).collect();
+
+        // Test encoding conformance
+        let our_encoded = encode_with(&data, Alphabet::Standard, true);
+        let external_encoded = STANDARD.encode(&data);
+        assert_eq!(
+            our_encoded, external_encoded,
+            "Encoding mismatch with external crate for random data of size {}",
+            size
+        );
+
+        // Test decoding conformance
+        let our_decoded = decode_with(&our_encoded, Alphabet::Standard).unwrap();
+        let external_decoded = STANDARD.decode(&external_encoded).unwrap();
+        assert_eq!(
+            our_decoded, external_decoded,
+            "Decoding mismatch with external crate for random data of size {}",
+            size
+        );
+
+        // Verify roundtrip
+        assert_eq!(
+            our_decoded, data,
+            "Roundtrip failed for random data of size {}",
+            size
+        );
+    }
+}
+
+#[test]
+fn test_random_all_byte_values() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(111);
+
+    // Generate random data ensuring all byte values 0-255 are represented
+    for _ in 0..10 {
+        let mut data = Vec::new();
+
+        // Add all byte values at least once
+        for byte_val in 0..=255u8 {
+            data.push(byte_val);
+        }
+
+        // Add random bytes
+        for _ in 0..500 {
+            data.push(rng.gen());
+        }
+
+        // Shuffle the data
+        use rand::seq::SliceRandom;
+        data.shuffle(&mut rng);
+
+        // Test roundtrip
+        let encoded = encode_with(&data, Alphabet::Standard, true);
+        let decoded = decode_with(&encoded, Alphabet::Standard).unwrap();
+        assert_eq!(decoded, data, "Failed for data with all byte values");
+
+        // Test AVX2
+        let avx2_encoded = encode_with_avx2(&data, Alphabet::Standard, true);
+        let avx2_decoded = decode_with_avx2(&avx2_encoded, Alphabet::Standard).unwrap();
+        assert_eq!(avx2_decoded, data, "AVX2 failed for data with all byte values");
+    }
+}
+
+#[test]
+fn test_random_edge_case_lengths() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(222);
+
+    // Test lengths around multiples of 3 (base64 chunk size)
+    for base in [3, 6, 9, 12, 24, 48, 96] {
+        for offset in [-1, 0, 1] {
+            let size = (base + offset).max(0) as usize;
+            let data: Vec<u8> = (0..size).map(|_| rng.gen()).collect();
+
+            let encoded = encode_with(&data, Alphabet::Standard, true);
+            let decoded = decode_with(&encoded, Alphabet::Standard).unwrap();
+            assert_eq!(
+                decoded, data,
+                "Failed for random data of size {} (base {} + offset {})",
+                size, base, offset
+            );
+        }
+    }
+}
+
+#[test]
+fn test_random_with_custom_alphabet() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(333);
+
+    // Create a custom alphabet
+    let custom_alphabet: [u8; 64] = [
+        b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B', b'C', b'D', b'E',
+        b'F', b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P', b'Q', b'R', b'S', b'T',
+        b'U', b'V', b'W', b'X', b'Y', b'Z', b'a', b'b', b'c', b'd', b'e', b'f', b'g', b'h', b'i',
+        b'j', b'k', b'l', b'm', b'n', b'o', b'p', b'q', b'r', b's', b't', b'u', b'v', b'w', b'x',
+        b'y', b'z', b'!', b'@',
+    ];
+
+    for size in [0, 1, 10, 50, 100, 255] {
+        let data: Vec<u8> = (0..size).map(|_| rng.gen()).collect();
+
+        let encoded = encode_with(&data, Alphabet::Custom(&custom_alphabet), true);
+        let decoded = decode_with(&encoded, Alphabet::Custom(&custom_alphabet)).unwrap();
+        assert_eq!(
+            decoded, data,
+            "Custom alphabet roundtrip failed for random data of size {}",
+            size
+        );
+    }
+}
+
+#[test]
+fn test_random_no_padding_various_remainders() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(444);
+
+    // Test sizes with different remainders when divided by 3
+    // remainder 0: 3, 6, 9, 12...
+    // remainder 1: 1, 4, 7, 10...
+    // remainder 2: 2, 5, 8, 11...
+
+    for remainder in 0..3 {
+        for multiple in 0..20 {
+            let size = multiple * 3 + remainder;
+            let data: Vec<u8> = (0..size).map(|_| rng.gen()).collect();
+
+            let encoded = encode_with(&data, Alphabet::Standard, false);
+            let decoded = decode_with(&encoded, Alphabet::Standard).unwrap();
+            assert_eq!(
+                decoded, data,
+                "No padding roundtrip failed for random data of size {} (remainder {})",
+                size, remainder
+            );
+        }
+    }
+}
+
+#[test]
+fn test_random_stress_test() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(555);
+
+    // Perform many iterations with random sizes
+    for _ in 0..100 {
+        let size: usize = rng.gen_range(0..500);
+        let data: Vec<u8> = (0..size).map(|_| rng.gen()).collect();
+
+        // Test with standard alphabet
+        let encoded = encode_with(&data, Alphabet::Standard, true);
+        let decoded = decode_with(&encoded, Alphabet::Standard).unwrap();
+        assert_eq!(decoded, data);
+
+        // Test with URL alphabet
+        let encoded_url = encode_with(&data, Alphabet::Url, true);
+        let decoded_url = decode_with(&encoded_url, Alphabet::Url).unwrap();
+        assert_eq!(decoded_url, data);
+
+        // Test without padding
+        let encoded_no_pad = encode_with(&data, Alphabet::Standard, false);
+        let decoded_no_pad = decode_with(&encoded_no_pad, Alphabet::Standard).unwrap();
+        assert_eq!(decoded_no_pad, data);
+
+        // Test AVX2
+        let avx2_encoded = encode_with_avx2(&data, Alphabet::Standard, true);
+        let avx2_decoded = decode_with_avx2(&avx2_encoded, Alphabet::Standard).unwrap();
+        assert_eq!(avx2_decoded, data);
     }
 }

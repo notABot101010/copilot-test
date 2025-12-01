@@ -13,6 +13,7 @@ path = "base64.rs"
 [dev-dependencies]
 criterion = { workspace = true }
 base64-external = { package = "base64", version = "0.22.1" }
+rand = "0.8"
 
 [[bench]]
 name = "benchmarks"
