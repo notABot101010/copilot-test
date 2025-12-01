@@ -4,10 +4,11 @@
 //! using headless Chrome to execute the challenge JavaScript and solve it.
 
 use anyhow::{Context, Result, anyhow};
+use aws_lc_rs::digest::{SHA256, digest};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use headless_chrome::{Browser, LaunchOptions};
-use aws_lc_rs::digest::{SHA256, digest};
 use serde::{Deserialize, Serialize};
+use std::ffi::OsStr;
 use std::time::{Duration, Instant};
 
 /// Structure representing the challenge result
@@ -45,8 +46,6 @@ pub struct ChallengeMeta {
 pub struct ChallengeSolver {
     browser: Browser,
 }
-
-use std::ffi::OsStr;
 
 impl ChallengeSolver {
     /// Create a new VQD challenge solver with headless Chrome
@@ -155,6 +154,7 @@ impl ChallengeSolver {
             // Set up result variables
             window.__challengeResult = null;
             window.__challengeError = null;
+            window.__iframeReady = false;
             
             // Set up __jsaCallbacks like DuckDuckGo does
             window.__jsaCallbacks = {};
@@ -167,21 +167,36 @@ impl ChallengeSolver {
             iframe.srcdoc = '<!DOCTYPE html><html><head></head><body></body></html>';
             document.body.appendChild(iframe);
             
-            // Wait for iframe to load
-            new Promise(resolve => {
-                if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
-                    resolve();
-                } else {
-                    iframe.onload = resolve;
-                }
-            });
+            // Set ready flag when iframe loads
+            iframe.onload = () => { window.__iframeReady = true; };
+            if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+                window.__iframeReady = true;
+            }
         "#;
         
         tab.evaluate(setup_script, false)
             .context("Failed to set up challenge environment")?;
 
-        // Give the iframe a moment to fully initialize
-        std::thread::sleep(Duration::from_millis(500));
+        // Wait for the iframe to be ready using polling
+        let iframe_timeout = Duration::from_secs(5);
+        let start = Instant::now();
+        loop {
+            if start.elapsed() > iframe_timeout {
+                tracing::warn!("Timeout waiting for iframe to be ready, proceeding anyway");
+                break;
+            }
+            
+            let ready_check = tab.evaluate("window.__iframeReady === true", false);
+            if let Ok(result) = ready_check {
+                if let Some(value) = result.value {
+                    if value == true {
+                        tracing::debug!("Iframe is ready");
+                        break;
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
 
         // Execute the challenge code
         // The challenge is an async IIFE that returns an object with server_hashes, client_hashes, etc.
