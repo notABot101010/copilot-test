@@ -4,8 +4,10 @@ use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
 
 pub mod js_runtime;
+pub mod server;
 
 pub use js_runtime::ChallengeSolver;
+pub use server::run_server;
 
 const STATUS_URL: &str = "https://duckduckgo.com/duckchat/v1/status";
 const CHAT_URL: &str = "https://duckduckgo.com/duckchat/v1/chat";

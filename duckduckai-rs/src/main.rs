@@ -1,6 +1,6 @@
 use anyhow::Result;
-use clap::Parser;
-use duckduckai::DuckDuckGoClient;
+use clap::{Parser, Subcommand};
+use duckduckai::{DuckDuckGoClient, run_server};
 use std::io::{self, Write};
 use tracing_subscriber::EnvFilter;
 
@@ -8,12 +8,15 @@ use tracing_subscriber::EnvFilter;
 #[command(name = "duckduckai")]
 #[command(about = "A simple CLI for DuckDuckGo AI chat", long_about = None)]
 struct Args {
-    /// The message to send to the AI
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    /// The message to send to the AI (only for chat mode)
     #[arg(short, long)]
     message: Option<String>,
 
-    /// The model to use (default: gpt-5-mini)
-    #[arg(long, default_value = "gpt-5-mini")]
+    /// The model to use (default: gpt-4o-mini)
+    #[arg(long, default_value = "gpt-4o-mini")]
     model: String,
 
     /// Enable streaming output
@@ -25,11 +28,56 @@ struct Args {
     debug: bool,
 }
 
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Start an OpenAI-compatible API server
+    Serve {
+        /// Host to bind to
+        #[arg(long, default_value = "0.0.0.0")]
+        host: String,
+
+        /// Port to bind to
+        #[arg(long, default_value = "3000")]
+        port: u16,
+
+        /// API key for authentication
+        #[arg(long)]
+        api_key: String,
+
+        /// Enable debug logging
+        #[arg(short, long)]
+        debug: bool,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Setup logging
+    // Handle serve subcommand
+    if let Some(Commands::Serve {
+        host,
+        port,
+        api_key,
+        debug,
+    }) = args.command
+    {
+        // Setup logging for server
+        let filter = if debug {
+            EnvFilter::new("debug")
+        } else {
+            EnvFilter::new("info")
+        };
+
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_target(false)
+            .init();
+
+        return run_server(&host, port, api_key).await;
+    }
+
+    // Setup logging for chat mode
     let filter = if args.debug {
         EnvFilter::new("debug")
     } else {

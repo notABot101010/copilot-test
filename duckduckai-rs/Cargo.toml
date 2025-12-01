@@ -16,3 +16,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 base64 = "0.22"
 aws-lc-rs = "1"
 headless_chrome = "1"
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+async-stream = "0.3"
+
+[dev-dependencies]
+async-openai = "0.28"
