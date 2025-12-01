@@ -207,8 +207,8 @@ function MarkdownPreview({ content }: { content: string }) {
       .replace(/_(.+?)_/g, '<em>$1</em>')
       // Code
       .replace(/`(.+?)`/g, '<code class="bg-gray-700 px-1 rounded">$1</code>')
-      // Links
-      .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" class="text-blue-400 hover:underline" target="_blank" rel="noopener">$1</a>')
+      // Links - only allow http/https URLs to prevent javascript: XSS
+      .replace(/\[(.+?)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" class="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">$1</a>')
       // Unordered lists
       .replace(/^- (.+)$/gm, '<li class="ml-4">$1</li>')
       .replace(/^\* (.+)$/gm, '<li class="ml-4">$1</li>')
