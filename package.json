@@ -9,6 +9,7 @@
     "team-chat",
     "git-server/webapp",
     "s3ui",
-    "encrypted-chat/webapp"
+    "encrypted-chat/webapp",
+    "realtime-docs/webapp"
   ]
 }
