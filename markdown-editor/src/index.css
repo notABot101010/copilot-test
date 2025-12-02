@@ -125,3 +125,7 @@ body {
 .ProseMirror s {
   text-decoration: line-through;
 }
+
+
+ul { color: white; list-style: disc; } /* makes marker white if list text inherits color */
+ul li::marker , li { color: white; }

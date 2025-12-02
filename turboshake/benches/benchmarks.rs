@@ -11,24 +11,6 @@ fn generate_data(size: usize) -> Vec<u8> {
     (0..size).map(|i| (i % 256) as u8).collect()
 }
 
-fn bench_turboshake128(c: &mut Criterion) {
-    let mut group = c.benchmark_group("turboshake128");
-
-    for &size in SIZES {
-        let input = generate_data(size);
-        let mut output = vec![0u8; 32];
-
-        group.throughput(Throughput::Bytes(size as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(size), &input, |b, input| {
-            b.iter(|| {
-                TurboShake128::hash(black_box(input), black_box(&mut output));
-            });
-        });
-    }
-
-    group.finish();
-}
-
 fn bench_turboshake256(c: &mut Criterion) {
     let mut group = c.benchmark_group("turboshake256");
 
@@ -40,45 +22,6 @@ fn bench_turboshake256(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), &input, |b, input| {
             b.iter(|| {
                 TurboShake256::hash(black_box(input), black_box(&mut output));
-            });
-        });
-    }
-
-    group.finish();
-}
-
-fn bench_kt128(c: &mut Criterion) {
-    let mut group = c.benchmark_group("kt128");
-
-    for &size in SIZES {
-        let input = generate_data(size);
-        let mut output = vec![0u8; 32];
-
-        group.throughput(Throughput::Bytes(size as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(size), &input, |b, input| {
-            b.iter(|| {
-                KT128::hash(black_box(input), &[], black_box(&mut output));
-            });
-        });
-    }
-
-    group.finish();
-}
-
-fn bench_kt128_large(c: &mut Criterion) {
-    let mut group = c.benchmark_group("kt128_large");
-
-    // Test larger sizes that trigger tree hashing (> 8192 bytes)
-    let large_sizes = [8192, 16384, 32768, 65536];
-
-    for &size in &large_sizes {
-        let input = generate_data(size);
-        let mut output = vec![0u8; 32];
-
-        group.throughput(Throughput::Bytes(size as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(size), &input, |b, input| {
-            b.iter(|| {
-                KT128::hash(black_box(input), &[], black_box(&mut output));
             });
         });
     }
@@ -224,12 +167,11 @@ fn bench_turboshake256_variable_output(c: &mut Criterion) {
 
 criterion_group!(
     hash_benches,
-    bench_turboshake128,
     bench_turboshake256,
     bench_turboshake256_variable_output,
 );
 
-criterion_group!(kangaroo_benches, bench_kt128, bench_kt128_large, bench_kt256,);
+criterion_group!(kangaroo_benches, bench_kt256);
 
 criterion_group!(
     aead_benches,

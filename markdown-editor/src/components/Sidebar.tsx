@@ -109,7 +109,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   key={doc.id}
                   data-testid={`document-item-${doc.id}`}
                   class={`
-                    group relative
+                    group relative cursor-pointer
                     ${activeDocumentId.value === doc.id ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'}
                   `}
                 >
@@ -138,14 +138,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   ) : (
                     <button
                       onClick={() => handleSelectDocument(doc.id)}
-                      class="w-full text-left p-3 pr-16"
+                      class="w-full text-left p-3 pr-16 cursor-pointer"
                       data-testid={`select-document-${doc.id}`}
                     >
                       <p class="font-medium text-zinc-100 truncate">{doc.title}</p>
                       <p class="text-xs text-zinc-500 mt-1">{formatDate(doc.updatedAt)}</p>
                     </button>
                   )}
-                  
+
                   {editingDocId.value !== doc.id && (
                     <div class="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <ActionIcon
