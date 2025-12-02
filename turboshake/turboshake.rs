@@ -5,21 +5,37 @@
 
 use core::mem;
 
+// Compile-time check for little-endian architecture
+// Keccak state interpretation assumes little-endian byte order
+#[cfg(not(target_endian = "little"))]
+compile_error!("This crate requires a little-endian architecture");
+
 /// State size in bytes (1600 bits)
 const STATE_SIZE: usize = 200;
 
 /// Get mutable reference to state as bytes using transmute (zero-copy)
+///
+/// # Safety
+/// This is safe because:
+/// - [u64; 25] and [u8; 200] have the same size (200 bytes)
+/// - We require little-endian architecture (checked at compile time)
+/// - The byte layout matches Keccak's expected lane ordering
 #[inline(always)]
 fn state_as_bytes_mut(state: &mut [u64; 25]) -> &mut [u8; STATE_SIZE] {
-    // SAFETY: [u64; 25] and [u8; 200] have the same size and alignment requirements
-    // on little-endian systems, the byte layout is correct for Keccak
+    // SAFETY: Size and alignment are compatible, and we enforce little-endian at compile time
     unsafe { mem::transmute(state) }
 }
 
 /// Get reference to state as bytes using transmute (zero-copy)
+///
+/// # Safety
+/// This is safe because:
+/// - [u64; 25] and [u8; 200] have the same size (200 bytes)
+/// - We require little-endian architecture (checked at compile time)
+/// - The byte layout matches Keccak's expected lane ordering
 #[inline(always)]
 fn state_as_bytes(state: &[u64; 25]) -> &[u8; STATE_SIZE] {
-    // SAFETY: [u64; 25] and [u8; 200] have the same size and alignment requirements
+    // SAFETY: Size and alignment are compatible, and we enforce little-endian at compile time
     unsafe { mem::transmute(state) }
 }
 

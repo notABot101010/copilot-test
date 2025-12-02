@@ -5,6 +5,11 @@
 
 use core::mem;
 
+// Compile-time check for little-endian architecture
+// Keccak state interpretation assumes little-endian byte order
+#[cfg(not(target_endian = "little"))]
+compile_error!("This crate requires a little-endian architecture");
+
 /// State size in bytes (1600 bits)
 const STATE_SIZE: usize = 200;
 
@@ -15,14 +20,28 @@ const RATE: usize = 136;
 const TAG_SIZE: usize = 32;
 
 /// Get mutable reference to state as bytes using transmute (zero-copy)
+///
+/// # Safety
+/// This is safe because:
+/// - [u64; 25] and [u8; 200] have the same size (200 bytes)
+/// - We require little-endian architecture (checked at compile time)
+/// - The byte layout matches Keccak's expected lane ordering
 #[inline(always)]
 fn state_as_bytes_mut(state: &mut [u64; 25]) -> &mut [u8; STATE_SIZE] {
+    // SAFETY: Size and alignment are compatible, and we enforce little-endian at compile time
     unsafe { mem::transmute(state) }
 }
 
 /// Get reference to state as bytes using transmute (zero-copy)
+///
+/// # Safety
+/// This is safe because:
+/// - [u64; 25] and [u8; 200] have the same size (200 bytes)
+/// - We require little-endian architecture (checked at compile time)
+/// - The byte layout matches Keccak's expected lane ordering
 #[inline(always)]
 fn state_as_bytes(state: &[u64; 25]) -> &[u8; STATE_SIZE] {
+    // SAFETY: Size and alignment are compatible, and we enforce little-endian at compile time
     unsafe { mem::transmute(state) }
 }
 
@@ -267,6 +286,14 @@ impl TurboShakeAead {
     ///
     /// This version modifies the ciphertext buffer directly.
     /// Returns the length of the plaintext (buffer is truncated to remove tag).
+    ///
+    /// Note: This uses a two-pass approach (verify-then-decrypt) for security:
+    /// 1. First pass: verify the authentication tag before any decryption
+    /// 2. Second pass: decrypt the data only if verification succeeds
+    ///
+    /// A single-pass approach could leak plaintext on authentication failure,
+    /// which violates the security guarantees of authenticated encryption.
+    /// The two-pass approach ensures no plaintext is revealed if the tag is invalid.
     pub fn decrypt_in_place(&mut self, buffer: &mut Vec<u8>, ad: &[u8]) -> Result<(), AeadError> {
         if buffer.len() < TAG_SIZE {
             return Err(AeadError::AuthenticationFailed);
@@ -308,12 +335,13 @@ impl TurboShakeAead {
             return Err(AeadError::AuthenticationFailed);
         }
 
-        // Second pass: decrypt
+        // Second pass: decrypt (only reached if tag verification succeeded)
         offset = 0;
         while offset < ct_len {
             let chunk_len = (ct_len - offset).min(RATE);
 
-            // 1. Squeeze keystream
+            // 1. Squeeze keystream (extract bytes from sponge state)
+            // This is equivalent to squeeze_block but inlined for efficiency
             let mut keystream = [0u8; RATE];
             let state_bytes = state_as_bytes(&self.state);
             keystream[..chunk_len].copy_from_slice(&state_bytes[..chunk_len]);
