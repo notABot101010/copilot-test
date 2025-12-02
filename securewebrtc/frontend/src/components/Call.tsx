@@ -17,10 +17,8 @@ export default function Call({ roomId, onEnd }: CallProps) {
     
     async function initCall() {
       try {
-        // Determine if we're the initiator or joiner
-        // The URL path determines this - if we navigated here, we're joining
-        const isInitiator = window.location.pathname === '/';
-        await service.connect(roomId, isInitiator);
+        // Connect to the signaling server - it will determine who is initiator
+        await service.connect(roomId);
         isConnecting.value = false;
       } catch (err) {
         console.error('Failed to initialize call:', err);

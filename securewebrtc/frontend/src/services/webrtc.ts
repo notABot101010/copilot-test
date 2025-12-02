@@ -15,7 +15,7 @@ export interface WebRTCService {
   peerJoined: Signal<boolean>;
   roomFull: Signal<boolean>;
   error: Signal<string | null>;
-  connect(roomId: string, isInitiator: boolean): Promise<void>;
+  connect(roomId: string): Promise<void>;
   disconnect(): void;
   startCall(): Promise<void>;
   answerCall(): Promise<void>;
@@ -150,9 +150,9 @@ export function createWebRTCService(): WebRTCService {
     }
   }
 
-  async function connect(roomId: string, initiator: boolean): Promise<void> {
+  async function connect(roomId: string): Promise<void> {
     currentRoomId = roomId;
-    isInitiator.value = initiator;
+    // The server will determine who is initiator based on connection order
 
     // Get local stream first
     await getLocalStream();

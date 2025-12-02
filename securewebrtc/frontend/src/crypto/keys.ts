@@ -144,9 +144,10 @@ export async function deriveAESKey(sharedSecret: ArrayBuffer): Promise<CryptoKey
 
 // Encrypt data with AES-GCM
 export async function encrypt(key: CryptoKey, data: ArrayBuffer): Promise<{ ciphertext: ArrayBuffer; iv: Uint8Array }> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const iv = new Uint8Array(12);
+  crypto.getRandomValues(iv);
   const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: iv as Uint8Array<ArrayBuffer> },
+    { name: 'AES-GCM', iv },
     key,
     data
   );
@@ -154,9 +155,9 @@ export async function encrypt(key: CryptoKey, data: ArrayBuffer): Promise<{ ciph
 }
 
 // Decrypt data with AES-GCM
-export async function decrypt(key: CryptoKey, ciphertext: ArrayBuffer, iv: Uint8Array<ArrayBuffer>): Promise<ArrayBuffer> {
+export async function decrypt(key: CryptoKey, ciphertext: ArrayBuffer, iv: Uint8Array): Promise<ArrayBuffer> {
   return crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv as unknown as BufferSource },
     key,
     ciphertext
   );

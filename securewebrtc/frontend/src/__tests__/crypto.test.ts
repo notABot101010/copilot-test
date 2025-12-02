@@ -16,8 +16,8 @@ import {
 // Polyfill crypto for Node.js test environment
 beforeAll(async () => {
   if (typeof globalThis.crypto === 'undefined') {
-    const { webcrypto } = await import('crypto');
-    (globalThis as unknown as { crypto: typeof webcrypto }).crypto = webcrypto;
+    const nodeCrypto = await import('node:crypto');
+    (globalThis as Record<string, unknown>).crypto = nodeCrypto.webcrypto;
   }
 });
 
@@ -58,8 +58,8 @@ describe('Ed25519 Signing and Verification', () => {
     const keyPair = await generateIdentityKeys();
     const data = new TextEncoder().encode('Hello, World!');
     
-    const signature = await sign(keyPair.privateKey, data);
-    const isValid = await verify(keyPair.publicKey, signature, data);
+    const signature = await sign(keyPair.privateKey, data.buffer as ArrayBuffer);
+    const isValid = await verify(keyPair.publicKey, signature, data.buffer as ArrayBuffer);
     
     expect(isValid).toBe(true);
   });
@@ -69,8 +69,8 @@ describe('Ed25519 Signing and Verification', () => {
     const data = new TextEncoder().encode('Hello, World!');
     const wrongData = new TextEncoder().encode('Goodbye, World!');
     
-    const signature = await sign(keyPair.privateKey, data);
-    const isValid = await verify(keyPair.publicKey, signature, wrongData);
+    const signature = await sign(keyPair.privateKey, data.buffer as ArrayBuffer);
+    const isValid = await verify(keyPair.publicKey, signature, wrongData.buffer as ArrayBuffer);
     
     expect(isValid).toBe(false);
   });
@@ -80,8 +80,8 @@ describe('Ed25519 Signing and Verification', () => {
     const keyPair2 = await generateIdentityKeys();
     const data = new TextEncoder().encode('Hello, World!');
     
-    const signature = await sign(keyPair1.privateKey, data);
-    const isValid = await verify(keyPair2.publicKey, signature, data);
+    const signature = await sign(keyPair1.privateKey, data.buffer as ArrayBuffer);
+    const isValid = await verify(keyPair2.publicKey, signature, data.buffer as ArrayBuffer);
     
     expect(isValid).toBe(false);
   });
@@ -122,9 +122,9 @@ describe('AES-GCM Encryption', () => {
     const aesKey = await deriveAESKey(sharedSecret);
     
     const plaintext = new TextEncoder().encode('Secret message');
-    const { ciphertext, iv } = await encrypt(aesKey, plaintext);
+    const { ciphertext, iv } = await encrypt(aesKey, plaintext.buffer as ArrayBuffer);
     
-    const decrypted = await decrypt(aesKey, ciphertext, iv as Uint8Array<ArrayBuffer>);
+    const decrypted = await decrypt(aesKey, ciphertext, iv);
     const decryptedText = new TextDecoder().decode(decrypted);
     
     expect(decryptedText).toBe('Secret message');
@@ -138,8 +138,8 @@ describe('AES-GCM Encryption', () => {
     const aesKey = await deriveAESKey(sharedSecret);
     
     const plaintext = new TextEncoder().encode('Secret message');
-    const { ciphertext: ct1 } = await encrypt(aesKey, plaintext);
-    const { ciphertext: ct2 } = await encrypt(aesKey, plaintext);
+    const { ciphertext: ct1 } = await encrypt(aesKey, plaintext.buffer as ArrayBuffer);
+    const { ciphertext: ct2 } = await encrypt(aesKey, plaintext.buffer as ArrayBuffer);
     
     // Due to random IV, ciphertexts should be different
     const bytes1 = new Uint8Array(ct1);
@@ -151,7 +151,7 @@ describe('AES-GCM Encryption', () => {
 describe('Base64URL Encoding', () => {
   it('should encode and decode correctly', () => {
     const original = new Uint8Array([0, 1, 2, 255, 254, 253]);
-    const encoded = arrayBufferToBase64Url(original.buffer);
+    const encoded = arrayBufferToBase64Url(original.buffer as ArrayBuffer);
     const decoded = base64UrlToArrayBuffer(encoded);
     
     expect(new Uint8Array(decoded)).toEqual(original);
@@ -160,7 +160,7 @@ describe('Base64URL Encoding', () => {
   it('should produce URL-safe output', () => {
     // Test with bytes that would produce + and / in standard base64
     const data = new Uint8Array([251, 255, 254]);
-    const encoded = arrayBufferToBase64Url(data.buffer);
+    const encoded = arrayBufferToBase64Url(data.buffer as ArrayBuffer);
     
     expect(encoded).not.toContain('+');
     expect(encoded).not.toContain('/');
