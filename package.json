@@ -13,6 +13,7 @@
     "realtime-docs/webapp",
     "chesssite/webapp",
     "tvflix/webapp",
-    "markdown-editor"
+    "markdown-editor",
+    "telegraf"
   ]
 }

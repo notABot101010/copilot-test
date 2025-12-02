@@ -13,4 +13,4 @@ export GOPROXY=direct
 export GOTOOLCHAIN="local"
 # go telemetry off
 
-export PATH="$PATH:$GOROOT/bin:$GOPATH/bin:$HOME/.cargo/bin:$HOME/.local/bin"
+export PATH="$PATH:$GOROOT/bin:$GOPATH/bin:$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.npm/bin"
