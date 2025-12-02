@@ -1,0 +1,21 @@
+[package]
+name = "duplex"
+version = "0.1.0"
+edition = "2021"
+description = "Keccak-based AEAD using duplex construction"
+license = "MIT"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+keccak = { version = "0.1", features = ["asm"] }
+
+[dev-dependencies]
+criterion = { workspace = true }
+rand = "0.8"
+hex-literal = "0.4"
+
+[[bench]]
+name = "aead_benchmarks"
+harness = false

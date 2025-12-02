@@ -1,0 +1,30 @@
+{
+  "name": "mdeditor",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --strictPort --port 4000 --host",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mantine/core": "^8.3.9",
+    "@mantine/hooks": "^8.3.9",
+    "@preact/compat": "^18.3.1",
+    "@tiptap/pm": "^3.11.1",
+    "@tiptap/react": "^3.11.1",
+    "@tiptap/starter-kit": "^3.11.1",
+    "preact": "^10.28.0",
+    "prosemirror-markdown": "^1.13.2"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.9.3",
+    "@tailwindcss/vite": "^4.1.17",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.1.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

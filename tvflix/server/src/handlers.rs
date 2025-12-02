@@ -273,7 +273,7 @@ async fn get_current_user(
     headers: HeaderMap,
 ) -> Result<Json<UserResponse>> {
     let user_id = get_user_from_headers(&state, &headers).await?;
-    
+
     let user = state
         .db
         .get_user_by_id(user_id)
@@ -323,7 +323,7 @@ async fn upload_media(
         .map_err(|err| ApiError::BadRequest(err.to_string()))?
     {
         let name = field.name().map(|s| s.to_string());
-        
+
         match name.as_deref() {
             Some("title") => {
                 title = Some(
@@ -476,7 +476,7 @@ async fn stream_media(
     headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Response<Body>> {
-    let user_id = get_user_from_headers(&state, &headers).await?;
+    // let user_id = get_user_from_headers(&state, &headers).await?;
 
     let media = state
         .db
@@ -484,9 +484,9 @@ async fn stream_media(
         .await?
         .ok_or_else(|| ApiError::NotFound("Media not found".to_string()))?;
 
-    if media.user_id != user_id {
-        return Err(ApiError::NotFound("Media not found".to_string()));
-    }
+    // if media.user_id != user_id {
+    //     return Err(ApiError::NotFound("Media not found".to_string()));
+    // }
 
     let path = PathBuf::from(&media.storage_path);
     let file_size = state.storage.get_file_size(&path).await?;
