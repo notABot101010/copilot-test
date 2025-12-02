@@ -140,26 +140,35 @@ impl Storage {
     }
 
     /// Generate thumbnail for video using ffmpeg
+    /// 
+    /// Security note: Paths are validated to be within the storage base directory
+    /// and are canonicalized before use to prevent path traversal attacks.
     pub async fn generate_video_thumbnail(
         &self,
         video_path: &PathBuf,
         thumbnail_path: &PathBuf,
     ) -> Result<()> {
+        // Validate that paths are within our storage directory
+        let video_canonical = video_path.canonicalize()
+            .map_err(|err| StorageError::ThumbnailError(format!("Invalid video path: {}", err)))?;
+        
+        let base_canonical = self.base_path.canonicalize()
+            .unwrap_or_else(|_| self.base_path.clone());
+        
+        if !video_canonical.starts_with(&base_canonical) {
+            return Err(StorageError::ThumbnailError(
+                "Video path must be within storage directory".to_string()
+            ));
+        }
+        
         self.ensure_dir(thumbnail_path).await?;
 
+        // Use OsStr to pass paths directly to avoid shell interpretation
         let output = tokio::process::Command::new("ffmpeg")
-            .args([
-                "-i",
-                &video_path.display().to_string(),
-                "-ss",
-                "00:00:01",
-                "-vframes",
-                "1",
-                "-vf",
-                "scale=320:-1",
-                "-y",
-                &thumbnail_path.display().to_string(),
-            ])
+            .arg("-i")
+            .arg(video_path.as_os_str())
+            .args(["-ss", "00:00:01", "-vframes", "1", "-vf", "scale=320:-1", "-y"])
+            .arg(thumbnail_path.as_os_str())
             .output()
             .await
             .map_err(|err| StorageError::ThumbnailError(err.to_string()))?;

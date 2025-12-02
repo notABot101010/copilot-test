@@ -1,38 +1,60 @@
 //! Authentication utilities
 
 use aws_lc_rs::rand::{SecureRandom, SystemRandom};
+use aws_lc_rs::pbkdf2;
+use std::num::NonZeroU32;
 
-/// Hash a password using a simple approach
-/// In production, use argon2 or bcrypt
+// PBKDF2 parameters
+const PBKDF2_ITERATIONS: u32 = 100_000;
+static PBKDF2_ALG: pbkdf2::Algorithm = pbkdf2::PBKDF2_HMAC_SHA256;
+
+/// Hash a password using PBKDF2-HMAC-SHA256
+/// Uses 100,000 iterations for security
 pub fn hash_password(password: &str) -> String {
-    use aws_lc_rs::digest::{digest, SHA256};
-    
     let rng = SystemRandom::new();
     let mut salt = [0u8; 16];
     rng.fill(&mut salt).expect("Failed to generate salt");
     
-    let salted = format!("{}{}", hex::encode(salt), password);
-    let hash = digest(&SHA256, salted.as_bytes());
+    let mut hash = [0u8; 32];
+    let iterations = NonZeroU32::new(PBKDF2_ITERATIONS).expect("iterations should be non-zero");
     
-    format!("{}${}", hex::encode(salt), hex::encode(hash.as_ref()))
+    pbkdf2::derive(
+        PBKDF2_ALG,
+        iterations,
+        &salt,
+        password.as_bytes(),
+        &mut hash,
+    );
+    
+    format!("{}${}", hex::encode(salt), hex::encode(hash))
 }
 
-/// Verify a password against a hash
-pub fn verify_password(password: &str, hash: &str) -> bool {
-    use aws_lc_rs::digest::{digest, SHA256};
-    
-    let parts: Vec<&str> = hash.split('$').collect();
+/// Verify a password against a PBKDF2 hash
+pub fn verify_password(password: &str, stored_hash: &str) -> bool {
+    let parts: Vec<&str> = stored_hash.split('$').collect();
     if parts.len() != 2 {
         return false;
     }
     
-    let salt = parts[0];
-    let stored_hash = parts[1];
+    let salt = match hex::decode(parts[0]) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
     
-    let salted = format!("{}{}", salt, password);
-    let computed_hash = digest(&SHA256, salted.as_bytes());
+    let expected_hash = match hex::decode(parts[1]) {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
     
-    hex::encode(computed_hash.as_ref()) == stored_hash
+    let iterations = NonZeroU32::new(PBKDF2_ITERATIONS).expect("iterations should be non-zero");
+    
+    pbkdf2::verify(
+        PBKDF2_ALG,
+        iterations,
+        &salt,
+        password.as_bytes(),
+        &expected_hash,
+    ).is_ok()
 }
 
 /// Generate a random session token
