@@ -1,0 +1,17 @@
+[package]
+name = "keccak-avx2"
+version = "0.1.0"
+edition = "2021"
+description = "AVX2-accelerated Keccak-p1600 permutation"
+license = "MIT"
+
+[lib]
+path = "lib.rs"
+
+[dev-dependencies]
+criterion = { workspace = true }
+keccak = "0.1"
+
+[[bench]]
+name = "benchmarks"
+harness = false
