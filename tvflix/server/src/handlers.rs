@@ -2,7 +2,7 @@
 
 use axum::{
     body::Body,
-    extract::{Multipart, Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
@@ -165,6 +165,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/albums/:id/items/:media_id", delete(remove_from_album))
         // Serve static files (webapp)
         .nest_service("/", ServeDir::new(static_path).append_index_html_on_directories(true))
+        // Increase body limit for large file uploads (10GB)
+        .layer(DefaultBodyLimit::max(10 * 1024 * 1024 * 1024))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state)

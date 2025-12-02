@@ -5,6 +5,10 @@ edition = "2021"
 description = "Self-hosted media center server"
 license = "MIT"
 
+[lib]
+name = "tvflix_server"
+path = "src/lib.rs"
+
 [[bin]]
 name = "tvflix-server"
 path = "src/main.rs"

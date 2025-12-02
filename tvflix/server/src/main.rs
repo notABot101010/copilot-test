@@ -13,14 +13,7 @@ use std::sync::Arc;
 use clap::Parser;
 use tracing::info;
 
-mod auth;
-mod database;
-mod handlers;
-mod storage;
-
-use database::Database;
-use handlers::create_router;
-use storage::Storage;
+use tvflix_server::{database, handlers, storage, AppState};
 
 #[derive(Parser)]
 #[command(name = "tvflix-server")]
@@ -37,13 +30,6 @@ struct Cli {
     /// Path to the SQLite database
     #[arg(short = 'D', long, default_value = "tvflix.db")]
     database: PathBuf,
-}
-
-/// Shared application state
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<Database>,
-    pub storage: Arc<Storage>,
 }
 
 #[tokio::main]
@@ -65,10 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to database
     let db_url = format!("sqlite:{}?mode=rwc", cli.database.display());
-    let db = Database::connect(&db_url).await?;
+    let db = database::Database::connect(&db_url).await?;
     db.init().await?;
 
-    let storage = Storage::new(cli.data_path.clone());
+    let storage = storage::Storage::new(cli.data_path.clone());
 
     let state = AppState {
         db: Arc::new(db),
@@ -79,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Data directory: {:?}", cli.data_path);
     info!("Database: {:?}", cli.database);
 
-    let app = create_router(state);
+    let app = handlers::create_router(state);
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], cli.port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
