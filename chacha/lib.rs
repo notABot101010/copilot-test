@@ -155,20 +155,19 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         (self.state[12] as u64) | ((self.state[13] as u64) << 32)
     }
 
-    /// Increments the 64-bit counter.
+    /// Increments the 64-bit counter by the given amount.
     #[inline]
-    fn increment_counter(&mut self) {
-        let (low, overflow) = self.state[12].overflowing_add(1);
-        self.state[12] = low;
-        if overflow {
-            self.state[13] = self.state[13].wrapping_add(1);
-        }
+    fn increment_counter(&mut self, amount: u64) {
+        let counter = (self.state[12] as u64) | ((self.state[13] as u64) << 32);
+        let new_counter = counter.wrapping_add(amount);
+        self.state[12] = new_counter as u32;
+        self.state[13] = (new_counter >> 32) as u32;
     }
 
     /// Generates the next keystream block and returns it.
     fn next_keystream_block(&mut self) -> [u8; 64] {
         let block = chacha_block::<ROUNDS>(&self.state);
-        self.increment_counter();
+        self.increment_counter(1);
 
         let mut keystream = [0u8; 64];
         serialize_state(&block, &mut keystream);
@@ -225,7 +224,6 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                     }
 
                     // XOR keystream with data using AVX2
-                    #[cfg(target_arch = "x86_64")]
                     unsafe {
                         use core::arch::x86_64::*;
                         for i in (0..512).step_by(32) {
@@ -238,12 +236,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                         }
                     }
 
-                    // Increment counter by 8
-                    let counter = (self.state[12] as u64) | ((self.state[13] as u64) << 32);
-                    let new_counter = counter.wrapping_add(8);
-                    self.state[12] = new_counter as u32;
-                    self.state[13] = (new_counter >> 32) as u32;
-
+                    self.increment_counter(8);
                     offset += 512;
                 }
             }
@@ -257,7 +250,6 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                     }
 
                     // XOR keystream with data
-                    #[cfg(target_arch = "x86_64")]
                     unsafe {
                         use core::arch::x86_64::*;
                         for i in (0..256).step_by(32) {
@@ -270,12 +262,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                         }
                     }
 
-                    // Increment counter by 4
-                    let counter = (self.state[12] as u64) | ((self.state[13] as u64) << 32);
-                    let new_counter = counter.wrapping_add(4);
-                    self.state[12] = new_counter as u32;
-                    self.state[13] = (new_counter >> 32) as u32;
-
+                    self.increment_counter(4);
                     offset += 256;
                 }
             }

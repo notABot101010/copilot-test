@@ -285,7 +285,9 @@ pub unsafe fn chacha_blocks_avx2<const ROUNDS: usize>(
 }
 
 /// Process 8 ChaCha blocks in parallel using full AVX2 256-bit registers.
-/// Produces 8 keystream blocks (512 bytes total).
+/// The state array represents the initial state with base counter.
+/// Produces 8 keystream blocks (512 bytes total) for counter values:
+/// base, base+1, base+2, base+3, base+4, base+5, base+6, base+7
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 pub unsafe fn chacha_blocks_avx2_x8<const ROUNDS: usize>(
