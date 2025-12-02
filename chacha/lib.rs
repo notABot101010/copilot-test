@@ -216,8 +216,40 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         // Use AVX2 for large data if available
         #[cfg(target_arch = "x86_64")]
         {
+            if is_x86_feature_detected!("avx2") && (data_len - offset) >= 512 {
+                // Process 512-byte chunks (8 blocks) using full AVX2
+                while offset + 512 <= data_len {
+                    let mut keystream = [0u8; 512];
+                    unsafe {
+                        chacha_avx2::chacha_blocks_avx2_x8::<ROUNDS>(&self.state, &mut keystream);
+                    }
+
+                    // XOR keystream with data using AVX2
+                    #[cfg(target_arch = "x86_64")]
+                    unsafe {
+                        use core::arch::x86_64::*;
+                        for i in (0..512).step_by(32) {
+                            let data_ptr = data.as_mut_ptr().add(offset + i);
+                            let key_ptr = keystream.as_ptr().add(i);
+                            let data_vec = _mm256_loadu_si256(data_ptr as *const __m256i);
+                            let key_vec = _mm256_loadu_si256(key_ptr as *const __m256i);
+                            let result = _mm256_xor_si256(data_vec, key_vec);
+                            _mm256_storeu_si256(data_ptr as *mut __m256i, result);
+                        }
+                    }
+
+                    // Increment counter by 8
+                    let counter = (self.state[12] as u64) | ((self.state[13] as u64) << 32);
+                    let new_counter = counter.wrapping_add(8);
+                    self.state[12] = new_counter as u32;
+                    self.state[13] = (new_counter >> 32) as u32;
+
+                    offset += 512;
+                }
+            }
+            
+            // Process remaining 256-byte chunks (4 blocks) using SSE
             if is_x86_feature_detected!("avx2") && (data_len - offset) >= 256 {
-                // Process 256-byte chunks (4 blocks) using AVX2
                 while offset + 256 <= data_len {
                     let mut keystream = [0u8; 256];
                     unsafe {
