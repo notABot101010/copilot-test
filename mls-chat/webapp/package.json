@@ -16,6 +16,7 @@
     "@mantine/core": "^8.3.9",
     "@mantine/hooks": "^8.3.9",
     "@preact/signals": "^2.5.1",
+    "openmls-wasm": "file:../openmls-wasm/pkg",
     "preact": "^10.27.2"
   },
   "devDependencies": {

@@ -97,21 +97,21 @@ test.describe('Group Invitations', () => {
     const password = 'TestPassword123!';
     const groupName = 'Test';
 
-    // Register user2 and user3 first
-    const page2 = await browser.newPage();
+    // Create separate browser contexts to simulate different users with isolated storage
+    const context1 = await browser.newContext();
+    const context2 = await browser.newContext();
+    const context3 = await browser.newContext();
+    
+    const page1 = await context1.newPage();
+    const page2 = await context2.newPage();
+    const page3 = await context3.newPage();
+    
+    // Register all users (this generates their MLS key packages in their respective contexts)
     await registerUser(page2, user2, password);
-    await logout(page2);
-    await page2.close();
-
-    const page3 = await browser.newPage();
     await registerUser(page3, user3, password);
-    await logout(page3);
-    await page3.close();
-
-    // User1 creates group and invites
-    const page1 = await browser.newPage();
     await registerUser(page1, user1, password);
     
+    // User1 creates group
     await page1.click('a:has-text("Create Group")');
     await page1.fill('input#name', groupName);
     await page1.click('button[type="submit"]');
@@ -127,30 +127,32 @@ test.describe('Group Invitations', () => {
     // Invite user3
     await page1.click(`button[data-invite-user="${user3}"]`);
     await expect(page1.locator(`text=Invited ${user3}`)).toBeVisible({ timeout: 5000 });
-    
-    await page1.close();
 
-    // User2 accepts invitation
-    const page2Accept = await browser.newPage();
-    await loginUser(page2Accept, user2, password);
+    // User2 accepts invitation - reload to see pending invitations
+    await page2.goto('/groups');
+    await page2.waitForTimeout(1000);
+    await expect(page2.locator('text=Pending Invitations')).toBeVisible({ timeout: 10000 });
     
-    await expect(page2Accept.locator('text=Pending Invitations')).toBeVisible({ timeout: 10000 });
-    await page2Accept.click('button:has-text("Accept")');
-    await page2Accept.waitForTimeout(2000);
+    // Click Accept and wait for the page to update
+    await page2.click('button:has-text("Accept")');
+    await page2.waitForTimeout(3000);
     
-    await expect(page2Accept.locator(`a:has-text("${groupName}")`)).toBeVisible({ timeout: 5000 });
-    await page2Accept.close();
+    // The group should now appear in the list
+    await expect(page2.locator(`a:has-text("${groupName}")`)).toBeVisible({ timeout: 10000 });
 
-    // User3 accepts invitation
-    const page3Accept = await browser.newPage();
-    await loginUser(page3Accept, user3, password);
+    // User3 accepts invitation - reload to see pending invitations
+    await page3.goto('/groups');
+    await page3.waitForTimeout(1000);
+    await expect(page3.locator('text=Pending Invitations')).toBeVisible({ timeout: 10000 });
+    await page3.click('button:has-text("Accept")');
+    await page3.waitForTimeout(3000);
     
-    await expect(page3Accept.locator('text=Pending Invitations')).toBeVisible({ timeout: 10000 });
-    await page3Accept.click('button:has-text("Accept")');
-    await page3Accept.waitForTimeout(2000);
+    await expect(page3.locator(`a:has-text("${groupName}")`)).toBeVisible({ timeout: 10000 });
     
-    await expect(page3Accept.locator(`a:has-text("${groupName}")`)).toBeVisible({ timeout: 5000 });
-    await page3Accept.close();
+    // Cleanup
+    await context1.close();
+    await context2.close();
+    await context3.close();
   });
 });
 

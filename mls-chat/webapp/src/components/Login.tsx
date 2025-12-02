@@ -1,8 +1,9 @@
 import { useSignal } from '@preact/signals';
 import { useNavigation } from '@copilot-test/preact-router';
-import { login } from '../services/api';
+import { login, uploadKeyPackages } from '../services/api';
 import { setCurrentUser, currentUser } from '../app';
 import { useEffect } from 'preact/hooks';
+import { initializeMls, generateKeyPackages } from '../services/mls';
 
 export default function Login() {
   const username = useSignal('');
@@ -25,6 +26,13 @@ export default function Login() {
     try {
       const response = await login(username.value, password.value);
       if (response.success && response.user_id) {
+        // Initialize MLS for this user
+        await initializeMls(username.value);
+        
+        // Generate and upload key packages for the user
+        const keyPackages = await generateKeyPackages(username.value, 5);
+        await uploadKeyPackages(username.value, keyPackages);
+        
         setCurrentUser({
           username: response.username,
           userId: response.user_id,
