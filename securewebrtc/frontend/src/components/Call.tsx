@@ -60,6 +60,7 @@ export default function Call({ roomId, onEnd }: CallProps) {
   const service = webrtc.value;
   const connectionStatus = service.connectionState.value;
   const hasRemoteStream = service.remoteStream.value !== null;
+  const isE2EEEnabled = service.isE2EEEnabled.value;
 
   return (
     <div class="min-h-screen bg-gray-900 flex flex-col">
@@ -72,11 +73,20 @@ export default function Call({ roomId, onEnd }: CallProps) {
             'bg-red-500'
           }`} />
           <span class="text-white text-sm">
-            {connectionStatus === 'connected' ? 'Connected (Encrypted)' :
-             connectionStatus === 'connecting' ? 'Connecting...' :
-             service.peerJoined.value ? 'Peer joined, establishing connection...' :
-             'Waiting for peer...'}
+            {connectionStatus === 'connected' 
+              ? (isE2EEEnabled ? 'Connected (E2E Encrypted)' : 'Connected') 
+              : connectionStatus === 'connecting' ? 'Connecting...' :
+              service.peerJoined.value ? 'Peer joined, establishing connection...' :
+              'Waiting for peer...'}
           </span>
+          {isE2EEEnabled && (
+            <span class="flex items-center gap-1 text-green-400 text-xs bg-green-900/30 px-2 py-0.5 rounded">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              E2EE
+            </span>
+          )}
         </div>
         {service.error.value && (
           <span class="text-red-400 text-sm">{service.error.value}</span>

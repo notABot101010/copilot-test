@@ -35,6 +35,8 @@ enum SignalingMessage {
     Answer { sdp: String },
     #[serde(rename = "ice-candidate")]
     IceCandidate { candidate: String },
+    #[serde(rename = "e2ee-key")]
+    E2EEKey { #[serde(rename = "publicKey")] public_key: String },
     #[serde(rename = "peer-joined")]
     PeerJoined,
     #[serde(rename = "peer-left")]
