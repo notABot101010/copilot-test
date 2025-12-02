@@ -3,13 +3,13 @@ import { useEffect } from 'preact/hooks';
 import { generateIdentityKeys, exportPublicKey } from '../crypto/keys';
 
 interface HomeProps {
-  onRoomCreated: (roomId: string, publicKey: string) => void;
+  onStartCall: (roomId: string) => void;
 }
 
-export default function Home({ onRoomCreated }: HomeProps) {
+export default function Home({ onStartCall }: HomeProps) {
   const isGenerating = useSignal(false);
   const shareUrl = useSignal<string | null>(null);
-  const publicKey = useSignal<string | null>(null);
+  const roomId = useSignal<string | null>(null);
   const copied = useSignal(false);
 
   async function generateAndShare() {
@@ -17,13 +17,11 @@ export default function Home({ onRoomCreated }: HomeProps) {
     try {
       const keyPair = await generateIdentityKeys();
       const pubKeyString = await exportPublicKey(keyPair.publicKey);
-      publicKey.value = pubKeyString;
+      roomId.value = pubKeyString;
       
       // Use the public key as room ID
       const url = `${window.location.origin}/call/${pubKeyString}`;
       shareUrl.value = url;
-      
-      onRoomCreated(pubKeyString, pubKeyString);
     } catch (err) {
       console.error('Failed to generate keys:', err);
     } finally {
@@ -38,6 +36,12 @@ export default function Home({ onRoomCreated }: HomeProps) {
       setTimeout(() => {
         copied.value = false;
       }, 2000);
+    }
+  }
+
+  function handleStartCall() {
+    if (roomId.value) {
+      onStartCall(roomId.value);
     }
   }
 
@@ -62,7 +66,7 @@ export default function Home({ onRoomCreated }: HomeProps) {
         ) : (
           <div class="space-y-6">
             <div class="bg-gray-50 rounded-lg p-4">
-              <p class="text-sm text-gray-500 mb-2">Share this URL to start a call:</p>
+              <p class="text-sm text-gray-500 mb-2">Share this URL to invite someone to call:</p>
               <div class="flex gap-2">
                 <input
                   type="text"
@@ -79,6 +83,13 @@ export default function Home({ onRoomCreated }: HomeProps) {
               </div>
             </div>
 
+            <button
+              onClick={handleStartCall}
+              class="w-full py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium text-lg"
+            >
+              Start Call
+            </button>
+
             <div class="border-t border-gray-200 pt-6">
               <div class="flex items-center justify-center text-gray-500 text-sm">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -87,10 +98,6 @@ export default function Home({ onRoomCreated }: HomeProps) {
                 <span>Your call will be end-to-end encrypted</span>
               </div>
             </div>
-
-            <p class="text-center text-gray-500 text-sm">
-              Waiting for someone to join...
-            </p>
           </div>
         )}
       </div>

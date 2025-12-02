@@ -1,4 +1,3 @@
-import { useSignal } from '@preact/signals';
 import { createRouter, RouterProvider, RouterView, useRouter } from '@copilot-test/preact-router';
 import Home from './components/Home';
 import Call from './components/Call';
@@ -13,12 +12,12 @@ const router = createRouter({
 function HomePage() {
   const routerInstance = useRouter();
   
-  function handleRoomCreated(roomId: string) {
+  function handleStartCall(roomId: string) {
     // Navigate to call page with the room ID
     routerInstance.push(`/call/${roomId}`);
   }
 
-  return <Home onRoomCreated={handleRoomCreated} />;
+  return <Home onStartCall={handleStartCall} />;
 }
 
 function CallPage() {
