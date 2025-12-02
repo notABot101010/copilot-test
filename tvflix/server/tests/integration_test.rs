@@ -4,6 +4,7 @@ use reqwest::Client;
 use serde_json::json;
 use std::net::TcpListener;
 use tempfile::TempDir;
+use tvflix_server::handlers::SESSION_COOKIE_NAME;
 
 async fn spawn_server() -> (String, TempDir) {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -419,7 +420,7 @@ async fn test_cookie_authentication_for_streaming() {
     // Test streaming with cookie (simulating browser behavior)
     let response = client
         .get(format!("{}/api/media/{}/stream", base_url, media_id))
-        .header("Cookie", format!("tvflix_session={}", token))
+        .header("Cookie", format!("{}={}", SESSION_COOKIE_NAME, token))
         .send()
         .await
         .expect("Failed to stream with cookie");

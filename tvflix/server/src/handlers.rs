@@ -17,7 +17,7 @@ use tower_http::services::ServeDir;
 use tracing::info;
 
 /// Cookie name for session token
-const SESSION_COOKIE_NAME: &str = "tvflix_session";
+pub const SESSION_COOKIE_NAME: &str = "tvflix_session";
 
 use crate::auth::{generate_token, hash_password, verify_password};
 use crate::database::{DatabaseError, MediaType};
@@ -198,10 +198,11 @@ async fn get_user_from_headers(state: &AppState, headers: &HeaderMap) -> Result<
 /// Extract session token from cookie header
 fn get_token_from_cookie(headers: &HeaderMap) -> Option<String> {
     let cookie_header = headers.get(header::COOKIE)?.to_str().ok()?;
+    let cookie_prefix = format!("{}=", SESSION_COOKIE_NAME);
     
     for cookie in cookie_header.split(';') {
         let cookie = cookie.trim();
-        if let Some(value) = cookie.strip_prefix(&format!("{}=", SESSION_COOKIE_NAME)) {
+        if let Some(value) = cookie.strip_prefix(&cookie_prefix) {
             return Some(value.to_string());
         }
     }
