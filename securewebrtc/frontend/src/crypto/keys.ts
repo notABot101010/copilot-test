@@ -62,7 +62,7 @@ export async function importEd25519PublicKey(base64: string): Promise<CryptoKey>
 // Import ECDH public key from base64url format
 export async function importECDHPublicKey(base64: string): Promise<CryptoKey> {
   const arrayBuffer = base64UrlToArrayBuffer(base64);
-  // Use Uint8Array for better compatibility with Node.js WebCrypto
+  // Wrap in Uint8Array for Node.js WebCrypto compatibility in tests
   const data = new Uint8Array(arrayBuffer);
   return crypto.subtle.importKey(
     'raw',

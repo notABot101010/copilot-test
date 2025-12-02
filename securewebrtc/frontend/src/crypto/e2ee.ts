@@ -17,6 +17,12 @@ export interface E2EEContext {
   frameCounter: number;
 }
 
+// Type for Insertable Streams API support (not yet standardized in TypeScript)
+interface InsertableStreamsSupport {
+  transform?: TransformStream;
+  createEncodedStreams?: () => { readable: ReadableStream; writable: WritableStream };
+}
+
 // Create a new E2EE context with ephemeral ECDH keys
 export async function createE2EEContext(): Promise<E2EEContext> {
   const keyPair = await generateECDHKeys();
@@ -140,10 +146,9 @@ export function applyEncryptionTransform(
   sender: RTCRtpSender,
   context: E2EEContext
 ): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const senderAny = sender as any;
+  const extendedSender = sender as unknown as InsertableStreamsSupport;
   
-  if (typeof senderAny.transform !== 'undefined') {
+  if (extendedSender.transform !== undefined) {
     // Use TransformStream-based approach (Chrome 94+)
     const transformer = new TransformStream({
       async transform(frame, controller) {
@@ -153,10 +158,10 @@ export function applyEncryptionTransform(
         controller.enqueue(frame);
       },
     });
-    senderAny.transform = transformer;
-  } else if (typeof senderAny.createEncodedStreams === 'function') {
+    extendedSender.transform = transformer;
+  } else if (typeof extendedSender.createEncodedStreams === 'function') {
     // Legacy Insertable Streams API (Chrome 86-93)
-    const { readable, writable } = senderAny.createEncodedStreams();
+    const { readable, writable } = extendedSender.createEncodedStreams();
     const transformer = new TransformStream({
       async transform(frame, controller) {
         const data = frame.data as ArrayBuffer;
@@ -174,10 +179,9 @@ export function applyDecryptionTransform(
   receiver: RTCRtpReceiver,
   context: E2EEContext
 ): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const receiverAny = receiver as any;
+  const extendedReceiver = receiver as unknown as InsertableStreamsSupport;
   
-  if (typeof receiverAny.transform !== 'undefined') {
+  if (extendedReceiver.transform !== undefined) {
     // Use TransformStream-based approach (Chrome 94+)
     const transformer = new TransformStream({
       async transform(frame, controller) {
@@ -187,10 +191,10 @@ export function applyDecryptionTransform(
         controller.enqueue(frame);
       },
     });
-    receiverAny.transform = transformer;
-  } else if (typeof receiverAny.createEncodedStreams === 'function') {
+    extendedReceiver.transform = transformer;
+  } else if (typeof extendedReceiver.createEncodedStreams === 'function') {
     // Legacy Insertable Streams API (Chrome 86-93)
-    const { readable, writable } = receiverAny.createEncodedStreams();
+    const { readable, writable } = extendedReceiver.createEncodedStreams();
     const transformer = new TransformStream({
       async transform(frame, controller) {
         const data = frame.data as ArrayBuffer;
