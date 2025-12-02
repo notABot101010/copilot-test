@@ -3,7 +3,7 @@
 use axum::{
     body::Body,
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
     Json, Router,
@@ -15,6 +15,9 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tower_http::services::ServeDir;
 use tracing::info;
+
+/// Cookie name for session token
+const SESSION_COOKIE_NAME: &str = "tvflix_session";
 
 use crate::auth::{generate_token, hash_password, verify_password};
 use crate::database::{DatabaseError, MediaType};
@@ -192,11 +195,64 @@ async fn get_user_from_headers(state: &AppState, headers: &HeaderMap) -> Result<
     Ok(session.user_id)
 }
 
+/// Extract session token from cookie header
+fn get_token_from_cookie(headers: &HeaderMap) -> Option<String> {
+    let cookie_header = headers.get(header::COOKIE)?.to_str().ok()?;
+    
+    for cookie in cookie_header.split(';') {
+        let cookie = cookie.trim();
+        if let Some(value) = cookie.strip_prefix(&format!("{}=", SESSION_COOKIE_NAME)) {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+/// Extract user ID from session token in headers or cookie
+/// This is used for endpoints that need to authenticate when accessed from HTML elements
+/// like video/audio/img src attributes, which can't send Authorization headers
+async fn get_user_from_headers_or_cookie(state: &AppState, headers: &HeaderMap) -> Result<i64> {
+    // First try Authorization header
+    if let Some(auth_header) = headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+        if let Some(token) = auth_header.strip_prefix("Bearer ") {
+            if let Some(session) = state.db.get_session_by_token(token).await? {
+                return Ok(session.user_id);
+            }
+        }
+    }
+    
+    // Fall back to cookie
+    if let Some(token) = get_token_from_cookie(headers) {
+        if let Some(session) = state.db.get_session_by_token(&token).await? {
+            return Ok(session.user_id);
+        }
+    }
+    
+    Err(ApiError::Unauthorized("Invalid or expired session".to_string()))
+}
+
+/// Create a Set-Cookie header value for the session token
+fn create_session_cookie(token: &str) -> String {
+    format!(
+        "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800",
+        SESSION_COOKIE_NAME,
+        token
+    )
+}
+
+/// Create a Set-Cookie header value to clear the session cookie
+fn create_logout_cookie() -> String {
+    format!(
+        "{}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+        SESSION_COOKIE_NAME
+    )
+}
+
 // Auth handlers
 async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
-) -> Result<Json<AuthResponse>> {
+) -> Result<Response> {
     if req.username.is_empty() || req.password.is_empty() {
         return Err(ApiError::BadRequest("Username and password are required".to_string()));
     }
@@ -216,19 +272,28 @@ async fn register(
 
     state.db.create_session(user.id, &token, &expires_at).await?;
 
-    Ok(Json(AuthResponse {
-        token,
+    let auth_response = AuthResponse {
+        token: token.clone(),
         user: UserResponse {
             id: user.id,
             username: user.username,
         },
-    }))
+    };
+
+    let cookie = create_session_cookie(&token);
+    let mut response = Json(auth_response).into_response();
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&cookie).map_err(|err| ApiError::Internal(err.to_string()))?,
+    );
+    
+    Ok(response)
 }
 
 async fn login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
-) -> Result<Json<AuthResponse>> {
+) -> Result<Response> {
     let user = state
         .db
         .get_user_by_username(&req.username)
@@ -247,16 +312,26 @@ async fn login(
 
     state.db.create_session(user.id, &token, &expires_at).await?;
 
-    Ok(Json(AuthResponse {
-        token,
+    let auth_response = AuthResponse {
+        token: token.clone(),
         user: UserResponse {
             id: user.id,
             username: user.username,
         },
-    }))
+    };
+
+    let cookie = create_session_cookie(&token);
+    let mut response = Json(auth_response).into_response();
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&cookie).map_err(|err| ApiError::Internal(err.to_string()))?,
+    );
+    
+    Ok(response)
 }
 
-async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<StatusCode> {
+async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Response> {
+    // Try to delete session from Authorization header
     if let Some(auth_header) = headers.get(header::AUTHORIZATION) {
         if let Ok(auth_str) = auth_header.to_str() {
             if let Some(token) = auth_str.strip_prefix("Bearer ") {
@@ -264,8 +339,21 @@ async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Sta
             }
         }
     }
+    
+    // Also try to delete session from cookie
+    if let Some(token) = get_token_from_cookie(&headers) {
+        state.db.delete_session(&token).await?;
+    }
 
-    Ok(StatusCode::NO_CONTENT)
+    // Clear the cookie
+    let cookie = create_logout_cookie();
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&cookie).map_err(|err| ApiError::Internal(err.to_string()))?,
+    );
+    
+    Ok(response)
 }
 
 async fn get_current_user(
@@ -476,7 +564,8 @@ async fn stream_media(
     headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Response<Body>> {
-    // let user_id = get_user_from_headers(&state, &headers).await?;
+    // Use cookie-aware authentication for browser media elements
+    let user_id = get_user_from_headers_or_cookie(&state, &headers).await?;
 
     let media = state
         .db
@@ -484,9 +573,9 @@ async fn stream_media(
         .await?
         .ok_or_else(|| ApiError::NotFound("Media not found".to_string()))?;
 
-    // if media.user_id != user_id {
-    //     return Err(ApiError::NotFound("Media not found".to_string()));
-    // }
+    if media.user_id != user_id {
+        return Err(ApiError::NotFound("Media not found".to_string()));
+    }
 
     let path = PathBuf::from(&media.storage_path);
     let file_size = state.storage.get_file_size(&path).await?;
@@ -532,7 +621,8 @@ async fn get_thumbnail(
     headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Result<Response<Body>> {
-    let user_id = get_user_from_headers(&state, &headers).await?;
+    // Use cookie-aware authentication for browser img elements
+    let user_id = get_user_from_headers_or_cookie(&state, &headers).await?;
 
     let media = state
         .db

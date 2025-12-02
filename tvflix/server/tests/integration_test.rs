@@ -372,3 +372,68 @@ async fn test_range_request() {
     let body = response.bytes().await.unwrap();
     assert_eq!(body.as_ref(), b"01234");
 }
+
+#[tokio::test]
+async fn test_cookie_authentication_for_streaming() {
+    let (base_url, _temp_dir) = spawn_server().await;
+    let client = Client::new();
+
+    // Register and get token + cookie
+    let response = client
+        .post(format!("{}/api/auth/register", base_url))
+        .json(&json!({
+            "username": "cookieuser",
+            "password": "testpass123"
+        }))
+        .send()
+        .await
+        .expect("Failed to register");
+
+    // Extract token from response body
+    let auth_response: serde_json::Value = response.json().await.unwrap();
+    let token = auth_response["token"].as_str().unwrap().to_string();
+
+    // Upload a file using Authorization header
+    let file_content = b"cookie test content for streaming";
+    let form = reqwest::multipart::Form::new()
+        .text("title", "Cookie Test")
+        .part(
+            "file",
+            reqwest::multipart::Part::bytes(file_content.to_vec())
+                .file_name("test.mp4")
+                .mime_str("video/mp4")
+                .unwrap(),
+        );
+
+    let response = client
+        .post(format!("{}/api/media", base_url))
+        .header("Authorization", format!("Bearer {}", token))
+        .multipart(form)
+        .send()
+        .await
+        .expect("Failed to upload");
+
+    let media: serde_json::Value = response.json().await.unwrap();
+    let media_id = media["id"].as_i64().unwrap();
+
+    // Test streaming with cookie (simulating browser behavior)
+    let response = client
+        .get(format!("{}/api/media/{}/stream", base_url, media_id))
+        .header("Cookie", format!("tvflix_session={}", token))
+        .send()
+        .await
+        .expect("Failed to stream with cookie");
+
+    assert!(response.status().is_success(), "Cookie auth failed: {:?}", response.status());
+    let body = response.bytes().await.unwrap();
+    assert_eq!(body.as_ref(), file_content);
+
+    // Test that streaming without auth fails
+    let response = client
+        .get(format!("{}/api/media/{}/stream", base_url, media_id))
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 401, "Streaming without auth should fail");
+}
