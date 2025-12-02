@@ -71,9 +71,10 @@ fn chacha_block<const ROUNDS: usize>(state: &[u32; 16]) -> [u32; 16] {
     }
 
     // Add the original state to the working state
-    for i in 0..16 {
-        working_state[i] = working_state[i].wrapping_add(state[i]);
-    }
+    working_state
+        .iter_mut()
+        .zip(state.iter())
+        .for_each(|(ws, s)| *ws = ws.wrapping_add(*s));
 
     working_state
 }
@@ -108,19 +109,11 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         let mut state = [0u32; 16];
 
         // Set constants
-        state[0] = CONSTANTS[0];
-        state[1] = CONSTANTS[1];
-        state[2] = CONSTANTS[2];
-        state[3] = CONSTANTS[3];
+        state[0..4].copy_from_slice(&CONSTANTS);
 
         // Set key (8 x 32-bit words)
-        for i in 0..8 {
-            state[4 + i] = u32::from_le_bytes([
-                key[i * 4],
-                key[i * 4 + 1],
-                key[i * 4 + 2],
-                key[i * 4 + 3],
-            ]);
+        for (i, chunk) in key.chunks_exact(4).enumerate() {
+            state[4 + i] = u32::from_le_bytes(chunk.try_into().unwrap());
         }
 
         // Counter starts at 0 (will be in state[12] and state[13])
@@ -128,8 +121,8 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         state[13] = 0;
 
         // Set nonce (2 x 32-bit words)
-        state[14] = u32::from_le_bytes([nonce[0], nonce[1], nonce[2], nonce[3]]);
-        state[15] = u32::from_le_bytes([nonce[4], nonce[5], nonce[6], nonce[7]]);
+        state[14] = u32::from_le_bytes(nonce[0..4].try_into().unwrap());
+        state[15] = u32::from_le_bytes(nonce[4..8].try_into().unwrap());
 
         ChaCha {
             state,
@@ -196,9 +189,10 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         if remaining > 0 {
             let use_bytes = remaining.min(data_len);
             let start_idx = 64 - remaining;
-            for i in 0..use_bytes {
-                data[i] ^= self.last_keystream_block[start_idx + i];
-            }
+            data[..use_bytes]
+                .iter_mut()
+                .zip(&self.last_keystream_block[start_idx..start_idx + use_bytes])
+                .for_each(|(d, k)| *d ^= k);
             offset = use_bytes;
 
             if use_bytes < remaining {
@@ -271,9 +265,10 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         // Process remaining full blocks using scalar code
         while offset + 64 <= data_len {
             let keystream = self.next_keystream_block();
-            for i in 0..64 {
-                data[offset + i] ^= keystream[i];
-            }
+            data[offset..offset + 64]
+                .iter_mut()
+                .zip(&keystream)
+                .for_each(|(d, k)| *d ^= k);
             offset += 64;
         }
 
@@ -281,9 +276,10 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         let remaining_data = data_len - offset;
         if remaining_data > 0 {
             let keystream = self.next_keystream_block();
-            for i in 0..remaining_data {
-                data[offset + i] ^= keystream[i];
-            }
+            data[offset..]
+                .iter_mut()
+                .zip(&keystream[..remaining_data])
+                .for_each(|(d, k)| *d ^= k);
 
             // Store the remaining keystream bytes for later use
             // remaining bytes = 64 - remaining_data
@@ -291,9 +287,8 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
             self.last_keystream_block[0] = remaining_keystream as u8;
             // Copy the remaining keystream bytes to the end of last_keystream_block
             // We store from position (64 - remaining_keystream) to 63
-            for i in 0..remaining_keystream {
-                self.last_keystream_block[64 - remaining_keystream + i] = keystream[remaining_data + i];
-            }
+            self.last_keystream_block[64 - remaining_keystream..64]
+                .copy_from_slice(&keystream[remaining_data..]);
         }
     }
 }
@@ -546,25 +541,17 @@ Expected: {}",
         let nonce: [u8; 8] = [0x00, 0x00, 0x00, 0x4a, 0x00, 0x00, 0x00, 0x00];
 
         let mut state = [0u32; 16];
-        state[0] = CONSTANTS[0];
-        state[1] = CONSTANTS[1];
-        state[2] = CONSTANTS[2];
-        state[3] = CONSTANTS[3];
+        state[0..4].copy_from_slice(&CONSTANTS);
 
-        for i in 0..8 {
-            state[4 + i] = u32::from_le_bytes([
-                key[i * 4],
-                key[i * 4 + 1],
-                key[i * 4 + 2],
-                key[i * 4 + 3],
-            ]);
+        for (i, chunk) in key.chunks_exact(4).enumerate() {
+            state[4 + i] = u32::from_le_bytes(chunk.try_into().unwrap());
         }
 
         // DJB variant: 64-bit counter in state[12-13], 64-bit nonce in state[14-15]
         state[12] = 1; // counter low
         state[13] = 0; // counter high
-        state[14] = u32::from_le_bytes([nonce[0], nonce[1], nonce[2], nonce[3]]);
-        state[15] = u32::from_le_bytes([nonce[4], nonce[5], nonce[6], nonce[7]]);
+        state[14] = u32::from_le_bytes(nonce[0..4].try_into().unwrap());
+        state[15] = u32::from_le_bytes(nonce[4..8].try_into().unwrap());
 
         let result = chacha_block::<20>(&state);
 

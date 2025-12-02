@@ -539,22 +539,14 @@ mod tests {
         // Create state
         let constants: [u32; 4] = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
         let mut state = [0u32; 16];
-        state[0] = constants[0];
-        state[1] = constants[1];
-        state[2] = constants[2];
-        state[3] = constants[3];
-        for i in 0..8 {
-            state[4 + i] = u32::from_le_bytes([
-                key[i * 4],
-                key[i * 4 + 1],
-                key[i * 4 + 2],
-                key[i * 4 + 3],
-            ]);
+        state[0..4].copy_from_slice(&constants);
+        for (i, chunk) in key.chunks_exact(4).enumerate() {
+            state[4 + i] = u32::from_le_bytes(chunk.try_into().unwrap());
         }
         state[12] = 0;
         state[13] = 0;
-        state[14] = u32::from_le_bytes([nonce[0], nonce[1], nonce[2], nonce[3]]);
-        state[15] = u32::from_le_bytes([nonce[4], nonce[5], nonce[6], nonce[7]]);
+        state[14] = u32::from_le_bytes(nonce[0..4].try_into().unwrap());
+        state[15] = u32::from_le_bytes(nonce[4..8].try_into().unwrap());
         
         // Generate keystream using AVX2
         let mut avx2_output = [0u8; 256];
@@ -605,22 +597,14 @@ mod tests {
         
         let constants: [u32; 4] = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
         let mut state = [0u32; 16];
-        state[0] = constants[0];
-        state[1] = constants[1];
-        state[2] = constants[2];
-        state[3] = constants[3];
-        for i in 0..8 {
-            state[4 + i] = u32::from_le_bytes([
-                key[i * 4],
-                key[i * 4 + 1],
-                key[i * 4 + 2],
-                key[i * 4 + 3],
-            ]);
+        state[0..4].copy_from_slice(&constants);
+        for (i, chunk) in key.chunks_exact(4).enumerate() {
+            state[4 + i] = u32::from_le_bytes(chunk.try_into().unwrap());
         }
         state[12] = 0;
         state[13] = 0;
-        state[14] = u32::from_le_bytes([nonce[0], nonce[1], nonce[2], nonce[3]]);
-        state[15] = u32::from_le_bytes([nonce[4], nonce[5], nonce[6], nonce[7]]);
+        state[14] = u32::from_le_bytes(nonce[0..4].try_into().unwrap());
+        state[15] = u32::from_le_bytes(nonce[4..8].try_into().unwrap());
         
         let mut avx2_output = [0u8; 512];
         unsafe {
@@ -675,9 +659,10 @@ mod tests {
             scalar_quarter_round(&mut working_state, 2, 7, 8, 13);
             scalar_quarter_round(&mut working_state, 3, 4, 9, 14);
         }
-        for i in 0..16 {
-            working_state[i] = working_state[i].wrapping_add(state[i]);
-        }
+        working_state
+            .iter_mut()
+            .zip(state.iter())
+            .for_each(|(ws, s)| *ws = ws.wrapping_add(*s));
         working_state
     }
 
