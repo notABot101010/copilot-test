@@ -12,6 +12,7 @@
     "encrypted-chat/webapp",
     "realtime-docs/webapp",
     "chesssite/webapp",
-    "tvflix/webapp"
+    "tvflix/webapp",
+    "markdown-editor"
   ]
 }

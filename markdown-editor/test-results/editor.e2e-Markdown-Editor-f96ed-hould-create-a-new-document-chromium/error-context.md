@@ -1,0 +1,51 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - button "New Document" [active] [ref=e6] [cursor=pointer]:
+      - generic [ref=e8]: New Document
+    - list [ref=e10]:
+      - listitem [ref=e11]:
+        - button "Untitled Dec 2, 2025" [ref=e12]:
+          - paragraph [ref=e13]: Untitled
+          - paragraph [ref=e14]: Dec 2, 2025
+        - generic [ref=e15]:
+          - button "Rename document" [ref=e16] [cursor=pointer]:
+            - img [ref=e18]
+          - button "Delete document" [ref=e21] [cursor=pointer]:
+            - img [ref=e23]
+  - generic [ref=e25]:
+    - generic [ref=e26]:
+      - generic [ref=e27]:
+        - button "H1" [ref=e28] [cursor=pointer]:
+          - generic [ref=e30]: H1
+        - button "H2" [ref=e31] [cursor=pointer]:
+          - generic [ref=e33]: H2
+        - button "H3" [ref=e34] [cursor=pointer]:
+          - generic [ref=e36]: H3
+      - generic [ref=e37]:
+        - button [ref=e38] [cursor=pointer]:
+          - img [ref=e40]
+        - button [ref=e43] [cursor=pointer]:
+          - img [ref=e45]
+        - button [ref=e47] [cursor=pointer]:
+          - img [ref=e49]
+      - generic [ref=e52]:
+        - button [ref=e53] [cursor=pointer]:
+          - img [ref=e55]
+        - button [ref=e56] [cursor=pointer]:
+          - img [ref=e58]
+        - button [ref=e61] [cursor=pointer]:
+          - img [ref=e63]
+      - generic [ref=e66]:
+        - button [ref=e67] [cursor=pointer]:
+          - img [ref=e69]
+        - button [ref=e72] [cursor=pointer]:
+          - img [ref=e74]
+      - heading "Untitled" [level=2] [ref=e78]
+      - button "Export" [ref=e79] [cursor=pointer]:
+        - generic [ref=e81]: Export
+    - textbox [ref=e85]:
+      - paragraph [ref=e86]: Start writing...
+```
