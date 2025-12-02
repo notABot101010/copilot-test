@@ -89,54 +89,78 @@ export function setActiveDocument(id: string | null) {
 }
 
 export function convertToMarkdown(html: string): string {
-  let markdown = html;
+  // Use a temporary DOM element to properly parse and extract text
+  // This is safer than regex-based HTML parsing
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = html;
   
-  // Headers
-  markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n');
-  markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n');
-  markdown = markdown.replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n');
+  // Process the DOM tree to convert to markdown
+  function processNode(node: Node): string {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.textContent || '';
+    }
+    
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return '';
+    }
+    
+    const element = node as HTMLElement;
+    const tagName = element.tagName.toLowerCase();
+    const children = Array.from(element.childNodes).map(processNode).join('');
+    
+    switch (tagName) {
+      case 'h1':
+        return `# ${children}\n\n`;
+      case 'h2':
+        return `## ${children}\n\n`;
+      case 'h3':
+        return `### ${children}\n\n`;
+      case 'strong':
+      case 'b':
+        return `**${children}**`;
+      case 'em':
+      case 'i':
+        return `*${children}*`;
+      case 's':
+      case 'strike':
+      case 'del':
+        return `~~${children}~~`;
+      case 'code':
+        return `\`${children}\``;
+      case 'pre':
+        return `\`\`\`\n${children}\n\`\`\`\n\n`;
+      case 'ul':
+        return children + '\n';
+      case 'ol':
+        let counter = 0;
+        return Array.from(element.children)
+          .map(child => {
+            if (child.tagName.toLowerCase() === 'li') {
+              counter++;
+              return `${counter}. ${processNode(child).replace(/^- /, '')}\n`;
+            }
+            return processNode(child);
+          })
+          .join('') + '\n';
+      case 'li':
+        return `- ${children}\n`;
+      case 'blockquote':
+        return children.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
+      case 'p':
+        return `${children}\n\n`;
+      case 'br':
+        return '\n';
+      case 'hr':
+        return '---\n\n';
+      default:
+        return children;
+    }
+  }
   
-  // Bold and italic
-  markdown = markdown.replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**');
-  markdown = markdown.replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*');
-  markdown = markdown.replace(/<s[^>]*>(.*?)<\/s>/gi, '~~$1~~');
-  
-  // Code
-  markdown = markdown.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`');
-  markdown = markdown.replace(/<pre[^>]*><code[^>]*>(.*?)<\/code><\/pre>/gis, '```\n$1\n```\n\n');
-  
-  // Lists
-  markdown = markdown.replace(/<ul[^>]*>/gi, '');
-  markdown = markdown.replace(/<\/ul>/gi, '\n');
-  markdown = markdown.replace(/<ol[^>]*>/gi, '');
-  markdown = markdown.replace(/<\/ol>/gi, '\n');
-  markdown = markdown.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n');
-  
-  // Blockquote
-  markdown = markdown.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/gis, (_, content) => {
-    return content.split('\n').map((line: string) => `> ${line}`).join('\n') + '\n\n';
-  });
-  
-  // Paragraphs and line breaks
-  markdown = markdown.replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n');
-  markdown = markdown.replace(/<br\s*\/?>/gi, '\n');
-  
-  // Horizontal rule
-  markdown = markdown.replace(/<hr[^>]*\/?>/gi, '---\n\n');
-  
-  // Remove remaining HTML tags
-  markdown = markdown.replace(/<[^>]+>/g, '');
+  let markdown = processNode(tempDiv);
   
   // Clean up excessive newlines
   markdown = markdown.replace(/\n{3,}/g, '\n\n');
-  
-  // Decode HTML entities
-  markdown = markdown.replace(/&amp;/g, '&');
-  markdown = markdown.replace(/&lt;/g, '<');
-  markdown = markdown.replace(/&gt;/g, '>');
-  markdown = markdown.replace(/&quot;/g, '"');
-  markdown = markdown.replace(/&#39;/g, "'");
-  markdown = markdown.replace(/&nbsp;/g, ' ');
   
   return markdown.trim();
 }

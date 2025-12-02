@@ -99,8 +99,8 @@ test.describe('Markdown Editor E2E Tests', () => {
     await editor.click();
     await editor.fill('Test text');
     
-    // Select all text
-    await page.keyboard.press('Control+a');
+    // Select all text using ControlOrMeta for cross-platform compatibility
+    await page.keyboard.press('ControlOrMeta+a');
     
     // Apply bold
     await page.getByTestId('bold-button').click();
