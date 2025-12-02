@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["base64", "hex", "base32",  "digital_ocean", "scaleway", "git-server", "spreadsheet-server", "s3server", "customer-support/server", "offline-office/server", "e2ee-chat/backend", "encrypted-chat/server", "e2ee-crdt/server",  "ai-coding-agent/server", "duckduckai-rs", "quic-vpn", "realtime-docs/server", "chesssite/server", "mls-chat/server"]
+members = ["base64", "hex", "base32",  "digital_ocean", "scaleway", "git-server", "spreadsheet-server", "s3server", "customer-support/server", "offline-office/server", "e2ee-chat/backend", "encrypted-chat/server", "e2ee-crdt/server",  "ai-coding-agent/server", "duckduckai-rs", "quic-vpn", "realtime-docs/server", "chesssite/server", "mls-chat/server", "tvflix/server"]
 
 [workspace.dependencies]
 criterion = { version = "0.7", features = ["html_reports"] }
