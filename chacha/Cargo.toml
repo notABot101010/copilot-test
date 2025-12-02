@@ -1,0 +1,17 @@
+[package]
+name = "chacha"
+version = "0.1.0"
+edition = "2021"
+description = "DJB ChaCha stream cipher with parametrized rounds"
+license = "MIT"
+
+[lib]
+path = "lib.rs"
+
+[dev-dependencies]
+criterion = { workspace = true }
+hex = "0.4"
+
+[[bench]]
+name = "benchmarks"
+harness = false
