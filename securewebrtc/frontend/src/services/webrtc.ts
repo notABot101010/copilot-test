@@ -1,9 +1,17 @@
 import { Signal, signal } from '@preact/signals';
+import {
+  createE2EEContext,
+  establishSharedKey,
+  applyEncryptionTransform,
+  applyDecryptionTransform,
+  E2EEContext,
+} from '../crypto/e2ee';
 
 export interface SignalingMessage {
-  type: 'offer' | 'answer' | 'ice-candidate' | 'peer-joined' | 'peer-left' | 'room-full' | 'waiting';
+  type: 'offer' | 'answer' | 'ice-candidate' | 'peer-joined' | 'peer-left' | 'room-full' | 'waiting' | 'e2ee-key';
   sdp?: string;
   candidate?: string;
+  publicKey?: string;
 }
 
 export interface WebRTCService {
@@ -15,6 +23,7 @@ export interface WebRTCService {
   peerJoined: Signal<boolean>;
   roomFull: Signal<boolean>;
   error: Signal<string | null>;
+  isE2EEEnabled: Signal<boolean>;
   connect(roomId: string): Promise<void>;
   disconnect(): void;
   startCall(): Promise<void>;
@@ -30,10 +39,12 @@ export function createWebRTCService(): WebRTCService {
   const peerJoined = signal<boolean>(false);
   const roomFull = signal<boolean>(false);
   const error = signal<string | null>(null);
+  const isE2EEEnabled = signal<boolean>(false);
 
   let peerConnection: RTCPeerConnection | null = null;
   let websocket: WebSocket | null = null;
   let currentRoomId: string | null = null;
+  let e2eeContext: E2EEContext | null = null;
 
   const iceServers: RTCIceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -59,7 +70,12 @@ export function createWebRTCService(): WebRTCService {
   }
 
   function createPeerConnection(): RTCPeerConnection {
-    const pc = new RTCPeerConnection({ iceServers });
+    // Enable encoded insertable streams for E2EE
+    const config: RTCConfiguration & { encodedInsertableStreams?: boolean } = {
+      iceServers,
+      encodedInsertableStreams: true,
+    };
+    const pc = new RTCPeerConnection(config);
 
     pc.onconnectionstatechange = () => {
       connectionState.value = pc.connectionState;
@@ -82,6 +98,10 @@ export function createWebRTCService(): WebRTCService {
     pc.ontrack = (event) => {
       if (event.streams[0]) {
         remoteStream.value = event.streams[0];
+      }
+      // Apply decryption transform to incoming tracks
+      if (e2eeContext && event.receiver) {
+        applyDecryptionTransform(event.receiver, e2eeContext);
       }
     };
 
@@ -119,7 +139,11 @@ export function createWebRTCService(): WebRTCService {
           peerConnection = createPeerConnection();
           const stream = await getLocalStream();
           stream.getTracks().forEach(track => {
-            peerConnection!.addTrack(track, stream);
+            const sender = peerConnection!.addTrack(track, stream);
+            // Apply encryption transform to outgoing tracks
+            if (e2eeContext) {
+              applyEncryptionTransform(sender, e2eeContext);
+            }
           });
         }
         
@@ -147,12 +171,34 @@ export function createWebRTCService(): WebRTCService {
           await peerConnection.addIceCandidate(candidate);
         }
         break;
+
+      case 'e2ee-key':
+        // Received peer's public key, establish shared secret
+        if (message.publicKey && e2eeContext) {
+          await establishSharedKey(e2eeContext, message.publicKey);
+          isE2EEEnabled.value = true;
+          console.log('E2EE established with peer');
+          
+          // If we're not the initiator, send our key back
+          if (!isInitiator.value && websocket) {
+            const keyMessage: SignalingMessage = {
+              type: 'e2ee-key',
+              publicKey: e2eeContext.publicKeyBase64,
+            };
+            websocket.send(JSON.stringify(keyMessage));
+          }
+        }
+        break;
     }
   }
 
   async function connect(roomId: string): Promise<void> {
     currentRoomId = roomId;
     // The server will determine who is initiator based on connection order
+
+    // Initialize E2EE context with ephemeral ECDH keys
+    e2eeContext = await createE2EEContext();
+    console.log('E2EE context created with public key:', e2eeContext.publicKeyBase64);
 
     // Get local stream first
     await getLocalStream();
@@ -197,8 +243,21 @@ export function createWebRTCService(): WebRTCService {
     
     const stream = await getLocalStream();
     stream.getTracks().forEach(track => {
-      peerConnection!.addTrack(track, stream);
+      const sender = peerConnection!.addTrack(track, stream);
+      // Apply encryption transform to outgoing tracks
+      if (e2eeContext) {
+        applyEncryptionTransform(sender, e2eeContext);
+      }
     });
+
+    // Send our E2EE public key to the peer
+    if (e2eeContext) {
+      const keyMessage: SignalingMessage = {
+        type: 'e2ee-key',
+        publicKey: e2eeContext.publicKeyBase64,
+      };
+      websocket.send(JSON.stringify(keyMessage));
+    }
 
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
@@ -247,7 +306,9 @@ export function createWebRTCService(): WebRTCService {
     iceConnectionState.value = 'new';
     peerJoined.value = false;
     roomFull.value = false;
+    isE2EEEnabled.value = false;
     currentRoomId = null;
+    e2eeContext = null;
   }
 
   return {
@@ -259,6 +320,7 @@ export function createWebRTCService(): WebRTCService {
     peerJoined,
     roomFull,
     error,
+    isE2EEEnabled,
     connect,
     disconnect,
     startCall,

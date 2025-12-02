@@ -61,7 +61,9 @@ export async function importEd25519PublicKey(base64: string): Promise<CryptoKey>
 
 // Import ECDH public key from base64url format
 export async function importECDHPublicKey(base64: string): Promise<CryptoKey> {
-  const data = base64UrlToArrayBuffer(base64);
+  const arrayBuffer = base64UrlToArrayBuffer(base64);
+  // Wrap in Uint8Array for Node.js WebCrypto compatibility in tests
+  const data = new Uint8Array(arrayBuffer);
   return crypto.subtle.importKey(
     'raw',
     data,
@@ -176,16 +178,42 @@ export function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
     .replace(/=/g, '');
 }
 
-// Convert base64url string to ArrayBuffer
+// Base64 character table
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+// Convert base64url string to ArrayBuffer (without using atob for compatibility)
 export function base64UrlToArrayBuffer(base64url: string): ArrayBuffer {
-  const base64 = base64url
+  // Convert base64url to standard base64
+  let base64 = base64url
     .replace(/-/g, '+')
     .replace(/_/g, '/');
-  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
-  const binary = atob(base64 + padding);
-  const bytes = new Uint8Array(binary.length);
-  for (let idx = 0; idx < binary.length; idx++) {
-    bytes[idx] = binary.charCodeAt(idx);
+  
+  // Add padding
+  const padding = (4 - (base64.length % 4)) % 4;
+  base64 += '='.repeat(padding);
+  
+  // Decode base64 manually
+  const binaryLength = (base64.length * 3) / 4 - padding;
+  const arrayBuffer = new ArrayBuffer(binaryLength);
+  const bytes = new Uint8Array(arrayBuffer);
+  
+  let byteIdx = 0;
+  for (let charIdx = 0; charIdx < base64.length; charIdx += 4) {
+    const a = BASE64_CHARS.indexOf(base64[charIdx]);
+    const b = BASE64_CHARS.indexOf(base64[charIdx + 1]);
+    const c = BASE64_CHARS.indexOf(base64[charIdx + 2]);
+    const d = BASE64_CHARS.indexOf(base64[charIdx + 3]);
+    
+    if (byteIdx < binaryLength) {
+      bytes[byteIdx++] = (a << 2) | (b >> 4);
+    }
+    if (byteIdx < binaryLength) {
+      bytes[byteIdx++] = ((b & 15) << 4) | (c >> 2);
+    }
+    if (byteIdx < binaryLength) {
+      bytes[byteIdx++] = ((c & 3) << 6) | d;
+    }
   }
-  return bytes.buffer;
+  
+  return arrayBuffer;
 }
