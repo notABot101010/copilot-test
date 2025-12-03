@@ -216,7 +216,8 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
             use chacha_avx2::AlignedU8x512;
             if is_x86_feature_detected!("avx2") && (data_len - offset) >= 512 {
                 // Process 512-byte chunks (8 blocks) using full AVX2
-                while offset + 512 <= data_len {
+                let num_chunks = (data_len - offset) / 512;
+                for chunk in data[offset..offset + num_chunks * 512].chunks_exact_mut(512) {
                     let mut keystream = AlignedU8x512([0u8; 512]);
                     unsafe {
                         chacha_avx2::chacha_blocks_avx2_x8::<ROUNDS>(&self.state, &mut keystream);
@@ -226,7 +227,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                     unsafe {
                         use core::arch::x86_64::*;
                         for i in (0..512).step_by(32) {
-                            let data_ptr = data.as_mut_ptr().add(offset + i);
+                            let data_ptr = chunk.as_mut_ptr().add(i);
                             let key_ptr = keystream.0.as_ptr().add(i);
                             let data_vec = _mm256_loadu_si256(data_ptr as *const __m256i);
                             let key_vec = _mm256_load_si256(key_ptr as *const __m256i);
@@ -236,13 +237,14 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                     }
 
                     self.increment_counter(8);
-                    offset += 512;
                 }
+                offset += num_chunks * 512;
             }
 
             // Process remaining 256-byte chunks (4 blocks) using SSE
             if is_x86_feature_detected!("avx2") && (data_len - offset) >= 256 {
-                while offset + 256 <= data_len {
+                let num_chunks = (data_len - offset) / 256;
+                for chunk in data[offset..offset + num_chunks * 256].chunks_exact_mut(256) {
                     let mut keystream = [0u8; 256];
                     unsafe {
                         chacha_avx2::chacha_blocks_avx2::<ROUNDS>(&self.state, &mut keystream);
@@ -252,7 +254,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                     unsafe {
                         use core::arch::x86_64::*;
                         for i in (0..256).step_by(32) {
-                            let data_ptr = data.as_mut_ptr().add(offset + i);
+                            let data_ptr = chunk.as_mut_ptr().add(i);
                             let key_ptr = keystream.as_ptr().add(i);
                             let data_vec = _mm256_loadu_si256(data_ptr as *const __m256i);
                             let key_vec = _mm256_loadu_si256(key_ptr as *const __m256i);
@@ -262,8 +264,8 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                     }
 
                     self.increment_counter(4);
-                    offset += 256;
                 }
+                offset += num_chunks * 256;
             }
         }
 
@@ -272,7 +274,8 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         {
             // Process 256-byte chunks (4 blocks) using NEON
             if (data_len - offset) >= 256 {
-                while offset + 256 <= data_len {
+                let num_chunks = (data_len - offset) / 256;
+                for chunk in data[offset..offset + num_chunks * 256].chunks_exact_mut(256) {
                     let mut keystream = [0u8; 256];
                     unsafe {
                         chacha_neon::chacha_blocks_neon::<ROUNDS>(&self.state, &mut keystream);
@@ -282,7 +285,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                     unsafe {
                         use core::arch::aarch64::*;
                         for i in (0..256).step_by(16) {
-                            let data_ptr = data.as_mut_ptr().add(offset + i);
+                            let data_ptr = chunk.as_mut_ptr().add(i);
                             let key_ptr = keystream.as_ptr().add(i);
                             let data_vec = vld1q_u8(data_ptr);
                             let key_vec = vld1q_u8(key_ptr);
@@ -292,20 +295,21 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                     }
 
                     self.increment_counter(4);
-                    offset += 256;
                 }
+                offset += num_chunks * 256;
             }
         }
 
         // Process remaining full blocks using scalar code
-        while offset + 64 <= data_len {
+        let num_full_blocks = (data_len - offset) / 64;
+        for chunk in data[offset..offset + num_full_blocks * 64].chunks_exact_mut(64) {
             let keystream = self.next_keystream_block();
-            data[offset..offset + 64]
+            chunk
                 .iter_mut()
                 .zip(&keystream)
                 .for_each(|(d, k)| *d ^= k);
-            offset += 64;
         }
+        offset += num_full_blocks * 64;
 
         // Handle remaining bytes (partial block)
         let remaining_data = data_len - offset;
