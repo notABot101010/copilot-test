@@ -14,5 +14,5 @@ hex = "0.4"
 chacha20 = "0.9"
 
 [[bench]]
-name = "benchmarks"
+name = "chacha"
 harness = false

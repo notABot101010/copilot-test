@@ -55,7 +55,7 @@ fn bench_chacha_vs_crate(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(*size as u64));
 
         // Our implementation
-        group.bench_with_input(BenchmarkId::new("ours", size), size, |b, &size| {
+        group.bench_with_input(BenchmarkId::new("ours_chacha20", size), size, |b, &size| {
             let mut data = vec![0u8; size];
             b.iter(|| {
                 let mut cipher = ChaCha20::new(black_box(&key), black_box(&nonce_djb));
@@ -64,13 +64,17 @@ fn bench_chacha_vs_crate(c: &mut Criterion) {
         });
 
         // chacha20 crate
-        group.bench_with_input(BenchmarkId::new("chacha20_crate", size), size, |b, &size| {
-            let mut data = vec![0u8; size];
-            b.iter(|| {
-                let mut cipher = chacha20::ChaCha20::new((&key).into(), (&nonce_ietf).into());
-                cipher.apply_keystream(black_box(&mut data));
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::new("chacha20_crate", size),
+            size,
+            |b, &size| {
+                let mut data = vec![0u8; size];
+                b.iter(|| {
+                    let mut cipher = chacha20::ChaCha20::new((&key).into(), (&nonce_ietf).into());
+                    cipher.apply_keystream(black_box(&mut data));
+                });
+            },
+        );
     }
 
     group.finish();

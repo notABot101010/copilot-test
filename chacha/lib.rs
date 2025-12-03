@@ -32,7 +32,7 @@ pub type ChaCha8 = ChaCha<8>;
 const CONSTANTS: [u32; 4] = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
 
 /// The ChaCha quarter round operation.
-#[inline(always)]
+#[inline]
 fn quarter_round(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) {
     state[a] = state[a].wrapping_add(state[b]);
     state[d] ^= state[a];
@@ -71,9 +71,10 @@ fn chacha_block<const ROUNDS: usize>(state: &[u32; 16]) -> [u32; 16] {
     }
 
     // Add the original state to the working state
-    for i in 0..16 {
-        working_state[i] = working_state[i].wrapping_add(state[i]);
-    }
+    working_state
+        .iter_mut()
+        .zip(state.iter())
+        .for_each(|(ws, s)| *ws = ws.wrapping_add(*s));
 
     working_state
 }
@@ -108,19 +109,11 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         let mut state = [0u32; 16];
 
         // Set constants
-        state[0] = CONSTANTS[0];
-        state[1] = CONSTANTS[1];
-        state[2] = CONSTANTS[2];
-        state[3] = CONSTANTS[3];
+        state[0..4].copy_from_slice(&CONSTANTS);
 
         // Set key (8 x 32-bit words)
-        for i in 0..8 {
-            state[4 + i] = u32::from_le_bytes([
-                key[i * 4],
-                key[i * 4 + 1],
-                key[i * 4 + 2],
-                key[i * 4 + 3],
-            ]);
+        for (state_word, key_chunk) in state[4..12].iter_mut().zip(key.chunks_exact(4)) {
+            *state_word = u32::from_le_bytes(key_chunk.try_into().unwrap());
         }
 
         // Counter starts at 0 (will be in state[12] and state[13])
@@ -151,8 +144,9 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
     }
 
     /// Returns the current counter value.
+    #[inline]
     pub fn counter(&self) -> u64 {
-        (self.state[12] as u64) | ((self.state[13] as u64) << 32)
+        return ((self.state[13] as u64) << 32) | (self.state[12] as u64);
     }
 
     /// Increments the 64-bit counter by the given amount.
@@ -196,9 +190,10 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         if remaining > 0 {
             let use_bytes = remaining.min(data_len);
             let start_idx = 64 - remaining;
-            for i in 0..use_bytes {
-                data[i] ^= self.last_keystream_block[start_idx + i];
-            }
+            data[..use_bytes]
+                .iter_mut()
+                .zip(&self.last_keystream_block[start_idx..start_idx + use_bytes])
+                .for_each(|(d, k)| *d ^= k);
             offset = use_bytes;
 
             if use_bytes < remaining {
@@ -240,7 +235,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                     offset += 512;
                 }
             }
-            
+
             // Process remaining 256-byte chunks (4 blocks) using SSE
             if is_x86_feature_detected!("avx2") && (data_len - offset) >= 256 {
                 while offset + 256 <= data_len {
@@ -271,9 +266,10 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         // Process remaining full blocks using scalar code
         while offset + 64 <= data_len {
             let keystream = self.next_keystream_block();
-            for i in 0..64 {
-                data[offset + i] ^= keystream[i];
-            }
+            data[offset..offset + 64]
+                .iter_mut()
+                .zip(&keystream)
+                .for_each(|(d, k)| *d ^= k);
             offset += 64;
         }
 
@@ -281,9 +277,10 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         let remaining_data = data_len - offset;
         if remaining_data > 0 {
             let keystream = self.next_keystream_block();
-            for i in 0..remaining_data {
-                data[offset + i] ^= keystream[i];
-            }
+            data[offset..]
+                .iter_mut()
+                .zip(&keystream[..remaining_data])
+                .for_each(|(d, k)| *d ^= k);
 
             // Store the remaining keystream bytes for later use
             // remaining bytes = 64 - remaining_data
@@ -291,9 +288,8 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
             self.last_keystream_block[0] = remaining_keystream as u8;
             // Copy the remaining keystream bytes to the end of last_keystream_block
             // We store from position (64 - remaining_keystream) to 63
-            for i in 0..remaining_keystream {
-                self.last_keystream_block[64 - remaining_keystream + i] = keystream[remaining_data + i];
-            }
+            self.last_keystream_block[64 - remaining_keystream..64]
+                .copy_from_slice(&keystream[remaining_data..]);
         }
     }
 }
@@ -315,10 +311,12 @@ mod tests {
         let tests = vec![
             // https://www.rfc-editor.org/rfc/rfc8439#section-2.4.2
             Test {
-                key: hex::decode("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
-                    .unwrap()
-                    .try_into()
-                    .unwrap(),
+                key: hex::decode(
+                    "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+                )
+                .unwrap()
+                .try_into()
+                .unwrap(),
                 nonce: hex::decode("0000004a00000000").unwrap().try_into().unwrap(),
                 initial_counter: 1,
                 plaintext: hex::decode(
@@ -360,10 +358,12 @@ da41597c5157488d7724e03fb8d84a37\
             },
             // https://www.rfc-editor.org/rfc/rfc8439#appendix-A.2 Test Vector #2
             Test {
-                key: hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
-                    .unwrap()
-                    .try_into()
-                    .unwrap(),
+                key: hex::decode(
+                    "0000000000000000000000000000000000000000000000000000000000000001",
+                )
+                .unwrap()
+                .try_into()
+                .unwrap(),
                 nonce: hex::decode("0000000000000002").unwrap().try_into().unwrap(),
                 initial_counter: 1,
                 plaintext: hex::decode(
@@ -423,10 +423,12 @@ c4fd806c22f221",
             },
             // https://www.rfc-editor.org/rfc/rfc8439#appendix-A.2 Test Vector #3
             Test {
-                key: hex::decode("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0")
-                    .unwrap()
-                    .try_into()
-                    .unwrap(),
+                key: hex::decode(
+                    "1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0",
+                )
+                .unwrap()
+                .try_into()
+                .unwrap(),
                 nonce: hex::decode("0000000000000002").unwrap().try_into().unwrap(),
                 initial_counter: 42,
                 plaintext: hex::decode(
@@ -521,10 +523,9 @@ Expected: {}",
     fn test_quarter_round() {
         // Test vector from RFC 8439 section 2.1.1
         let mut state = [
-            0x879531e0, 0xc5ecf37d, 0x516461b1, 0xc9a62f8a,
-            0x44c20ef3, 0x3390af7f, 0xd9fc690b, 0x2a5f714c,
-            0x53372767, 0xb00a5631, 0x974c541a, 0x359e9963,
-            0x5c971061, 0x3d631689, 0x2098d9d6, 0x91dbd320,
+            0x879531e0, 0xc5ecf37d, 0x516461b1, 0xc9a62f8a, 0x44c20ef3, 0x3390af7f, 0xd9fc690b,
+            0x2a5f714c, 0x53372767, 0xb00a5631, 0x974c541a, 0x359e9963, 0x5c971061, 0x3d631689,
+            0x2098d9d6, 0x91dbd320,
         ];
 
         quarter_round(&mut state, 2, 7, 8, 13);
@@ -546,18 +547,10 @@ Expected: {}",
         let nonce: [u8; 8] = [0x00, 0x00, 0x00, 0x4a, 0x00, 0x00, 0x00, 0x00];
 
         let mut state = [0u32; 16];
-        state[0] = CONSTANTS[0];
-        state[1] = CONSTANTS[1];
-        state[2] = CONSTANTS[2];
-        state[3] = CONSTANTS[3];
+        state[0..4].copy_from_slice(&CONSTANTS);
 
-        for i in 0..8 {
-            state[4 + i] = u32::from_le_bytes([
-                key[i * 4],
-                key[i * 4 + 1],
-                key[i * 4 + 2],
-                key[i * 4 + 3],
-            ]);
+        for (i, chunk) in key.chunks_exact(4).enumerate() {
+            state[4 + i] = u32::from_le_bytes(chunk.try_into().unwrap());
         }
 
         // DJB variant: 64-bit counter in state[12-13], 64-bit nonce in state[14-15]
@@ -572,7 +565,10 @@ Expected: {}",
         // Since this is DJB variant with different state layout, we verify by testing
         // that encryption/decryption works (main test vectors already verify this)
         // Here we just verify the block function produces non-zero output
-        assert_ne!(result[0], 0, "ChaCha20 block should produce non-zero output");
+        assert_ne!(
+            result[0], 0,
+            "ChaCha20 block should produce non-zero output"
+        );
 
         // Verify the block output differs from input state
         let mut differs = false;
@@ -582,7 +578,10 @@ Expected: {}",
                 break;
             }
         }
-        assert!(differs, "ChaCha20 block output should differ from input state");
+        assert!(
+            differs,
+            "ChaCha20 block output should differ from input state"
+        );
     }
 
     #[test]
@@ -714,7 +713,11 @@ Expected: {}",
         cipher2.xor_keystream(&mut data512);
 
         // First 256 bytes should match
-        assert_eq!(&data256[..], &data512[..256], "First 256 bytes should match");
+        assert_eq!(
+            &data256[..],
+            &data512[..256],
+            "First 256 bytes should match"
+        );
 
         // Test encrypt/decrypt roundtrip with large data
         let plaintext: Vec<u8> = (0..1024).map(|i| i as u8).collect();
@@ -722,13 +725,21 @@ Expected: {}",
         let mut cipher3 = ChaCha20::new(&key, &nonce);
         cipher3.xor_keystream(&mut ciphertext);
 
-        assert_ne!(&ciphertext[..], &plaintext[..], "Ciphertext should differ from plaintext");
+        assert_ne!(
+            &ciphertext[..],
+            &plaintext[..],
+            "Ciphertext should differ from plaintext"
+        );
 
         let mut decrypted = ciphertext.clone();
         let mut cipher4 = ChaCha20::new(&key, &nonce);
         cipher4.xor_keystream(&mut decrypted);
 
-        assert_eq!(&decrypted[..], &plaintext[..], "Decryption should recover plaintext");
+        assert_eq!(
+            &decrypted[..],
+            &plaintext[..],
+            "Decryption should recover plaintext"
+        );
     }
 
     #[test]
