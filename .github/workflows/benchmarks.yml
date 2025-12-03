@@ -25,4 +25,6 @@ jobs:
       - working-directory: chacha
         env:
           RUSTFLAGS: "-C target-cpu=native --cfg chacha20_force_avx2"
-        run: cargo bench --bench chacha
+        run: |
+          cargo test -p chacha
+          cargo bench --bench chacha
