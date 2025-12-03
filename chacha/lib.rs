@@ -74,10 +74,9 @@ fn chacha_block<const ROUNDS: usize>(state: &[u32; 16]) -> [u32; 16] {
     }
 
     // Add the original state to the working state
-    working_state
-        .iter_mut()
-        .zip(state.iter())
-        .for_each(|(ws, s)| *ws = ws.wrapping_add(*s));
+    for i in 0..16 {
+        working_state[i] = working_state[i].wrapping_add(state[i]);
+    }
 
     working_state
 }
@@ -193,10 +192,9 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         if remaining > 0 {
             let use_bytes = remaining.min(data_len);
             let start_idx = 64 - remaining;
-            data[..use_bytes]
-                .iter_mut()
-                .zip(&self.last_keystream_block[start_idx..start_idx + use_bytes])
-                .for_each(|(d, k)| *d ^= k);
+            for i in 0..use_bytes {
+                data[i] ^= self.last_keystream_block[start_idx + i];
+            }
             offset = use_bytes;
 
             if use_bytes < remaining {
@@ -300,10 +298,9 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         // Process remaining full blocks using scalar code
         while offset + 64 <= data_len {
             let keystream = self.next_keystream_block();
-            data[offset..offset + 64]
-                .iter_mut()
-                .zip(&keystream)
-                .for_each(|(d, k)| *d ^= k);
+            for i in 0..64 {
+                data[offset + i] ^= keystream[i];
+            }
             offset += 64;
         }
 
@@ -311,10 +308,9 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         let remaining_data = data_len - offset;
         if remaining_data > 0 {
             let keystream = self.next_keystream_block();
-            data[offset..]
-                .iter_mut()
-                .zip(&keystream[..remaining_data])
-                .for_each(|(d, k)| *d ^= k);
+            for i in 0..remaining_data {
+                data[offset + i] ^= keystream[i];
+            }
 
             // Store the remaining keystream bytes for later use
             // remaining bytes = 64 - remaining_data
