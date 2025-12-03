@@ -18,9 +18,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - working-directory: chacha
       - run: |
           apt update && apt upgrade -y && apt install -y lld
           cat /proc/cpuinfo
           cargo --version
-      - run: cargo bench --bench chacha
+      - working-directory: chacha
+        run: cargo bench --bench chacha
