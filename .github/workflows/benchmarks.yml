@@ -23,4 +23,6 @@ jobs:
           cat /proc/cpuinfo
           cargo --version
       - working-directory: chacha
+        env:
+          RUSTFLAGS: "-C target-cpu=native --cfg chacha20_force_avx2"
         run: cargo bench --bench chacha
