@@ -13,6 +13,9 @@ use core::arch::aarch64::*;
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
 pub unsafe fn chacha_blocks_neon<const ROUNDS: usize>(state: &[u32; 16], output: &mut [u8; 256]) {
+    // Compile-time assertion that ROUNDS is even (required for double-round loop)
+    const { assert!(ROUNDS % 2 == 0, "ROUNDS must be even for ChaCha") };
+
     let counter_base = (state[12] as u64) | ((state[13] as u64) << 32);
 
     // Load state into 16 uint32x4_t registers for 4-way parallel processing
@@ -279,25 +282,29 @@ pub unsafe fn chacha_blocks_neon<const ROUNDS: usize>(state: &[u32; 16], output:
     let r2_1215 = vreinterpretq_u32_u64(vzip1q_u64(t13_64, t15_64));
     let r3_1215 = vreinterpretq_u32_u64(vzip2q_u64(t13_64, t15_64));
 
-    // Store block 0
+    // Store blocks to output buffer
+    // Each block is 64 bytes (16 u32 words), stored in 4 groups of 16 bytes each
+    // Block N starts at offset N * 64 bytes
+
+    // Store block 0 (bytes 0-63)
     vst1q_u32(output.as_mut_ptr().add(0) as *mut u32, r0_03);
     vst1q_u32(output.as_mut_ptr().add(16) as *mut u32, r0_47);
     vst1q_u32(output.as_mut_ptr().add(32) as *mut u32, r0_811);
     vst1q_u32(output.as_mut_ptr().add(48) as *mut u32, r0_1215);
 
-    // Store block 1
+    // Store block 1 (bytes 64-127)
     vst1q_u32(output.as_mut_ptr().add(64) as *mut u32, r1_03);
     vst1q_u32(output.as_mut_ptr().add(80) as *mut u32, r1_47);
     vst1q_u32(output.as_mut_ptr().add(96) as *mut u32, r1_811);
     vst1q_u32(output.as_mut_ptr().add(112) as *mut u32, r1_1215);
 
-    // Store block 2
+    // Store block 2 (bytes 128-191)
     vst1q_u32(output.as_mut_ptr().add(128) as *mut u32, r2_03);
     vst1q_u32(output.as_mut_ptr().add(144) as *mut u32, r2_47);
     vst1q_u32(output.as_mut_ptr().add(160) as *mut u32, r2_811);
     vst1q_u32(output.as_mut_ptr().add(176) as *mut u32, r2_1215);
 
-    // Store block 3
+    // Store block 3 (bytes 192-255)
     vst1q_u32(output.as_mut_ptr().add(192) as *mut u32, r3_03);
     vst1q_u32(output.as_mut_ptr().add(208) as *mut u32, r3_47);
     vst1q_u32(output.as_mut_ptr().add(224) as *mut u32, r3_811);
