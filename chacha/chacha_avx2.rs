@@ -735,7 +735,7 @@ mod tests {
         state[14] = u32::from_le_bytes([nonce[0], nonce[1], nonce[2], nonce[3]]);
         state[15] = u32::from_le_bytes([nonce[4], nonce[5], nonce[6], nonce[7]]);
 
-        let mut avx2_output = [0u8; 512];
+        let mut avx2_output = AlignedU8x512([0u8; 512]);
         unsafe {
             chacha_blocks_avx2_x8::<20>(&state, &mut avx2_output);
         }
