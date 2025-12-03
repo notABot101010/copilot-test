@@ -24,4 +24,4 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run tests
-        run: cargo test -p chacha --verbose
+        run: cargo test -p chacha
