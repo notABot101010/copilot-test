@@ -95,7 +95,12 @@ pub unsafe fn encode_avx2(output: &mut [u8], data: &[u8], padding: bool) {
     if !remaining_data.is_empty() {
         let out_offset = full_chunks * 32;
         let remaining_output = &mut output[out_offset..];
-        super::encode_to_slice(remaining_output, remaining_data, super::Alphabet::Standard, padding);
+        super::encode_to_slice(
+            remaining_output,
+            remaining_data,
+            super::Alphabet::Standard,
+            padding,
+        );
     }
 }
 

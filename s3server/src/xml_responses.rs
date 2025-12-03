@@ -205,7 +205,12 @@ impl ListObjectsV2Response {
         let prefixes_xml: String = self
             .common_prefixes
             .iter()
-            .map(|p| format!("<CommonPrefixes><Prefix>{}</Prefix></CommonPrefixes>", xml_escape(p)))
+            .map(|p| {
+                format!(
+                    "<CommonPrefixes><Prefix>{}</Prefix></CommonPrefixes>",
+                    xml_escape(p)
+                )
+            })
             .collect();
 
         let continuation_xml = self
@@ -527,7 +532,11 @@ mod tests {
 
     #[test]
     fn test_error_response() {
-        let err = ErrorResponse::new("NoSuchBucket", "The specified bucket does not exist", "/test-bucket");
+        let err = ErrorResponse::new(
+            "NoSuchBucket",
+            "The specified bucket does not exist",
+            "/test-bucket",
+        );
         let xml = err.to_xml();
         assert!(xml.contains("<Code>NoSuchBucket</Code>"));
         assert!(xml.contains("<Message>The specified bucket does not exist</Message>"));

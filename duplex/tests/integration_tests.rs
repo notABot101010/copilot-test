@@ -199,11 +199,7 @@ fn test_various_message_sizes() {
         let mut cipher_dec = KeccakAead::new(&key, &nonce).unwrap();
         let decrypted = cipher_dec.decrypt(&ciphertext, ad).unwrap();
 
-        assert_eq!(
-            decrypted, plaintext,
-            "Failed for message size {}",
-            size
-        );
+        assert_eq!(decrypted, plaintext, "Failed for message size {}", size);
     }
 }
 

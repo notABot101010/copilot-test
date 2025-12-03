@@ -228,7 +228,10 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn create_volume(&self, request: CreateVolumeRequest) -> Result<VolumeResponse, Error> {
+    pub async fn create_volume(
+        &self,
+        request: CreateVolumeRequest,
+    ) -> Result<VolumeResponse, Error> {
         let url = Url::parse(&format!("{}/volumes", API_BASE_URL))?;
 
         let res = self

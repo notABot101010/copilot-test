@@ -11,7 +11,7 @@ impl ServerProcess {
     fn new() -> Self {
         // Clean up old test database
         let _ = std::fs::remove_file("test_integration.db");
-        
+
         let process = Command::new("cargo")
             .args(["run"])
             .env("DATABASE_URL", "sqlite:test_integration.db?mode=rwc")
@@ -20,10 +20,10 @@ impl ServerProcess {
             .stderr(Stdio::null())
             .spawn()
             .expect("Failed to start server");
-        
+
         // Wait for server to start
         std::thread::sleep(Duration::from_secs(5));
-        
+
         ServerProcess { process }
     }
 }
@@ -39,7 +39,7 @@ impl Drop for ServerProcess {
 async fn test_user_registration() {
     let _server = ServerProcess::new();
     let client = Client::new();
-    
+
     let response = client
         .post("http://localhost:4002/api/register")
         .json(&json!({
@@ -49,9 +49,9 @@ async fn test_user_registration() {
         .send()
         .await
         .expect("Failed to send request");
-    
+
     assert_eq!(response.status(), 201);
-    
+
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert_eq!(body["username"], "testuser1");
 }
@@ -60,7 +60,7 @@ async fn test_user_registration() {
 async fn test_user_login() {
     let _server = ServerProcess::new();
     let client = Client::new();
-    
+
     // Register first
     client
         .post("http://localhost:4002/api/register")
@@ -71,7 +71,7 @@ async fn test_user_login() {
         .send()
         .await
         .expect("Failed to register");
-    
+
     // Login
     let response = client
         .post("http://localhost:4002/api/login")
@@ -82,9 +82,9 @@ async fn test_user_login() {
         .send()
         .await
         .expect("Failed to login");
-    
+
     assert_eq!(response.status(), 200);
-    
+
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert_eq!(body["username"], "loginuser");
     assert!(body["token"].as_str().is_some());
@@ -94,7 +94,7 @@ async fn test_user_login() {
 async fn test_invalid_login() {
     let _server = ServerProcess::new();
     let client = Client::new();
-    
+
     let response = client
         .post("http://localhost:4002/api/login")
         .json(&json!({
@@ -104,7 +104,7 @@ async fn test_invalid_login() {
         .send()
         .await
         .expect("Failed to send request");
-    
+
     assert_eq!(response.status(), 401);
 }
 
@@ -112,7 +112,7 @@ async fn test_invalid_login() {
 async fn test_create_match() {
     let _server = ServerProcess::new();
     let client = Client::new();
-    
+
     // Register two users
     client
         .post("http://localhost:4002/api/register")
@@ -123,7 +123,7 @@ async fn test_create_match() {
         .send()
         .await
         .expect("Failed to register user 1");
-    
+
     client
         .post("http://localhost:4002/api/register")
         .json(&json!({
@@ -133,7 +133,7 @@ async fn test_create_match() {
         .send()
         .await
         .expect("Failed to register user 2");
-    
+
     // Login as white_player
     let login_response = client
         .post("http://localhost:4002/api/login")
@@ -144,10 +144,10 @@ async fn test_create_match() {
         .send()
         .await
         .expect("Failed to login");
-    
+
     let login_body: serde_json::Value = login_response.json().await.expect("Failed to parse login");
     let token = login_body["token"].as_str().expect("No token");
-    
+
     // Create match
     let response = client
         .post("http://localhost:4002/api/matches")
@@ -158,9 +158,9 @@ async fn test_create_match() {
         .send()
         .await
         .expect("Failed to create match");
-    
+
     assert_eq!(response.status(), 201);
-    
+
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert_eq!(body["white_player"], "white_player");
     assert_eq!(body["black_player"], "black_player");
@@ -171,7 +171,7 @@ async fn test_create_match() {
 async fn test_list_matches() {
     let _server = ServerProcess::new();
     let client = Client::new();
-    
+
     // Register two users
     client
         .post("http://localhost:4002/api/register")
@@ -182,7 +182,7 @@ async fn test_list_matches() {
         .send()
         .await
         .expect("Failed to register");
-    
+
     client
         .post("http://localhost:4002/api/register")
         .json(&json!({
@@ -192,7 +192,7 @@ async fn test_list_matches() {
         .send()
         .await
         .expect("Failed to register");
-    
+
     // Login
     let login_response = client
         .post("http://localhost:4002/api/login")
@@ -203,10 +203,10 @@ async fn test_list_matches() {
         .send()
         .await
         .expect("Failed to login");
-    
+
     let login_body: serde_json::Value = login_response.json().await.expect("Failed to parse login");
     let token = login_body["token"].as_str().expect("No token");
-    
+
     // Create a match
     client
         .post("http://localhost:4002/api/matches")
@@ -217,7 +217,7 @@ async fn test_list_matches() {
         .send()
         .await
         .expect("Failed to create match");
-    
+
     // List matches
     let response = client
         .get("http://localhost:4002/api/matches")
@@ -225,9 +225,9 @@ async fn test_list_matches() {
         .send()
         .await
         .expect("Failed to list matches");
-    
+
     assert_eq!(response.status(), 200);
-    
+
     let body: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert!(body["matches"].as_array().is_some());
     assert!(!body["matches"].as_array().expect("Not array").is_empty());
@@ -237,7 +237,7 @@ async fn test_list_matches() {
 async fn test_make_move() {
     let _server = ServerProcess::new();
     let client = Client::new();
-    
+
     // Register two users
     client
         .post("http://localhost:4002/api/register")
@@ -248,7 +248,7 @@ async fn test_make_move() {
         .send()
         .await
         .expect("Failed to register");
-    
+
     client
         .post("http://localhost:4002/api/register")
         .json(&json!({
@@ -258,7 +258,7 @@ async fn test_make_move() {
         .send()
         .await
         .expect("Failed to register");
-    
+
     // Login as white
     let login_response = client
         .post("http://localhost:4002/api/login")
@@ -269,10 +269,10 @@ async fn test_make_move() {
         .send()
         .await
         .expect("Failed to login");
-    
+
     let login_body: serde_json::Value = login_response.json().await.expect("Failed to parse login");
     let token = login_body["token"].as_str().expect("No token");
-    
+
     // Create match
     let match_response = client
         .post("http://localhost:4002/api/matches")
@@ -283,13 +283,16 @@ async fn test_make_move() {
         .send()
         .await
         .expect("Failed to create match");
-    
+
     let match_body: serde_json::Value = match_response.json().await.expect("Failed to parse match");
     let match_id = match_body["id"].as_str().expect("No match id");
-    
+
     // Make a move (e2 to e4)
     let move_response = client
-        .post(&format!("http://localhost:4002/api/matches/{}/move", match_id))
+        .post(&format!(
+            "http://localhost:4002/api/matches/{}/move",
+            match_id
+        ))
         .header("Authorization", format!("Bearer {}", token))
         .json(&json!({
             "from": "e2",
@@ -298,10 +301,13 @@ async fn test_make_move() {
         .send()
         .await
         .expect("Failed to make move");
-    
+
     assert_eq!(move_response.status(), 200);
-    
-    let move_body: serde_json::Value = move_response.json().await.expect("Failed to parse response");
+
+    let move_body: serde_json::Value = move_response
+        .json()
+        .await
+        .expect("Failed to parse response");
     assert_eq!(move_body["success"], true);
 }
 
@@ -309,7 +315,7 @@ async fn test_make_move() {
 async fn test_invalid_move() {
     let _server = ServerProcess::new();
     let client = Client::new();
-    
+
     // Register two users
     client
         .post("http://localhost:4002/api/register")
@@ -320,7 +326,7 @@ async fn test_invalid_move() {
         .send()
         .await
         .expect("Failed to register");
-    
+
     client
         .post("http://localhost:4002/api/register")
         .json(&json!({
@@ -330,7 +336,7 @@ async fn test_invalid_move() {
         .send()
         .await
         .expect("Failed to register");
-    
+
     // Login as white
     let login_response = client
         .post("http://localhost:4002/api/login")
@@ -341,10 +347,10 @@ async fn test_invalid_move() {
         .send()
         .await
         .expect("Failed to login");
-    
+
     let login_body: serde_json::Value = login_response.json().await.expect("Failed to parse login");
     let token = login_body["token"].as_str().expect("No token");
-    
+
     // Create match
     let match_response = client
         .post("http://localhost:4002/api/matches")
@@ -355,13 +361,16 @@ async fn test_invalid_move() {
         .send()
         .await
         .expect("Failed to create match");
-    
+
     let match_body: serde_json::Value = match_response.json().await.expect("Failed to parse match");
     let match_id = match_body["id"].as_str().expect("No match id");
-    
+
     // Try an invalid move (e2 to e5 - too far for pawn opening)
     let move_response = client
-        .post(&format!("http://localhost:4002/api/matches/{}/move", match_id))
+        .post(&format!(
+            "http://localhost:4002/api/matches/{}/move",
+            match_id
+        ))
         .header("Authorization", format!("Bearer {}", token))
         .json(&json!({
             "from": "e2",
@@ -370,10 +379,13 @@ async fn test_invalid_move() {
         .send()
         .await
         .expect("Failed to make move");
-    
+
     assert_eq!(move_response.status(), 200);
-    
-    let move_body: serde_json::Value = move_response.json().await.expect("Failed to parse response");
+
+    let move_body: serde_json::Value = move_response
+        .json()
+        .await
+        .expect("Failed to parse response");
     assert_eq!(move_body["success"], false);
 }
 
@@ -381,7 +393,7 @@ async fn test_invalid_move() {
 async fn test_get_match_details() {
     let _server = ServerProcess::new();
     let client = Client::new();
-    
+
     // Register two users
     client
         .post("http://localhost:4002/api/register")
@@ -392,7 +404,7 @@ async fn test_get_match_details() {
         .send()
         .await
         .expect("Failed to register");
-    
+
     client
         .post("http://localhost:4002/api/register")
         .json(&json!({
@@ -402,7 +414,7 @@ async fn test_get_match_details() {
         .send()
         .await
         .expect("Failed to register");
-    
+
     // Login
     let login_response = client
         .post("http://localhost:4002/api/login")
@@ -413,10 +425,10 @@ async fn test_get_match_details() {
         .send()
         .await
         .expect("Failed to login");
-    
+
     let login_body: serde_json::Value = login_response.json().await.expect("Failed to parse login");
     let token = login_body["token"].as_str().expect("No token");
-    
+
     // Create match
     let match_response = client
         .post("http://localhost:4002/api/matches")
@@ -427,20 +439,23 @@ async fn test_get_match_details() {
         .send()
         .await
         .expect("Failed to create match");
-    
+
     let match_body: serde_json::Value = match_response.json().await.expect("Failed to parse match");
     let match_id = match_body["id"].as_str().expect("No match id");
-    
+
     // Get match details
     let detail_response = client
         .get(&format!("http://localhost:4002/api/matches/{}", match_id))
         .send()
         .await
         .expect("Failed to get match");
-    
+
     assert_eq!(detail_response.status(), 200);
-    
-    let detail_body: serde_json::Value = detail_response.json().await.expect("Failed to parse response");
+
+    let detail_body: serde_json::Value = detail_response
+        .json()
+        .await
+        .expect("Failed to parse response");
     assert_eq!(detail_body["white_player"], "detail_white");
     assert_eq!(detail_body["black_player"], "detail_black");
     assert!(detail_body["document"].as_str().is_some());

@@ -23,9 +23,11 @@ async fn spawn_server() -> (String, TempDir) {
     let db_path_clone = db_path.clone();
     tokio::spawn(async move {
         use tvflix_server::*;
-        
+
         let db_url = format!("sqlite:{}?mode=rwc", db_path_clone.display());
-        let db = database::Database::connect(&db_url).await.expect("DB connect failed");
+        let db = database::Database::connect(&db_url)
+            .await
+            .expect("DB connect failed");
         db.init().await.expect("DB init failed");
 
         let storage = storage::Storage::new(data_path_clone);
@@ -37,7 +39,9 @@ async fn spawn_server() -> (String, TempDir) {
 
         let app = handlers::create_router(state);
         let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-        let listener = tokio::net::TcpListener::bind(addr).await.expect("Failed to bind");
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .expect("Failed to bind");
         axum::serve(listener, app).await.expect("Server failed");
     });
 
@@ -63,7 +67,11 @@ async fn test_register_and_login() {
         .await
         .expect("Failed to send register request");
 
-    assert!(response.status().is_success(), "Register failed: {:?}", response.status());
+    assert!(
+        response.status().is_success(),
+        "Register failed: {:?}",
+        response.status()
+    );
 
     let auth_response: serde_json::Value = response.json().await.expect("Failed to parse response");
     assert!(auth_response.get("token").is_some());
@@ -137,7 +145,11 @@ async fn test_upload_and_list_media() {
         .await
         .expect("Failed to upload");
 
-    assert!(response.status().is_success(), "Upload failed: {:?}", response.status());
+    assert!(
+        response.status().is_success(),
+        "Upload failed: {:?}",
+        response.status()
+    );
 
     let media: serde_json::Value = response.json().await.unwrap();
     assert_eq!(media["title"], "Test Video");
@@ -425,7 +437,11 @@ async fn test_cookie_authentication_for_streaming() {
         .await
         .expect("Failed to stream with cookie");
 
-    assert!(response.status().is_success(), "Cookie auth failed: {:?}", response.status());
+    assert!(
+        response.status().is_success(),
+        "Cookie auth failed: {:?}",
+        response.status()
+    );
     let body = response.bytes().await.unwrap();
     assert_eq!(body.as_ref(), file_content);
 

@@ -9,10 +9,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{mpsc, RwLock};
 use tower_http::cors::CorsLayer;
 use tracing::info;
@@ -36,7 +33,10 @@ enum SignalingMessage {
     #[serde(rename = "ice-candidate")]
     IceCandidate { candidate: String },
     #[serde(rename = "e2ee-key")]
-    E2EEKey { #[serde(rename = "publicKey")] public_key: String },
+    E2EEKey {
+        #[serde(rename = "publicKey")]
+        public_key: String,
+    },
     #[serde(rename = "peer-joined")]
     PeerJoined,
     #[serde(rename = "peer-left")]

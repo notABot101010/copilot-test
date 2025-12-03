@@ -1,5 +1,5 @@
 //! LLM Client module for interacting with OpenAI-compatible APIs.
-//! 
+//!
 //! This module provides a configurable LLM client that can connect to
 //! any OpenAI-compatible API endpoint (OpenAI, Azure, local models, etc.)
 
@@ -260,12 +260,12 @@ impl LlmClient for MockLlmClient {
     async fn chat(&self, _messages: Vec<ChatMessage>) -> Result<String, LlmError> {
         let mut count = self.call_count.write().await;
         let responses = self.responses.read().await;
-        
+
         let response = responses
             .get(*count)
             .cloned()
             .unwrap_or_else(|| "Mock response".to_string());
-        
+
         *count += 1;
         Ok(response)
     }
@@ -304,12 +304,12 @@ mod tests {
     #[tokio::test]
     async fn test_mock_client_call_count() {
         let client = MockLlmClient::new();
-        
+
         assert_eq!(client.call_count().await, 0);
-        
+
         let _ = client.chat(vec![ChatMessage::user("Hello")]).await;
         assert_eq!(client.call_count().await, 1);
-        
+
         let _ = client.chat(vec![ChatMessage::user("World")]).await;
         assert_eq!(client.call_count().await, 2);
     }
@@ -317,7 +317,7 @@ mod tests {
     #[tokio::test]
     async fn test_mock_client_complete() {
         let client = MockLlmClient::with_responses(vec!["Completed task".to_string()]);
-        
+
         let result = client.complete("You are helpful", "Help me").await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Completed task");

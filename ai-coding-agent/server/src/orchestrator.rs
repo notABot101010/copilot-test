@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use std::sync::Arc;
 use chrono::Utc;
 use sqlx::sqlite::SqlitePool;
+use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 use uuid::Uuid;
 
@@ -39,7 +39,9 @@ impl Orchestrator {
             subagents: vec![
                 Box::new(crate::subagents::CodeEditorAgent::new(llm_client.clone())),
                 Box::new(crate::subagents::TestRunnerAgent::new(llm_client.clone())),
-                Box::new(crate::subagents::DocumentationAgent::new(llm_client.clone())),
+                Box::new(crate::subagents::DocumentationAgent::new(
+                    llm_client.clone(),
+                )),
                 Box::new(crate::subagents::ResearchAgent::new(llm_client.clone())),
             ],
             llm_client,
@@ -76,7 +78,7 @@ impl Orchestrator {
 
         // Classify intent and create tasks
         let tasks = self.classify_and_plan(content).await;
-        
+
         // Store tasks in session
         {
             let mut sessions = self.sessions.write().await;
@@ -120,10 +122,14 @@ impl Orchestrator {
             });
 
             // Find appropriate subagent
-            if let Some(agent) = self.subagents.iter().find(|a| a.agent_type() == task.subagent) {
+            if let Some(agent) = self
+                .subagents
+                .iter()
+                .find(|a| a.agent_type() == task.subagent)
+            {
                 let templates_guard = templates.read().await;
                 let result = agent.execute(&task, &templates_guard).await;
-                
+
                 // Store result in database
                 let result_content = match &result {
                     Ok(r) => r.clone(),
@@ -144,10 +150,13 @@ impl Orchestrator {
                 .bind("assistant")
                 .bind(&result_content)
                 .bind(&now.to_rfc3339())
-                .bind(serde_json::to_string(&serde_json::json!({
-                    "task_id": task.id,
-                    "subagent": task.subagent.to_string(),
-                })).ok())
+                .bind(
+                    serde_json::to_string(&serde_json::json!({
+                        "task_id": task.id,
+                        "subagent": task.subagent.to_string(),
+                    }))
+                    .ok(),
+                )
                 .execute(db)
                 .await;
 
@@ -245,7 +254,7 @@ Now classify this request:"#;
 
         let rest = &line[5..];
         let parts: Vec<&str> = rest.splitn(3, ':').collect();
-        
+
         if parts.len() < 3 {
             tracing::debug!("Malformed task line (expected 3 parts): {}", line);
             return None;
@@ -257,7 +266,10 @@ Now classify this request:"#;
             "documentation" => SubAgentType::Documentation,
             "research" => SubAgentType::Research,
             unknown => {
-                tracing::debug!("Unknown subagent type '{}', defaulting to CodeEditor", unknown);
+                tracing::debug!(
+                    "Unknown subagent type '{}', defaulting to CodeEditor",
+                    unknown
+                );
                 SubAgentType::CodeEditor
             }
         };
@@ -294,9 +306,13 @@ Now classify this request:"#;
         let content_lower = content.to_lowercase();
 
         // Determine which subagents are needed based on keywords
-        if content_lower.contains("implement") || content_lower.contains("code") || 
-           content_lower.contains("add") || content_lower.contains("create") ||
-           content_lower.contains("fix") || content_lower.contains("change") {
+        if content_lower.contains("implement")
+            || content_lower.contains("code")
+            || content_lower.contains("add")
+            || content_lower.contains("create")
+            || content_lower.contains("fix")
+            || content_lower.contains("change")
+        {
             tasks.push(Task {
                 id: Uuid::new_v4().to_string(),
                 session_id: String::new(),
@@ -320,8 +336,10 @@ Now classify this request:"#;
             });
         }
 
-        if content_lower.contains("doc") || content_lower.contains("readme") ||
-           content_lower.contains("comment") {
+        if content_lower.contains("doc")
+            || content_lower.contains("readme")
+            || content_lower.contains("comment")
+        {
             tasks.push(Task {
                 id: Uuid::new_v4().to_string(),
                 session_id: String::new(),
@@ -333,8 +351,11 @@ Now classify this request:"#;
             });
         }
 
-        if content_lower.contains("research") || content_lower.contains("investigate") ||
-           content_lower.contains("find") || content_lower.contains("how") {
+        if content_lower.contains("research")
+            || content_lower.contains("investigate")
+            || content_lower.contains("find")
+            || content_lower.contains("how")
+        {
             tasks.push(Task {
                 id: Uuid::new_v4().to_string(),
                 session_id: String::new(),
@@ -362,9 +383,13 @@ Now classify this request:"#;
         tasks
     }
 
-    pub async fn steer(&self, session_id: &str, command: SteerCommand) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn steer(
+        &self,
+        session_id: &str,
+        command: SteerCommand,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(state) = sessions.get_mut(session_id) {
             match command {
                 SteerCommand::Cancel => {
@@ -380,7 +405,7 @@ Now classify this request:"#;
                     // Handle other commands
                 }
             }
-            
+
             // Notify subscribers
             let _ = state.sender.send(StreamEvent {
                 event_type: StreamEventType::AgentThinking,

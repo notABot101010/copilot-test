@@ -1,10 +1,10 @@
-use async_trait::async_trait;
-use std::collections::HashMap;
-use std::sync::Arc;
+use super::SubAgent;
 use crate::llm::{ChatMessage, LlmClient};
 use crate::models::{SubAgentType, Task};
 use crate::templates::TemplateManager;
-use super::SubAgent;
+use async_trait::async_trait;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct TestRunnerAgent {
     llm_client: Arc<dyn LlmClient>,
@@ -30,14 +30,25 @@ impl SubAgent for TestRunnerAgent {
         &self.llm_client
     }
 
-    async fn execute(&self, task: &Task, templates: &TemplateManager) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    async fn execute(
+        &self,
+        task: &Task,
+        templates: &TemplateManager,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let mut vars = HashMap::new();
-        vars.insert("test_framework".to_string(), "cargo test / vitest".to_string());
-        vars.insert("existing_test_patterns".to_string(), "(patterns would be analyzed)".to_string());
+        vars.insert(
+            "test_framework".to_string(),
+            "cargo test / vitest".to_string(),
+        );
+        vars.insert(
+            "existing_test_patterns".to_string(),
+            "(patterns would be analyzed)".to_string(),
+        );
         vars.insert("test_results".to_string(), "(would run tests)".to_string());
         vars.insert("task_description".to_string(), task.description.clone());
 
-        let system_prompt = templates.render("test_runner", &vars)
+        let system_prompt = templates
+            .render("test_runner", &vars)
             .unwrap_or_else(|| task.description.clone());
 
         let messages = vec![

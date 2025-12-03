@@ -788,8 +788,7 @@ impl Client {
         page: Option<u32>,
     ) -> Result<ListServersResponse, Error> {
         let mut url =
-            Url::parse(&format!("{}/zones/{}/servers", INSTANCE_API_URL, zone))
-                .expect("valid URL");
+            Url::parse(&format!("{}/zones/{}/servers", INSTANCE_API_URL, zone)).expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -838,7 +837,11 @@ impl Client {
     }
 
     /// Get a server by ID
-    pub async fn get_server(&self, zone: &str, server_id: &str) -> Result<GetServerResponse, Error> {
+    pub async fn get_server(
+        &self,
+        zone: &str,
+        server_id: &str,
+    ) -> Result<GetServerResponse, Error> {
         let url = format!("{}/zones/{}/servers/{}", INSTANCE_API_URL, zone, server_id);
 
         let res = self
@@ -990,8 +993,7 @@ impl Client {
         page: Option<u32>,
     ) -> Result<ListVolumesResponse, Error> {
         let mut url =
-            Url::parse(&format!("{}/zones/{}/volumes", INSTANCE_API_URL, zone))
-                .expect("valid URL");
+            Url::parse(&format!("{}/zones/{}/volumes", INSTANCE_API_URL, zone)).expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -1040,7 +1042,11 @@ impl Client {
     }
 
     /// Get a volume by ID
-    pub async fn get_volume(&self, zone: &str, volume_id: &str) -> Result<GetVolumeResponse, Error> {
+    pub async fn get_volume(
+        &self,
+        zone: &str,
+        volume_id: &str,
+    ) -> Result<GetVolumeResponse, Error> {
         let url = format!("{}/zones/{}/volumes/{}", INSTANCE_API_URL, zone, volume_id);
 
         let res = self
@@ -1105,8 +1111,7 @@ impl Client {
         page: Option<u32>,
     ) -> Result<ListImagesResponse, Error> {
         let mut url =
-            Url::parse(&format!("{}/zones/{}/images", INSTANCE_API_URL, zone))
-                .expect("valid URL");
+            Url::parse(&format!("{}/zones/{}/images", INSTANCE_API_URL, zone)).expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -1197,9 +1202,8 @@ impl Client {
         per_page: Option<u32>,
         page: Option<u32>,
     ) -> Result<ListSnapshotsResponse, Error> {
-        let mut url =
-            Url::parse(&format!("{}/zones/{}/snapshots", INSTANCE_API_URL, zone))
-                .expect("valid URL");
+        let mut url = Url::parse(&format!("{}/zones/{}/snapshots", INSTANCE_API_URL, zone))
+            .expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -1253,7 +1257,10 @@ impl Client {
         zone: &str,
         snapshot_id: &str,
     ) -> Result<GetSnapshotResponse, Error> {
-        let url = format!("{}/zones/{}/snapshots/{}", INSTANCE_API_URL, zone, snapshot_id);
+        let url = format!(
+            "{}/zones/{}/snapshots/{}",
+            INSTANCE_API_URL, zone, snapshot_id
+        );
 
         let res = self
             .http_client
@@ -1269,7 +1276,10 @@ impl Client {
 
     /// Delete a snapshot
     pub async fn delete_snapshot(&self, zone: &str, snapshot_id: &str) -> Result<(), Error> {
-        let url = format!("{}/zones/{}/snapshots/{}", INSTANCE_API_URL, zone, snapshot_id);
+        let url = format!(
+            "{}/zones/{}/snapshots/{}",
+            INSTANCE_API_URL, zone, snapshot_id
+        );
 
         let res = self
             .http_client
@@ -1295,8 +1305,7 @@ impl Client {
         page: Option<u32>,
     ) -> Result<ListIpsResponse, Error> {
         let mut url =
-            Url::parse(&format!("{}/zones/{}/ips", INSTANCE_API_URL, zone))
-                .expect("valid URL");
+            Url::parse(&format!("{}/zones/{}/ips", INSTANCE_API_URL, zone)).expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -1409,9 +1418,11 @@ impl Client {
         per_page: Option<u32>,
         page: Option<u32>,
     ) -> Result<ListSecurityGroupsResponse, Error> {
-        let mut url =
-            Url::parse(&format!("{}/zones/{}/security_groups", INSTANCE_API_URL, zone))
-                .expect("valid URL");
+        let mut url = Url::parse(&format!(
+            "{}/zones/{}/security_groups",
+            INSTANCE_API_URL, zone
+        ))
+        .expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -1587,9 +1598,11 @@ impl Client {
         per_page: Option<u32>,
         page: Option<u32>,
     ) -> Result<ListPlacementGroupsResponse, Error> {
-        let mut url =
-            Url::parse(&format!("{}/zones/{}/placement_groups", INSTANCE_API_URL, zone))
-                .expect("valid URL");
+        let mut url = Url::parse(&format!(
+            "{}/zones/{}/placement_groups",
+            INSTANCE_API_URL, zone
+        ))
+        .expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();

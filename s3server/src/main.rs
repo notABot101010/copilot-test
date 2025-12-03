@@ -146,7 +146,10 @@ async fn list_users(db: &Database) -> Result<(), Box<dyn std::error::Error>> {
     println!("{:<20} {:<24} {}", "Name", "Access Key ID", "Created At");
     println!("{}", "-".repeat(60));
     for user in users {
-        println!("{:<20} {:<24} {}", user.name, user.access_key_id, user.created_at);
+        println!(
+            "{:<20} {:<24} {}",
+            user.name, user.access_key_id, user.created_at
+        );
     }
 
     Ok(())
@@ -176,12 +179,13 @@ async fn serve(cli: &Cli, db: Database) -> Result<(), Box<dyn std::error::Error>
 
 /// Generate a random access key ID (20 characters, uppercase alphanumeric)
 fn generate_access_key() -> String {
-    use aws_lc_rs::rand::SystemRandom;
     use aws_lc_rs::rand::SecureRandom;
+    use aws_lc_rs::rand::SystemRandom;
 
     let rng = SystemRandom::new();
     let mut bytes = [0u8; 15];
-    rng.fill(&mut bytes).expect("Failed to generate random bytes");
+    rng.fill(&mut bytes)
+        .expect("Failed to generate random bytes");
 
     let key = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
     key.chars()
@@ -193,12 +197,13 @@ fn generate_access_key() -> String {
 
 /// Generate a random secret access key (40 characters)
 fn generate_secret_key() -> String {
-    use aws_lc_rs::rand::SystemRandom;
     use aws_lc_rs::rand::SecureRandom;
+    use aws_lc_rs::rand::SystemRandom;
 
     let rng = SystemRandom::new();
     let mut bytes = [0u8; 30];
-    rng.fill(&mut bytes).expect("Failed to generate random bytes");
+    rng.fill(&mut bytes)
+        .expect("Failed to generate random bytes");
 
     base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes)
 }

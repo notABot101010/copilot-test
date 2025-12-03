@@ -281,7 +281,6 @@ pub unsafe fn chacha_blocks_avx2<const ROUNDS: usize>(state: &[u32; 16], output:
     _mm_store_si128(output.as_mut_ptr().add(240) as *mut __m128i, r3_1215);
 }
 
-
 #[repr(align(8))]
 pub struct AlignedU8x512(pub [u8; 512]);
 
@@ -748,7 +747,7 @@ mod tests {
             let mut scalar_output = [0u8; 64];
             scalar_serialize_state(&block, &mut scalar_output);
             assert_eq!(
-                &avx2_output[block_idx as usize * 64..(block_idx as usize + 1) * 64],
+                &avx2_output.0[block_idx as usize * 64..(block_idx as usize + 1) * 64],
                 &scalar_output[..],
                 "Block {} mismatch",
                 block_idx

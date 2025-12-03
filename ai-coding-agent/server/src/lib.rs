@@ -1,5 +1,5 @@
 //! AI Coding Agent Server Library
-//! 
+//!
 //! This library provides the core functionality for the AI Coding Agent server.
 
 pub mod db;
@@ -11,8 +11,8 @@ pub mod subagents;
 pub mod templates;
 pub mod tools;
 
-use std::sync::Arc;
 use sqlx::sqlite::SqlitePool;
+use std::sync::Arc;
 
 use llm::LlmClient;
 

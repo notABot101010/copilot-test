@@ -3,7 +3,7 @@ use sqlx::Error;
 
 pub async fn init_db(path: &str) -> Result<SqlitePool, Error> {
     let db_url = format!("sqlite:{}?mode=rwc", path);
-    
+
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect(&db_url)

@@ -17,16 +17,15 @@ pub fn generate_self_signed_cert(cert_path: &Path, key_path: &Path) -> Result<()
     params.distinguished_name = dn;
 
     // Generate certificate with the key pair
-    let cert = params.self_signed(&key_pair)
+    let cert = params
+        .self_signed(&key_pair)
         .context("Failed to generate self-signed certificate")?;
 
     // Write certificate (PEM format)
-    fs::write(cert_path, cert.pem())
-        .context("Failed to write certificate")?;
+    fs::write(cert_path, cert.pem()).context("Failed to write certificate")?;
 
     // Write private key (PEM format)
-    fs::write(key_path, key_pem)
-        .context("Failed to write private key")?;
+    fs::write(key_path, key_pem).context("Failed to write private key")?;
 
     Ok(())
 }
@@ -38,8 +37,7 @@ pub fn ensure_certificates(cert_path: &Path, key_path: &Path) -> Result<()> {
 
         // Create parent directories if they don't exist
         if let Some(parent) = cert_path.parent() {
-            fs::create_dir_all(parent)
-                .context("Failed to create certificate directory")?;
+            fs::create_dir_all(parent).context("Failed to create certificate directory")?;
         }
 
         generate_self_signed_cert(cert_path, key_path)?;
@@ -97,10 +95,7 @@ pub mod packet {
                 return None;
             }
             let packet_type = data.get_u8();
-            Some(Self {
-                packet_type,
-                data,
-            })
+            Some(Self { packet_type, data })
         }
     }
 }

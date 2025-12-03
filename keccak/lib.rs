@@ -186,12 +186,12 @@ macro_rules! keccak_round {
 pub unsafe fn p1600_avx2<const ROUNDS: usize>(state: &mut [u64; 25]) {
     // Compile-time bounds check for ROUNDS
     const { assert!(ROUNDS > 0 && ROUNDS <= 24, "ROUNDS must be in range 1..=24") };
-    
+
     // Load state into local variables for better register allocation
     let mut a = *state;
-    
+
     let start_round = 24 - ROUNDS;
-    
+
     // Unroll 2 rounds at a time for better instruction scheduling
     let mut round = start_round;
     while round + 1 < 24 {
@@ -199,12 +199,12 @@ pub unsafe fn p1600_avx2<const ROUNDS: usize>(state: &mut [u64; 25]) {
         keccak_round!(a, RC[round + 1]);
         round += 2;
     }
-    
+
     // Handle odd round if needed
     if round < 24 {
         keccak_round!(a, RC[round]);
     }
-    
+
     *state = a;
 }
 
@@ -237,17 +237,35 @@ mod tests {
     fn test_f1600_zero_state() {
         let mut data = [0u64; 25];
         p1600::<24>(&mut data);
-        
+
         let expected = [
-            0xF1258F7940E1DDE7, 0x84D5CCF933C0478A, 0xD598261EA65AA9EE, 0xBD1547306F80494D,
-            0x8B284E056253D057, 0xFF97A42D7F8E6FD4, 0x90FEE5A0A44647C4, 0x8C5BDA0CD6192E76,
-            0xAD30A6F71B19059C, 0x30935AB7D08FFC64, 0xEB5AA93F2317D635, 0xA9A6E6260D712103,
-            0x81A57C16DBCF555F, 0x43B831CD0347C826, 0x01F22F1A11A5569F, 0x05E5635A21D9AE61,
-            0x64BEFEF28CC970F2, 0x613670957BC46611, 0xB87C5A554FD00ECB, 0x8C3EE88A1CCF32C8,
-            0x940C7922AE3A2614, 0x1841F924A2C509E4, 0x16F53526E70465C2, 0x75F644E97F30A13B,
+            0xF1258F7940E1DDE7,
+            0x84D5CCF933C0478A,
+            0xD598261EA65AA9EE,
+            0xBD1547306F80494D,
+            0x8B284E056253D057,
+            0xFF97A42D7F8E6FD4,
+            0x90FEE5A0A44647C4,
+            0x8C5BDA0CD6192E76,
+            0xAD30A6F71B19059C,
+            0x30935AB7D08FFC64,
+            0xEB5AA93F2317D635,
+            0xA9A6E6260D712103,
+            0x81A57C16DBCF555F,
+            0x43B831CD0347C826,
+            0x01F22F1A11A5569F,
+            0x05E5635A21D9AE61,
+            0x64BEFEF28CC970F2,
+            0x613670957BC46611,
+            0xB87C5A554FD00ECB,
+            0x8C3EE88A1CCF32C8,
+            0x940C7922AE3A2614,
+            0x1841F924A2C509E4,
+            0x16F53526E70465C2,
+            0x75F644E97F30A13B,
             0xEAF1FF7B5CECA249,
         ];
-        
+
         assert_eq!(data, expected);
     }
 
@@ -257,17 +275,35 @@ mod tests {
         let mut data = [0u64; 25];
         p1600::<24>(&mut data);
         p1600::<24>(&mut data);
-        
+
         let expected = [
-            0x2D5C954DF96ECB3C, 0x6A332CD07057B56D, 0x093D8D1270D76B6C, 0x8A20D9B25569D094,
-            0x4F9C4F99E5E7F156, 0xF957B9A2DA65FB38, 0x85773DAE1275AF0D, 0xFAF4F247C3D810F7,
-            0x1F1B9EE6F79A8759, 0xE4FECC0FEE98B425, 0x68CE61B6B9CE68A1, 0xDEEA66C4BA8F974F,
-            0x33C43D836EAFB1F5, 0xE00654042719DBD9, 0x7CF8A9F009831265, 0xFD5449A6BF174743,
-            0x97DDAD33D8994B40, 0x48EAD5FC5D0BE774, 0xE3B8C8EE55B7B03C, 0x91A0226E649E42E9,
-            0x900E3129E7BADD7B, 0x202A9EC5FAA3CCE8, 0x5B3402464E1C3DB6, 0x609F4E62A44C1059,
+            0x2D5C954DF96ECB3C,
+            0x6A332CD07057B56D,
+            0x093D8D1270D76B6C,
+            0x8A20D9B25569D094,
+            0x4F9C4F99E5E7F156,
+            0xF957B9A2DA65FB38,
+            0x85773DAE1275AF0D,
+            0xFAF4F247C3D810F7,
+            0x1F1B9EE6F79A8759,
+            0xE4FECC0FEE98B425,
+            0x68CE61B6B9CE68A1,
+            0xDEEA66C4BA8F974F,
+            0x33C43D836EAFB1F5,
+            0xE00654042719DBD9,
+            0x7CF8A9F009831265,
+            0xFD5449A6BF174743,
+            0x97DDAD33D8994B40,
+            0x48EAD5FC5D0BE774,
+            0xE3B8C8EE55B7B03C,
+            0x91A0226E649E42E9,
+            0x900E3129E7BADD7B,
+            0x202A9EC5FAA3CCE8,
+            0x5B3402464E1C3DB6,
+            0x609F4E62A44C1059,
             0x20D06CD26A8FBF5C,
         ];
-        
+
         assert_eq!(data, expected);
     }
 
@@ -276,16 +312,16 @@ mod tests {
     fn test_p1600_12_rounds() {
         let mut our_state = [0u64; 25];
         let mut ref_state = [0u64; 25];
-        
+
         // Fill with test pattern
         for i in 0..25 {
             our_state[i] = (i as u64) * 0x0123456789ABCDEF;
             ref_state[i] = our_state[i];
         }
-        
+
         p1600::<12>(&mut our_state);
         keccak::p1600(&mut ref_state, 12);
-        
+
         assert_eq!(our_state, ref_state);
     }
 
@@ -295,17 +331,21 @@ mod tests {
         for seed in 0..10u64 {
             let mut our_state = [0u64; 25];
             let mut ref_state = [0u64; 25];
-            
+
             for i in 0..25 {
                 our_state[i] = seed.wrapping_mul(i as u64).wrapping_add(0xDEADBEEF);
                 ref_state[i] = our_state[i];
             }
-            
+
             // Test 24 rounds
             p1600::<24>(&mut our_state);
             keccak::p1600(&mut ref_state, 24);
-            assert_eq!(our_state, ref_state, "Mismatch for 24 rounds with seed {}", seed);
-            
+            assert_eq!(
+                our_state, ref_state,
+                "Mismatch for 24 rounds with seed {}",
+                seed
+            );
+
             // Reset and test 12 rounds
             for i in 0..25 {
                 our_state[i] = seed.wrapping_mul(i as u64).wrapping_add(0xCAFEBABE);
@@ -313,7 +353,11 @@ mod tests {
             }
             p1600::<12>(&mut our_state);
             keccak::p1600(&mut ref_state, 12);
-            assert_eq!(our_state, ref_state, "Mismatch for 12 rounds with seed {}", seed);
+            assert_eq!(
+                our_state, ref_state,
+                "Mismatch for 12 rounds with seed {}",
+                seed
+            );
         }
     }
 }

@@ -95,12 +95,16 @@ impl IntoResponse for S3Error {
             S3Error::BadRequest(msg) => (StatusCode::BAD_REQUEST, "InvalidRequest", msg.clone()),
             S3Error::NotFound(msg) => (StatusCode::NOT_FOUND, "NoSuchKey", msg.clone()),
             S3Error::Conflict(msg) => (StatusCode::CONFLICT, "BucketAlreadyExists", msg.clone()),
-            S3Error::PreconditionFailed(msg) => {
-                (StatusCode::PRECONDITION_FAILED, "PreconditionFailed", msg.clone())
-            }
-            S3Error::InternalError(msg) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, "InternalError", msg.clone())
-            }
+            S3Error::PreconditionFailed(msg) => (
+                StatusCode::PRECONDITION_FAILED,
+                "PreconditionFailed",
+                msg.clone(),
+            ),
+            S3Error::InternalError(msg) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "InternalError",
+                msg.clone(),
+            ),
         };
 
         let error_response = ErrorResponse::new(code, &message, "");
@@ -252,7 +256,13 @@ async fn list_objects(
 
     let (objects, common_prefixes, next_token) = state
         .db
-        .list_objects(bucket, Some(prefix), delimiter, max_keys, continuation_token)
+        .list_objects(
+            bucket,
+            Some(prefix),
+            delimiter,
+            max_keys,
+            continuation_token,
+        )
         .await?;
 
     let response = ListObjectsV2Response::new(
@@ -291,7 +301,9 @@ async fn list_multipart_uploads(state: AppState, bucket: &str) -> Result<Respons
 async fn create_bucket_impl(state: AppState, bucket: &str) -> Result<Response<Body>> {
     // Validate bucket name
     if bucket.is_empty() || bucket.len() > 63 {
-        return Err(S3Error::BadRequest("Invalid bucket name length".to_string()));
+        return Err(S3Error::BadRequest(
+            "Invalid bucket name length".to_string(),
+        ));
     }
 
     state.db.create_bucket(bucket, "owner").await?;
@@ -306,10 +318,7 @@ async fn create_bucket_impl(state: AppState, bucket: &str) -> Result<Response<Bo
 /// Implementation of delete bucket
 async fn delete_bucket_impl(state: AppState, bucket: &str) -> Result<Response<Body>> {
     // Check if bucket is empty
-    let (objects, _, _) = state
-        .db
-        .list_objects(bucket, None, None, 1, None)
-        .await?;
+    let (objects, _, _) = state.db.list_objects(bucket, None, None, 1, None).await?;
 
     if !objects.is_empty() {
         return Err(S3Error::Conflict("Bucket is not empty".to_string()));
@@ -324,11 +333,7 @@ async fn delete_bucket_impl(state: AppState, bucket: &str) -> Result<Response<Bo
 }
 
 /// Implementation of head object
-async fn head_object_impl(
-    state: AppState,
-    bucket: &str,
-    key: &str,
-) -> Result<Response<Body>> {
+async fn head_object_impl(state: AppState, bucket: &str, key: &str) -> Result<Response<Body>> {
     let obj = state
         .db
         .get_object(bucket, key)
@@ -367,7 +372,10 @@ async fn get_object_impl(
     // Handle range requests
     if let Some(range_str) = range {
         if let Some((start, end)) = parse_range(range_str, obj.size as u64) {
-            let stream = state.storage.read_range(&obj.storage_path, start, end).await?;
+            let stream = state
+                .storage
+                .read_range(&obj.storage_path, start, end)
+                .await?;
             let len = end - start + 1;
             let body = Body::from_stream(stream);
 
@@ -376,7 +384,10 @@ async fn get_object_impl(
                 .header(header::CONTENT_LENGTH, len.to_string())
                 .header(header::ETAG, &obj.etag)
                 .header("Last-Modified", format_http_date(&obj.last_modified))
-                .header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", start, end, obj.size));
+                .header(
+                    header::CONTENT_RANGE,
+                    format!("bytes {}-{}/{}", start, end, obj.size),
+                );
 
             if let Some(content_type) = &obj.content_type {
                 response = response.header(header::CONTENT_TYPE, content_type);
@@ -448,7 +459,14 @@ async fn put_object_impl(
     // Store metadata in database
     state
         .db
-        .create_object(bucket, key, size, &etag, content_type.as_deref(), &storage_path)
+        .create_object(
+            bucket,
+            key,
+            size,
+            &etag,
+            content_type.as_deref(),
+            &storage_path,
+        )
         .await?;
 
     Ok(Response::builder()
@@ -481,7 +499,9 @@ async fn upload_part(
     }
 
     // Create storage path for this part
-    let storage_path = state.storage.create_part_storage_path(upload_id, part_number);
+    let storage_path = state
+        .storage
+        .create_part_storage_path(upload_id, part_number);
 
     // Stream the body to storage
     let stream = body.into_data_stream().map(|result| {

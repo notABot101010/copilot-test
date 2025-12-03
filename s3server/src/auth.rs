@@ -197,8 +197,14 @@ impl Authenticator {
         amz_date: &str,
     ) -> Result<String> {
         // Create canonical request
-        let canonical_request =
-            self.create_canonical_request(method, uri, query_string, headers, signed_headers, payload_hash);
+        let canonical_request = self.create_canonical_request(
+            method,
+            uri,
+            query_string,
+            headers,
+            signed_headers,
+            payload_hash,
+        );
 
         // Create string to sign
         let date_stamp = &amz_date[..8];
@@ -230,10 +236,7 @@ impl Authenticator {
         let canonical_headers: String = signed_headers
             .iter()
             .map(|h| {
-                let value = headers
-                    .get(h)
-                    .map(|v| v.trim())
-                    .unwrap_or("");
+                let value = headers.get(h).map(|v| v.trim()).unwrap_or("");
                 format!("{}:{}\n", h.to_lowercase(), value)
             })
             .collect();

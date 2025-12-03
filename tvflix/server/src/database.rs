@@ -306,7 +306,12 @@ impl Database {
     }
 
     // Session operations
-    pub async fn create_session(&self, user_id: i64, token: &str, expires_at: &str) -> Result<Session> {
+    pub async fn create_session(
+        &self,
+        user_id: i64,
+        token: &str,
+        expires_at: &str,
+    ) -> Result<Session> {
         let result = sqlx::query_as::<_, Session>(
             r#"
             INSERT INTO sessions (user_id, token, expires_at)
@@ -407,7 +412,11 @@ impl Database {
         Ok(result)
     }
 
-    pub async fn list_media_by_user(&self, user_id: i64, media_type: Option<MediaType>) -> Result<Vec<Media>> {
+    pub async fn list_media_by_user(
+        &self,
+        user_id: i64,
+        media_type: Option<MediaType>,
+    ) -> Result<Vec<Media>> {
         let result = if let Some(mt) = media_type {
             sqlx::query_as::<_, Media>(
                 "SELECT id, user_id, title, media_type, filename, storage_path, thumbnail_path, content_type, size, duration, created_at FROM media WHERE user_id = ? AND media_type = ? ORDER BY created_at DESC",
@@ -430,7 +439,7 @@ impl Database {
 
     pub async fn delete_media(&self, id: i64) -> Result<Option<(String, Option<String>)>> {
         let media = self.get_media_by_id(id).await?;
-        
+
         if let Some(m) = media {
             sqlx::query("DELETE FROM media WHERE id = ?")
                 .bind(id)
@@ -492,12 +501,11 @@ impl Database {
 
     pub async fn add_to_playlist(&self, playlist_id: i64, media_id: i64) -> Result<PlaylistItem> {
         // Get next position
-        let max_pos: Option<i32> = sqlx::query_scalar(
-            "SELECT MAX(position) FROM playlist_items WHERE playlist_id = ?",
-        )
-        .bind(playlist_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let max_pos: Option<i32> =
+            sqlx::query_scalar("SELECT MAX(position) FROM playlist_items WHERE playlist_id = ?")
+                .bind(playlist_id)
+                .fetch_one(&self.pool)
+                .await?;
 
         let position = max_pos.unwrap_or(0) + 1;
 
@@ -594,12 +602,11 @@ impl Database {
 
     pub async fn add_to_album(&self, album_id: i64, media_id: i64) -> Result<AlbumItem> {
         // Get next position
-        let max_pos: Option<i32> = sqlx::query_scalar(
-            "SELECT MAX(position) FROM album_items WHERE album_id = ?",
-        )
-        .bind(album_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let max_pos: Option<i32> =
+            sqlx::query_scalar("SELECT MAX(position) FROM album_items WHERE album_id = ?")
+                .bind(album_id)
+                .fetch_one(&self.pool)
+                .await?;
 
         let position = max_pos.unwrap_or(0) + 1;
 

@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     Json,
 };
+use std::sync::Arc;
 
 use crate::models::{PromptTemplate, UpdateTemplateRequest};
 use crate::AppState;
@@ -21,9 +21,10 @@ pub async fn update_template(
     Json(req): Json<UpdateTemplateRequest>,
 ) -> Result<Json<PromptTemplate>, StatusCode> {
     let mut templates = state.templates.write().await;
-    
-    let template = templates.update(&id, &req.system_prompt)
+
+    let template = templates
+        .update(&id, &req.system_prompt)
         .ok_or(StatusCode::NOT_FOUND)?;
-    
+
     Ok(Json(template))
 }

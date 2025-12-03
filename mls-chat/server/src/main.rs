@@ -30,8 +30,9 @@ pub struct AppState {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:mls_chat.db?mode=rwc".to_string());
-    
+    let db_url =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:mls_chat.db?mode=rwc".to_string());
+
     let db = SqlitePoolOptions::new()
         .max_connections(5)
         .connect(&db_url)
@@ -45,10 +46,7 @@ async fn main() -> anyhow::Result<()> {
 
     let poll_manager = Arc::new(RwLock::new(LongPollManager::new()));
 
-    let state = AppState {
-        db,
-        poll_manager,
-    };
+    let state = AppState { db, poll_manager };
 
     let app = Router::new()
         // Auth routes
@@ -67,7 +65,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/groups/:group_id/messages", get(groups::get_messages))
         // Channel routes
         .route("/api/channels", get(groups::list_channels))
-        .route("/api/channels/:group_id/subscribe", post(groups::subscribe_channel))
+        .route(
+            "/api/channels/:group_id/subscribe",
+            post(groups::subscribe_channel),
+        )
         // Pending data routes
         .route("/api/welcomes", get(get_pending_welcomes))
         .route("/api/welcomes/:welcome_id", delete(delete_welcome))
@@ -91,13 +92,11 @@ async fn register(
 ) -> Result<Json<AuthResponse>, AppError> {
     let password_hash = hash_password(&req.password)?;
 
-    let result = sqlx::query(
-        "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-    )
-    .bind(&req.username)
-    .bind(&password_hash)
-    .execute(&state.db)
-    .await;
+    let result = sqlx::query("INSERT INTO users (username, password_hash) VALUES (?, ?)")
+        .bind(&req.username)
+        .bind(&password_hash)
+        .execute(&state.db)
+        .await;
 
     match result {
         Ok(res) => {
@@ -160,12 +159,10 @@ async fn upload_key_packages(
     let user = user.ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
     for kp in &req.key_packages {
-        let key_package_data = base64::Engine::decode(
-            &base64::engine::general_purpose::STANDARD,
-            kp,
-        )
-        .map_err(|_| AppError::BadRequest("Invalid base64".to_string()))?;
-        
+        let key_package_data =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, kp)
+                .map_err(|_| AppError::BadRequest("Invalid base64".to_string()))?;
+
         // Use a hash of the key package as unique identifier
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
@@ -183,7 +180,11 @@ async fn upload_key_packages(
         .await?;
     }
 
-    info!("Uploaded {} key packages for user {}", req.key_packages.len(), req.username);
+    info!(
+        "Uploaded {} key packages for user {}",
+        req.key_packages.len(),
+        req.username
+    );
     Ok(Json(GenericResponse { success: true }))
 }
 
@@ -219,7 +220,7 @@ async fn get_key_package(
                 &base64::engine::general_purpose::STANDARD,
                 &kp.key_package_data,
             );
-            
+
             Ok(Json(KeyPackageResponse {
                 key_package: encoded,
             }))
@@ -262,9 +263,9 @@ async fn get_pending_welcomes(
                 &base64::engine::general_purpose::STANDARD,
                 &w.welcome_data,
             ),
-            group_info_data: w.group_info_data.map(|d| {
-                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &d)
-            }),
+            group_info_data: w
+                .group_info_data
+                .map(|d| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &d)),
             inviter_name: w.inviter_name,
         })
         .collect();
@@ -351,9 +352,9 @@ async fn poll_updates(
                 &base64::engine::general_purpose::STANDARD,
                 &w.welcome_data,
             ),
-            group_info_data: w.group_info_data.map(|d| {
-                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &d)
-            }),
+            group_info_data: w
+                .group_info_data
+                .map(|d| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &d)),
             inviter_name: w.inviter_name,
         })
         .collect();
@@ -419,7 +420,10 @@ impl IntoResponse for AppError {
         let (status, message) = match self {
             AppError::Database(err) => {
                 warn!("Database error: {}", err);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
@@ -427,7 +431,10 @@ impl IntoResponse for AppError {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             AppError::Internal(msg) => {
                 warn!("Internal error: {}", msg);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
         };
 

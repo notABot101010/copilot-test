@@ -558,7 +558,8 @@ pub fn decode_avx2(input: &str, alphabet: Alphabet) -> Result<Vec<u8>, Error> {
             let mut output = vec![0u8; output_len + 32]; // Extra space for SIMD writes
 
             // SAFETY: We just checked that AVX2 is available
-            let decoded_len = unsafe { avx2::decode_avx2(&mut output, input_bytes, alphabet.bytes())? };
+            let decoded_len =
+                unsafe { avx2::decode_avx2(&mut output, input_bytes, alphabet.bytes())? };
 
             output.truncate(decoded_len);
             return Ok(output);

@@ -49,7 +49,8 @@ impl TestCerts {
 
 /// Create a test server configuration
 fn create_server_config(certs: &TestCerts) -> quiche::Config {
-    let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).expect("Failed to create config");
+    let mut config =
+        quiche::Config::new(quiche::PROTOCOL_VERSION).expect("Failed to create config");
     config
         .load_cert_chain_from_pem_file(certs.cert_path.to_str().expect("Invalid path"))
         .expect("Failed to load cert");
@@ -72,7 +73,8 @@ fn create_server_config(certs: &TestCerts) -> quiche::Config {
 
 /// Create a test client configuration
 fn create_client_config() -> quiche::Config {
-    let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).expect("Failed to create config");
+    let mut config =
+        quiche::Config::new(quiche::PROTOCOL_VERSION).expect("Failed to create config");
     config
         .set_application_protos(&[b"quic-vpn"])
         .expect("Failed to set ALPN");
@@ -106,13 +108,17 @@ async fn test_quic_connection_establishment() {
     let server_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind server socket");
-    let server_addr = server_socket.local_addr().expect("Failed to get server address");
+    let server_addr = server_socket
+        .local_addr()
+        .expect("Failed to get server address");
 
     // Create client socket
     let client_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind client socket");
-    let client_addr = client_socket.local_addr().expect("Failed to get client address");
+    let client_addr = client_socket
+        .local_addr()
+        .expect("Failed to get client address");
 
     // Create configs
     let mut server_config = create_server_config(&certs);
@@ -134,7 +140,9 @@ async fn test_quic_connection_establishment() {
 
     // Send initial packet from client
     let mut out_buf = vec![0u8; MAX_DATAGRAM_SIZE];
-    let (write_len, _) = client_conn.send(&mut out_buf).expect("Failed to send initial packet");
+    let (write_len, _) = client_conn
+        .send(&mut out_buf)
+        .expect("Failed to send initial packet");
     client_socket
         .send_to(&out_buf[..write_len], server_addr)
         .await
@@ -151,7 +159,11 @@ async fn test_quic_connection_establishment() {
     let hdr = quiche::Header::from_slice(&mut recv_buf[..len], quiche::MAX_CONN_ID_LEN)
         .expect("Failed to parse header");
 
-    assert_eq!(hdr.ty, quiche::Type::Initial, "First packet should be Initial");
+    assert_eq!(
+        hdr.ty,
+        quiche::Type::Initial,
+        "First packet should be Initial"
+    );
 
     let server_scid = generate_conn_id();
     let server_scid_ref = quiche::ConnectionId::from_ref(&server_scid);
@@ -179,7 +191,10 @@ async fn test_quic_connection_establishment() {
     while !client_conn.is_established() || !server_conn.is_established() {
         iterations += 1;
         if iterations > CONNECTION_MAX_ITERATIONS {
-            panic!("Connection not established after {} iterations", CONNECTION_MAX_ITERATIONS);
+            panic!(
+                "Connection not established after {} iterations",
+                CONNECTION_MAX_ITERATIONS
+            );
         }
 
         // Server sends
@@ -237,8 +252,14 @@ async fn test_quic_connection_establishment() {
         }
     }
 
-    assert!(client_conn.is_established(), "Client connection should be established");
-    assert!(server_conn.is_established(), "Server connection should be established");
+    assert!(
+        client_conn.is_established(),
+        "Client connection should be established"
+    );
+    assert!(
+        server_conn.is_established(),
+        "Server connection should be established"
+    );
 }
 
 #[tokio::test]
@@ -250,12 +271,16 @@ async fn test_vpn_packet_exchange_over_quic() {
     let server_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind server socket");
-    let server_addr = server_socket.local_addr().expect("Failed to get server address");
+    let server_addr = server_socket
+        .local_addr()
+        .expect("Failed to get server address");
 
     let client_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind client socket");
-    let client_addr = client_socket.local_addr().expect("Failed to get client address");
+    let client_addr = client_socket
+        .local_addr()
+        .expect("Failed to get client address");
 
     // Create configs
     let mut server_config = create_server_config(&certs);
@@ -376,7 +401,9 @@ async fn test_vpn_packet_exchange_over_quic() {
     }
 
     // Connection is established, now test VPN packet exchange
-    let server_conn = server_conn.as_mut().expect("Server connection should exist");
+    let server_conn = server_conn
+        .as_mut()
+        .expect("Server connection should exist");
 
     // Send a ping packet from client
     let ping = VpnPacket::new_ping();
@@ -423,7 +450,9 @@ async fn test_vpn_packet_exchange_over_quic() {
                 for stream in server_conn.readable() {
                     let mut stream_buf = vec![0u8; MAX_DATAGRAM_SIZE];
                     if let Ok((len, _fin)) = server_conn.stream_recv(stream, &mut stream_buf) {
-                        if let Some(packet) = VpnPacket::decode(Bytes::copy_from_slice(&stream_buf[..len])) {
+                        if let Some(packet) =
+                            VpnPacket::decode(Bytes::copy_from_slice(&stream_buf[..len]))
+                        {
                             if packet.packet_type == PACKET_TYPE_PING {
                                 // Send pong
                                 let pong = VpnPacket::new_pong();
@@ -466,7 +495,9 @@ async fn test_vpn_packet_exchange_over_quic() {
                 for stream in client_conn.readable() {
                     let mut stream_buf = vec![0u8; MAX_DATAGRAM_SIZE];
                     if let Ok((len, _fin)) = client_conn.stream_recv(stream, &mut stream_buf) {
-                        if let Some(packet) = VpnPacket::decode(Bytes::copy_from_slice(&stream_buf[..len])) {
+                        if let Some(packet) =
+                            VpnPacket::decode(Bytes::copy_from_slice(&stream_buf[..len]))
+                        {
                             if packet.packet_type == PACKET_TYPE_PONG {
                                 pong_received = true;
                             }
@@ -490,12 +521,16 @@ async fn test_vpn_data_packet_transmission() {
     let server_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind server socket");
-    let server_addr = server_socket.local_addr().expect("Failed to get server address");
+    let server_addr = server_socket
+        .local_addr()
+        .expect("Failed to get server address");
 
     let client_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind client socket");
-    let client_addr = client_socket.local_addr().expect("Failed to get client address");
+    let client_addr = client_socket
+        .local_addr()
+        .expect("Failed to get client address");
 
     // Create configs
     let mut server_config = create_server_config(&certs);
@@ -609,14 +644,16 @@ async fn test_vpn_data_packet_transmission() {
         }
     }
 
-    let server_conn = server_conn.as_mut().expect("Server connection should exist");
+    let server_conn = server_conn
+        .as_mut()
+        .expect("Server connection should exist");
 
     // Test sending various data payloads
     let test_payloads: Vec<Vec<u8>> = vec![
         b"Hello, VPN!".to_vec(),
         vec![0xDE, 0xAD, 0xBE, 0xEF], // Binary data
-        vec![0u8; 1000],               // 1KB of zeros
-        (0..255).collect(),            // All byte values
+        vec![0u8; 1000],              // 1KB of zeros
+        (0..255).collect(),           // All byte values
     ];
 
     for (idx, payload) in test_payloads.iter().enumerate() {
@@ -636,7 +673,10 @@ async fn test_vpn_data_packet_transmission() {
         while !data_received {
             iterations += 1;
             if iterations > MAX_ITERATIONS {
-                panic!("Data not received after {} iterations for payload {}", MAX_ITERATIONS, idx);
+                panic!(
+                    "Data not received after {} iterations for payload {}",
+                    MAX_ITERATIONS, idx
+                );
             }
 
             while let Ok((write_len, _)) = client_conn.send(&mut out_buf) {
@@ -662,7 +702,9 @@ async fn test_vpn_data_packet_transmission() {
                     for stream in server_conn.readable() {
                         let mut stream_buf = vec![0u8; MAX_DATAGRAM_SIZE];
                         if let Ok((len, _fin)) = server_conn.stream_recv(stream, &mut stream_buf) {
-                            if let Some(packet) = VpnPacket::decode(Bytes::copy_from_slice(&stream_buf[..len])) {
+                            if let Some(packet) =
+                                VpnPacket::decode(Bytes::copy_from_slice(&stream_buf[..len]))
+                            {
                                 if packet.packet_type == PACKET_TYPE_DATA {
                                     data_received = true;
                                     received_data = Some(packet.data);
@@ -723,12 +765,16 @@ async fn test_multiple_streams() {
     let server_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind server socket");
-    let server_addr = server_socket.local_addr().expect("Failed to get server address");
+    let server_addr = server_socket
+        .local_addr()
+        .expect("Failed to get server address");
 
     let client_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind client socket");
-    let client_addr = client_socket.local_addr().expect("Failed to get client address");
+    let client_addr = client_socket
+        .local_addr()
+        .expect("Failed to get client address");
 
     // Create configs
     let mut server_config = create_server_config(&certs);
@@ -842,7 +888,9 @@ async fn test_multiple_streams() {
         }
     }
 
-    let server_conn = server_conn.as_mut().expect("Server connection should exist");
+    let server_conn = server_conn
+        .as_mut()
+        .expect("Server connection should exist");
 
     // Send packets on multiple streams simultaneously
     let stream_ids: Vec<u64> = (0..5).map(|i| i * 4).collect(); // Client-initiated bidirectional streams
@@ -892,7 +940,9 @@ async fn test_multiple_streams() {
                 for stream in server_conn.readable() {
                     let mut stream_buf = vec![0u8; MAX_DATAGRAM_SIZE];
                     if let Ok((len, _fin)) = server_conn.stream_recv(stream, &mut stream_buf) {
-                        if let Some(packet) = VpnPacket::decode(Bytes::copy_from_slice(&stream_buf[..len])) {
+                        if let Some(packet) =
+                            VpnPacket::decode(Bytes::copy_from_slice(&stream_buf[..len]))
+                        {
                             if packet.packet_type == PACKET_TYPE_DATA {
                                 received_streams.insert(stream);
                             }
@@ -982,7 +1032,9 @@ async fn test_connection_timeout_handling() {
     let client_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind client socket");
-    let client_addr = client_socket.local_addr().expect("Failed to get client address");
+    let client_addr = client_socket
+        .local_addr()
+        .expect("Failed to get client address");
 
     // Use a non-existent server address
     let server_addr: SocketAddr = "127.0.0.1:19999".parse().expect("Invalid address");
@@ -1006,7 +1058,9 @@ async fn test_connection_timeout_handling() {
     // Send initial packet
     let mut out_buf = vec![0u8; MAX_DATAGRAM_SIZE];
     while let Ok((write_len, _)) = client_conn.send(&mut out_buf) {
-        let _ = client_socket.send_to(&out_buf[..write_len], server_addr).await;
+        let _ = client_socket
+            .send_to(&out_buf[..write_len], server_addr)
+            .await;
     }
 
     // Wait and repeatedly trigger timeout until connection closes
@@ -1024,7 +1078,9 @@ async fn test_connection_timeout_handling() {
 
         // Try to send again to process timeouts
         while let Ok((write_len, _)) = client_conn.send(&mut out_buf) {
-            let _ = client_socket.send_to(&out_buf[..write_len], server_addr).await;
+            let _ = client_socket
+                .send_to(&out_buf[..write_len], server_addr)
+                .await;
         }
     }
 
@@ -1062,7 +1118,8 @@ fn test_certificate_generation_validity() {
     assert!(!cert_content.is_empty(), "Certificate should have content");
 
     // Try to use the certificate with quiche
-    let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).expect("Failed to create config");
+    let mut config =
+        quiche::Config::new(quiche::PROTOCOL_VERSION).expect("Failed to create config");
     config
         .load_cert_chain_from_pem_file(cert_path.to_str().expect("Invalid path"))
         .expect("Certificate should be valid for quiche");
@@ -1080,12 +1137,16 @@ async fn test_bidirectional_data_flow() {
     let server_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind server socket");
-    let server_addr = server_socket.local_addr().expect("Failed to get server address");
+    let server_addr = server_socket
+        .local_addr()
+        .expect("Failed to get server address");
 
     let client_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind client socket");
-    let client_addr = client_socket.local_addr().expect("Failed to get client address");
+    let client_addr = client_socket
+        .local_addr()
+        .expect("Failed to get client address");
 
     // Create configs
     let mut server_config = create_server_config(&certs);
@@ -1199,7 +1260,9 @@ async fn test_bidirectional_data_flow() {
         }
     }
 
-    let server_conn = server_conn.as_mut().expect("Server connection should exist");
+    let server_conn = server_conn
+        .as_mut()
+        .expect("Server connection should exist");
 
     // Test bidirectional flow:
     // 1. Client sends data
@@ -1248,7 +1311,9 @@ async fn test_bidirectional_data_flow() {
                 for stream in server_conn.readable() {
                     let mut stream_buf = vec![0u8; MAX_DATAGRAM_SIZE];
                     if let Ok((len, _fin)) = server_conn.stream_recv(stream, &mut stream_buf) {
-                        if let Some(packet) = VpnPacket::decode(Bytes::copy_from_slice(&stream_buf[..len])) {
+                        if let Some(packet) =
+                            VpnPacket::decode(Bytes::copy_from_slice(&stream_buf[..len]))
+                        {
                             if packet.packet_type == PACKET_TYPE_DATA {
                                 // Echo back
                                 let echo = VpnPacket::new_data(packet.data);
@@ -1288,7 +1353,9 @@ async fn test_bidirectional_data_flow() {
                 for stream in client_conn.readable() {
                     let mut stream_buf = vec![0u8; MAX_DATAGRAM_SIZE];
                     if let Ok((len, _fin)) = client_conn.stream_recv(stream, &mut stream_buf) {
-                        if let Some(packet) = VpnPacket::decode(Bytes::copy_from_slice(&stream_buf[..len])) {
+                        if let Some(packet) =
+                            VpnPacket::decode(Bytes::copy_from_slice(&stream_buf[..len]))
+                        {
                             if packet.packet_type == PACKET_TYPE_DATA {
                                 assert_eq!(
                                     packet.data.as_ref(),

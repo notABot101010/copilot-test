@@ -315,9 +315,8 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListKeysResponse, Error> {
-        let mut url =
-            Url::parse(&format!("{}/regions/{}/keys", KEY_MANAGER_API_URL, region))
-                .expect("valid URL");
+        let mut url = Url::parse(&format!("{}/regions/{}/keys", KEY_MANAGER_API_URL, region))
+            .expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -348,11 +347,7 @@ impl Client {
     }
 
     /// Create a new key
-    pub async fn create_key(
-        &self,
-        region: &str,
-        request: CreateKeyRequest,
-    ) -> Result<Key, Error> {
+    pub async fn create_key(&self, region: &str, request: CreateKeyRequest) -> Result<Key, Error> {
         let url = format!("{}/regions/{}/keys", KEY_MANAGER_API_URL, region);
 
         let res = self

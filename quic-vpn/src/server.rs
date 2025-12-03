@@ -122,7 +122,9 @@ impl Server {
                 if client.conn.is_established() {
                     let tun = self.tun.clone();
                     for stream_id in client.conn.readable() {
-                        if let Err(err) = Self::handle_stream_read(&mut client.conn, stream_id, tun.clone()).await {
+                        if let Err(err) =
+                            Self::handle_stream_read(&mut client.conn, stream_id, tun.clone()).await
+                        {
                             error!("Stream read error: {}", err);
                         }
                     }
@@ -181,13 +183,7 @@ impl Server {
                     }
                 }
 
-                clients.insert(
-                    scid.to_vec(),
-                    Client {
-                        conn,
-                        addr: from,
-                    },
-                );
+                clients.insert(scid.to_vec(), Client { conn, addr: from });
             }
 
             // Clean up closed connections
@@ -261,7 +257,9 @@ impl Server {
                             loop {
                                 match client.conn.send(&mut out_buf) {
                                     Ok((written, _send_info)) => {
-                                        if let Err(err) = socket.send_to(&out_buf[..written], client.addr).await {
+                                        if let Err(err) =
+                                            socket.send_to(&out_buf[..written], client.addr).await
+                                        {
                                             error!("UDP send error: {}", err);
                                             break;
                                         }
@@ -303,12 +301,14 @@ async fn main() -> Result<()> {
     // Create QUIC config
     let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION)?;
     config.load_cert_chain_from_pem_file(
-        args.cert.to_str()
-            .context("Certificate path contains invalid UTF-8")?
+        args.cert
+            .to_str()
+            .context("Certificate path contains invalid UTF-8")?,
     )?;
     config.load_priv_key_from_pem_file(
-        args.key.to_str()
-            .context("Private key path contains invalid UTF-8")?
+        args.key
+            .to_str()
+            .context("Private key path contains invalid UTF-8")?,
     )?;
     config.set_application_protos(&[b"quic-vpn"])?;
     config.set_max_idle_timeout(30000);

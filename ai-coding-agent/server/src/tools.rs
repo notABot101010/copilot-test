@@ -2,14 +2,17 @@
 // for future LLM integration but not yet connected to the orchestrator.
 #![allow(dead_code)]
 
+use crate::models::{ParameterSpec, ToolResult, ToolSpec};
 use async_trait::async_trait;
 use serde_json::Value;
-use crate::models::{ParameterSpec, ToolResult, ToolSpec};
 
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn spec(&self) -> ToolSpec;
-    async fn execute(&self, params: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>>;
+    async fn execute(
+        &self,
+        params: Value,
+    ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>>;
 }
 
 pub struct FileReadTool;
@@ -18,19 +21,27 @@ pub struct ShellExecuteTool;
 pub struct SearchCodeTool;
 
 impl FileReadTool {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl FileWriteTool {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl ShellExecuteTool {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl SearchCodeTool {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 #[async_trait]
@@ -39,22 +50,24 @@ impl Tool for FileReadTool {
         ToolSpec {
             name: "file_read".to_string(),
             description: "Read contents of a file".to_string(),
-            parameters: vec![
-                ParameterSpec {
-                    name: "path".to_string(),
-                    param_type: "string".to_string(),
-                    description: "Path to the file to read".to_string(),
-                    required: true,
-                },
-            ],
+            parameters: vec![ParameterSpec {
+                name: "path".to_string(),
+                param_type: "string".to_string(),
+                description: "Path to the file to read".to_string(),
+                required: true,
+            }],
         }
     }
 
-    async fn execute(&self, params: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
-        let path = params.get("path")
+    async fn execute(
+        &self,
+        params: Value,
+    ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+        let path = params
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or("Missing path parameter")?;
-        
+
         match tokio::fs::read_to_string(path).await {
             Ok(content) => Ok(ToolResult {
                 success: true,
@@ -93,14 +106,19 @@ impl Tool for FileWriteTool {
         }
     }
 
-    async fn execute(&self, params: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
-        let path = params.get("path")
+    async fn execute(
+        &self,
+        params: Value,
+    ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+        let path = params
+            .get("path")
             .and_then(|v| v.as_str())
             .ok_or("Missing path parameter")?;
-        let content = params.get("content")
+        let content = params
+            .get("content")
             .and_then(|v| v.as_str())
             .ok_or("Missing content parameter")?;
-        
+
         match tokio::fs::write(path, content).await {
             Ok(_) => Ok(ToolResult {
                 success: true,
@@ -122,35 +140,41 @@ impl Tool for ShellExecuteTool {
         ToolSpec {
             name: "shell_execute".to_string(),
             description: "Execute a shell command".to_string(),
-            parameters: vec![
-                ParameterSpec {
-                    name: "command".to_string(),
-                    param_type: "string".to_string(),
-                    description: "Command to execute".to_string(),
-                    required: true,
-                },
-            ],
+            parameters: vec![ParameterSpec {
+                name: "command".to_string(),
+                param_type: "string".to_string(),
+                description: "Command to execute".to_string(),
+                required: true,
+            }],
         }
     }
 
-    async fn execute(&self, params: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
-        let command = params.get("command")
+    async fn execute(
+        &self,
+        params: Value,
+    ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+        let command = params
+            .get("command")
             .and_then(|v| v.as_str())
             .ok_or("Missing command parameter")?;
-        
+
         let output = tokio::process::Command::new("sh")
             .arg("-c")
             .arg(command)
             .output()
             .await?;
-        
+
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        
+
         Ok(ToolResult {
             success: output.status.success(),
             output: stdout,
-            error: if stderr.is_empty() { None } else { Some(stderr) },
+            error: if stderr.is_empty() {
+                None
+            } else {
+                Some(stderr)
+            },
         })
     }
 }
@@ -178,21 +202,26 @@ impl Tool for SearchCodeTool {
         }
     }
 
-    async fn execute(&self, params: Value) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
-        let pattern = params.get("pattern")
+    async fn execute(
+        &self,
+        params: Value,
+    ) -> Result<ToolResult, Box<dyn std::error::Error + Send + Sync>> {
+        let pattern = params
+            .get("pattern")
             .and_then(|v| v.as_str())
             .ok_or("Missing pattern parameter")?;
-        let directory = params.get("directory")
+        let directory = params
+            .get("directory")
             .and_then(|v| v.as_str())
             .unwrap_or(".");
-        
+
         let output = tokio::process::Command::new("grep")
             .args(["-rn", pattern, directory])
             .output()
             .await?;
-        
+
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        
+
         Ok(ToolResult {
             success: true,
             output: stdout,

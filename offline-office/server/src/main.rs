@@ -1,22 +1,19 @@
 use axum::{
-    extract::{
-        ws::{Message, WebSocket},
-        Path, State, WebSocketUpgrade,
-    },
-    http::{StatusCode, Method},
-    response::{IntoResponse, Response},
-    routing::{get, post, delete},
     Json, Router,
+    extract::{
+        Path, State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
+    },
+    http::{Method, StatusCode},
+    response::{IntoResponse, Response},
+    routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
-use sqlx::{sqlite::SqlitePool, Row};
-use std::{
-    collections::HashMap,
-    sync::Arc,
-};
-use tokio::sync::{broadcast, RwLock};
-use tower_http::cors::{CorsLayer, Any};
-use tracing::{info, error};
+use sqlx::{Row, sqlite::SqlitePool};
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::{RwLock, broadcast};
+use tower_http::cors::{Any, CorsLayer};
+use tracing::{error, info};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -97,9 +94,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn list_documents(
-    State(state): State<AppState>,
-) -> Result<Json<Vec<Document>>, AppError> {
+async fn list_documents(State(state): State<AppState>) -> Result<Json<Vec<Document>>, AppError> {
     let documents = sqlx::query(
         "SELECT id, title, doc_type, created_at, updated_at FROM documents ORDER BY updated_at DESC"
     )
@@ -189,9 +184,7 @@ async fn update_document(
         .fetch_optional(&state.db)
         .await?;
 
-    let existing_data: Vec<u8> = row
-        .ok_or_else(|| AppError::NotFound)?
-        .get("automerge_data");
+    let existing_data: Vec<u8> = row.ok_or_else(|| AppError::NotFound)?.get("automerge_data");
 
     let mut doc = automerge::AutoCommit::load(&existing_data)?;
     doc.load_incremental(&payload.changes)?;
@@ -238,11 +231,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, doc_id: String) {
     let doc_id_clone = doc_id.clone();
     let mut send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
-            if sender
-                .send(Message::Binary(msg.into()))
-                .await
-                .is_err()
-            {
+            if sender.send(Message::Binary(msg.into())).await.is_err() {
                 break;
             }
         }
@@ -265,12 +254,14 @@ async fn handle_socket(socket: WebSocket, state: AppState, doc_id: String) {
                         let updated_data = doc.save();
                         let now = chrono::Utc::now().timestamp();
 
-                        let _ = sqlx::query("UPDATE documents SET automerge_data = ?, updated_at = ? WHERE id = ?")
-                            .bind(&updated_data)
-                            .bind(now)
-                            .bind(&doc_id_clone)
-                            .execute(&state_clone.db)
-                            .await;
+                        let _ = sqlx::query(
+                            "UPDATE documents SET automerge_data = ?, updated_at = ? WHERE id = ?",
+                        )
+                        .bind(&updated_data)
+                        .bind(now)
+                        .bind(&doc_id_clone)
+                        .execute(&state_clone.db)
+                        .await;
 
                         let _ = tx_clone.send(data.to_vec());
                     }

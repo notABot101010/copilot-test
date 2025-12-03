@@ -233,7 +233,10 @@ pub fn create_repo_sandbox<P: AsRef<Path>>(repo_path: P) -> Sandbox {
 /// - The path doesn't contain ".." path traversal components
 /// - When canonicalized, the path is a subdirectory of the base path
 /// - The path doesn't escape via symlinks
-pub fn validate_path_within_base(path: &Path, base: &Path) -> Result<std::path::PathBuf, SandboxError> {
+pub fn validate_path_within_base(
+    path: &Path,
+    base: &Path,
+) -> Result<std::path::PathBuf, SandboxError> {
     // First, check for obvious path traversal patterns
     let path_str = path.to_string_lossy();
     if path_str.contains("..") {

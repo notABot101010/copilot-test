@@ -1,3 +1,5 @@
+use automerge::transaction::Transactable;
+use automerge::ReadDoc;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -8,8 +10,6 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use automerge::transaction::Transactable;
-use automerge::ReadDoc;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -125,7 +125,8 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // Initialize SQLite database
-    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:spreadsheet.db?mode=rwc".to_string());
+    let db_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "sqlite:spreadsheet.db?mode=rwc".to_string());
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect(&db_url)
@@ -145,8 +146,14 @@ async fn main() {
         .allow_headers(Any);
 
     let app = Router::new()
-        .route("/api/spreadsheets", get(list_spreadsheets).post(create_spreadsheet))
-        .route("/api/spreadsheets/{id}", get(get_spreadsheet).delete(delete_spreadsheet))
+        .route(
+            "/api/spreadsheets",
+            get(list_spreadsheets).post(create_spreadsheet),
+        )
+        .route(
+            "/api/spreadsheets/{id}",
+            get(get_spreadsheet).delete(delete_spreadsheet),
+        )
         .route("/api/spreadsheets/{id}/sync", post(sync_spreadsheet))
         .route("/ws/spreadsheets/{id}", get(ws_handler))
         .layer(cors)
@@ -158,9 +165,11 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn list_spreadsheets(State(state): State<AppState>) -> Result<Json<ListResponse>, StatusCode> {
+async fn list_spreadsheets(
+    State(state): State<AppState>,
+) -> Result<Json<ListResponse>, StatusCode> {
     let rows = sqlx::query_as::<_, (String, String, i64, i64)>(
-        "SELECT id, name, created_at, updated_at FROM spreadsheets ORDER BY updated_at DESC"
+        "SELECT id, name, created_at, updated_at FROM spreadsheets ORDER BY updated_at DESC",
     )
     .fetch_all(&state.db)
     .await
@@ -230,13 +239,11 @@ async fn get_spreadsheet(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<SyncResponse>, StatusCode> {
-    let row: Option<(Vec<u8>,)> = sqlx::query_as(
-        "SELECT document FROM spreadsheets WHERE id = ?"
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let row: Option<(Vec<u8>,)> = sqlx::query_as("SELECT document FROM spreadsheets WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     match row {
         Some((binary,)) => Ok(Json(SyncResponse {
@@ -247,10 +254,7 @@ async fn get_spreadsheet(
     }
 }
 
-async fn delete_spreadsheet(
-    Path(id): Path<String>,
-    State(state): State<AppState>,
-) -> StatusCode {
+async fn delete_spreadsheet(Path(id): Path<String>, State(state): State<AppState>) -> StatusCode {
     let result = sqlx::query("DELETE FROM spreadsheets WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
@@ -283,13 +287,11 @@ async fn sync_spreadsheet(
         .as_millis() as i64;
 
     // Fetch existing document from database
-    let row: Option<(Vec<u8>,)> = sqlx::query_as(
-        "SELECT document FROM spreadsheets WHERE id = ?"
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let row: Option<(Vec<u8>,)> = sqlx::query_as("SELECT document FROM spreadsheets WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // If we have an existing document, merge with the client's version
     let (merged_binary, updated) = if let Some((server_binary,)) = row {
@@ -331,7 +333,7 @@ async fn sync_spreadsheet(
             name = excluded.name,
             document = excluded.document,
             updated_at = excluded.updated_at
-        "#
+        "#,
     )
     .bind(&id)
     .bind(&name)
@@ -379,14 +381,13 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
 
     // Send current document state on connection
     {
-        let row: Option<(Vec<u8>,)> = sqlx::query_as(
-            "SELECT document FROM spreadsheets WHERE id = ?"
-        )
-        .bind(&spreadsheet_id)
-        .fetch_optional(&state.db)
-        .await
-        .ok()
-        .flatten();
+        let row: Option<(Vec<u8>,)> =
+            sqlx::query_as("SELECT document FROM spreadsheets WHERE id = ?")
+                .bind(&spreadsheet_id)
+                .fetch_optional(&state.db)
+                .await
+                .ok()
+                .flatten();
 
         if let Some((binary,)) = row {
             let msg = WsMessage::Connected {
@@ -444,17 +445,20 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
                                 if let Ok(client_binary) = BASE64.decode(&document) {
                                     let sender_id = {
                                         let client_id_guard = client_id_for_recv.read().await;
-                                        client_id_guard.clone().unwrap_or_else(|| "unknown".to_string())
+                                        client_id_guard
+                                            .clone()
+                                            .unwrap_or_else(|| "unknown".to_string())
                                     };
 
                                     let now = std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .unwrap()
-                                        .as_millis() as i64;
+                                        .as_millis()
+                                        as i64;
 
                                     // Fetch existing document from database
                                     let row: Option<(Vec<u8>,)> = sqlx::query_as(
-                                        "SELECT document FROM spreadsheets WHERE id = ?"
+                                        "SELECT document FROM spreadsheets WHERE id = ?",
                                     )
                                     .bind(&spreadsheet_id_clone2)
                                     .fetch_optional(&state_clone.db)
@@ -464,8 +468,12 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
 
                                     // Merge with server document
                                     let merged_binary = if let Some((server_binary,)) = row {
-                                        if let Ok(mut server_doc) = automerge::AutoCommit::load(&server_binary) {
-                                            if let Ok(client_doc) = automerge::AutoCommit::load(&client_binary) {
+                                        if let Ok(mut server_doc) =
+                                            automerge::AutoCommit::load(&server_binary)
+                                        {
+                                            if let Ok(client_doc) =
+                                                automerge::AutoCommit::load(&client_binary)
+                                            {
                                                 let _ = server_doc.merge(&mut client_doc.clone());
                                                 server_doc.save()
                                             } else {
@@ -479,14 +487,26 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
                                     };
 
                                     // Update name from the merged document
-                                    let name = if let Ok(doc) = automerge::AutoCommit::load(&merged_binary) {
+                                    let name = if let Ok(doc) =
+                                        automerge::AutoCommit::load(&merged_binary)
+                                    {
                                         doc.get(automerge::ROOT, "name")
                                             .ok()
                                             .flatten()
                                             .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
-                                            .unwrap_or_else(|| format!("Spreadsheet {}", &spreadsheet_id_clone2[..8.min(spreadsheet_id_clone2.len())]))
+                                            .unwrap_or_else(|| {
+                                                format!(
+                                                    "Spreadsheet {}",
+                                                    &spreadsheet_id_clone2
+                                                        [..8.min(spreadsheet_id_clone2.len())]
+                                                )
+                                            })
                                     } else {
-                                        format!("Spreadsheet {}", &spreadsheet_id_clone2[..8.min(spreadsheet_id_clone2.len())])
+                                        format!(
+                                            "Spreadsheet {}",
+                                            &spreadsheet_id_clone2
+                                                [..8.min(spreadsheet_id_clone2.len())]
+                                        )
                                     };
 
                                     // Upsert the document to database
@@ -509,7 +529,13 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
                                     .await;
 
                                     // Broadcast to other clients
-                                    broadcast_update(&state_clone, &spreadsheet_id_clone2, &merged_binary, &sender_id).await;
+                                    broadcast_update(
+                                        &state_clone,
+                                        &spreadsheet_id_clone2,
+                                        &merged_binary,
+                                        &sender_id,
+                                    )
+                                    .await;
                                 }
                             }
                             _ => {}
@@ -528,7 +554,10 @@ async fn handle_socket(socket: WebSocket, spreadsheet_id: String, state: AppStat
         _ = &mut recv_task => send_task.abort(),
     }
 
-    tracing::info!("WebSocket connection closed for spreadsheet {}", spreadsheet_id);
+    tracing::info!(
+        "WebSocket connection closed for spreadsheet {}",
+        spreadsheet_id
+    );
 }
 
 async fn broadcast_update(state: &AppState, spreadsheet_id: &str, binary: &[u8], sender_id: &str) {

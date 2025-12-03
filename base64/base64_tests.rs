@@ -44,7 +44,10 @@ fn test_encode_without_padding() {
     assert_eq!(encode_with(b"foo", Alphabet::Standard, false), "Zm9v");
     assert_eq!(encode_with(b"foob", Alphabet::Standard, false), "Zm9vYg");
     assert_eq!(encode_with(b"fooba", Alphabet::Standard, false), "Zm9vYmE");
-    assert_eq!(encode_with(b"foobar", Alphabet::Standard, false), "Zm9vYmFy");
+    assert_eq!(
+        encode_with(b"foobar", Alphabet::Standard, false),
+        "Zm9vYmFy"
+    );
 }
 
 #[test]
@@ -79,7 +82,10 @@ fn test_decode_with_padding() {
     assert_eq!(decode_with("Zg==", Alphabet::Standard).unwrap(), b"f");
     assert_eq!(decode_with("Zm8=", Alphabet::Standard).unwrap(), b"fo");
     assert_eq!(decode_with("Zm9v", Alphabet::Standard).unwrap(), b"foo");
-    assert_eq!(decode_with("Zm9vYg==", Alphabet::Standard).unwrap(), b"foob");
+    assert_eq!(
+        decode_with("Zm9vYg==", Alphabet::Standard).unwrap(),
+        b"foob"
+    );
     assert_eq!(
         decode_with("Zm9vYmE=", Alphabet::Standard).unwrap(),
         b"fooba"
@@ -96,7 +102,10 @@ fn test_decode_without_padding() {
     assert_eq!(decode_with("Zm8", Alphabet::Standard).unwrap(), b"fo");
     assert_eq!(decode_with("Zm9v", Alphabet::Standard).unwrap(), b"foo");
     assert_eq!(decode_with("Zm9vYg", Alphabet::Standard).unwrap(), b"foob");
-    assert_eq!(decode_with("Zm9vYmE", Alphabet::Standard).unwrap(), b"fooba");
+    assert_eq!(
+        decode_with("Zm9vYmE", Alphabet::Standard).unwrap(),
+        b"fooba"
+    );
     assert_eq!(
         decode_with("Zm9vYmFy", Alphabet::Standard).unwrap(),
         b"foobar"
@@ -511,8 +520,8 @@ fn test_random_roundtrip_various_sizes() {
 
     // Test various sizes including edge cases
     let sizes = [
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 15, 16, 17, 23, 24, 25, 31, 32, 33, 47, 48, 49, 63, 64, 65,
-        100, 127, 128, 255, 256, 500, 1000, 1024, 2048,
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 15, 16, 17, 23, 24, 25, 31, 32, 33, 47, 48, 49, 63, 64, 65, 100,
+        127, 128, 255, 256, 500, 1000, 1024, 2048,
     ];
 
     for &size in &sizes {
@@ -521,7 +530,11 @@ fn test_random_roundtrip_various_sizes() {
         // Test with padding
         let encoded = encode_with(&data, Alphabet::Standard, true);
         let decoded = decode_with(&encoded, Alphabet::Standard).unwrap();
-        assert_eq!(decoded, data, "Roundtrip failed for random data of size {}", size);
+        assert_eq!(
+            decoded, data,
+            "Roundtrip failed for random data of size {}",
+            size
+        );
 
         // Test without padding
         let encoded_no_pad = encode_with(&data, Alphabet::Standard, false);
@@ -669,7 +682,10 @@ fn test_random_all_byte_values() {
         // Test AVX2
         let avx2_encoded = encode_with_avx2(&data, Alphabet::Standard, true);
         let avx2_decoded = decode_with_avx2(&avx2_encoded, Alphabet::Standard).unwrap();
-        assert_eq!(avx2_decoded, data, "AVX2 failed for data with all byte values");
+        assert_eq!(
+            avx2_decoded, data,
+            "AVX2 failed for data with all byte values"
+        );
     }
 }
 

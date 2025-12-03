@@ -106,7 +106,11 @@ async fn test_bucket_operations() {
         .send()
         .await
         .expect("Failed to create bucket");
-    assert!(resp.status().is_success(), "Create bucket failed: {:?}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "Create bucket failed: {:?}",
+        resp.status()
+    );
 
     // Test 3: Head bucket (should exist)
     let resp = client
@@ -765,7 +769,8 @@ async fn test_with_aws_cli() {
         .expect("Failed to run aws s3 cp download");
 
     if output.status.success() {
-        let content = std::fs::read_to_string(&download_file).expect("Failed to read downloaded file");
+        let content =
+            std::fs::read_to_string(&download_file).expect("Failed to read downloaded file");
         assert_eq!(content, "Hello from AWS CLI");
     }
 

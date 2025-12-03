@@ -1,3 +1,5 @@
+use automerge::transaction::Transactable;
+use automerge::ReadDoc;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -8,8 +10,6 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use automerge::transaction::Transactable;
-use automerge::ReadDoc;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -125,7 +125,8 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // Initialize SQLite database
-    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:documents.db?mode=rwc".to_string());
+    let db_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "sqlite:documents.db?mode=rwc".to_string());
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect(&db_url)
@@ -146,7 +147,10 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/documents", get(list_documents).post(create_document))
-        .route("/api/documents/{id}", get(get_document).delete(delete_document))
+        .route(
+            "/api/documents/{id}",
+            get(get_document).delete(delete_document),
+        )
         .route("/api/documents/{id}/sync", post(sync_document))
         .route("/ws/documents/{id}", get(ws_handler))
         .layer(cors)
@@ -154,15 +158,19 @@ async fn main() {
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "4001".to_string());
     let addr = format!("0.0.0.0:{}", port);
-    let listener = tokio::net::TcpListener::bind(&addr).await.expect("Failed to bind to address");
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .expect("Failed to bind to address");
     tracing::info!("Realtime Docs server listening on http://{}", addr);
     tracing::info!("WebSocket endpoint: ws://{}/ws/documents/:id", addr);
-    axum::serve(listener, app).await.expect("Failed to start server");
+    axum::serve(listener, app)
+        .await
+        .expect("Failed to start server");
 }
 
 async fn list_documents(State(state): State<AppState>) -> Result<Json<ListResponse>, StatusCode> {
     let rows = sqlx::query_as::<_, (String, String, i64, i64)>(
-        "SELECT id, title, created_at, updated_at FROM documents ORDER BY updated_at DESC"
+        "SELECT id, title, created_at, updated_at FROM documents ORDER BY updated_at DESC",
     )
     .fetch_all(&state.db)
     .await
@@ -203,10 +211,11 @@ async fn create_document(
         tracing::error!("Failed to set document id: {}", err);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    doc.put(automerge::ROOT, "title", payload.title.clone()).map_err(|err| {
-        tracing::error!("Failed to set document title: {}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    doc.put(automerge::ROOT, "title", payload.title.clone())
+        .map_err(|err| {
+            tracing::error!("Failed to set document title: {}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     // Initialize content as an empty string for markdown content
     doc.put(automerge::ROOT, "content", "").map_err(|err| {
         tracing::error!("Failed to create content field: {}", err);
@@ -255,16 +264,14 @@ async fn get_document(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<SyncResponse>, StatusCode> {
-    let row: Option<(Vec<u8>,)> = sqlx::query_as(
-        "SELECT document FROM documents WHERE id = ?"
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|err| {
-        tracing::error!("Failed to get document {}: {}", id, err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let row: Option<(Vec<u8>,)> = sqlx::query_as("SELECT document FROM documents WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|err| {
+            tracing::error!("Failed to get document {}: {}", id, err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     match row {
         Some((binary,)) => Ok(Json(SyncResponse {
@@ -275,10 +282,7 @@ async fn get_document(
     }
 }
 
-async fn delete_document(
-    Path(id): Path<String>,
-    State(state): State<AppState>,
-) -> StatusCode {
+async fn delete_document(Path(id): Path<String>, State(state): State<AppState>) -> StatusCode {
     let result = sqlx::query("DELETE FROM documents WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
@@ -305,12 +309,10 @@ async fn sync_document(
     State(state): State<AppState>,
     Json(payload): Json<SyncRequest>,
 ) -> Result<Json<SyncResponse>, StatusCode> {
-    let client_binary = BASE64
-        .decode(&payload.document)
-        .map_err(|err| {
-            tracing::error!("Failed to decode document: {}", err);
-            StatusCode::BAD_REQUEST
-        })?;
+    let client_binary = BASE64.decode(&payload.document).map_err(|err| {
+        tracing::error!("Failed to decode document: {}", err);
+        StatusCode::BAD_REQUEST
+    })?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -321,37 +323,31 @@ async fn sync_document(
         .as_millis() as i64;
 
     // Fetch existing document from database
-    let row: Option<(Vec<u8>,)> = sqlx::query_as(
-        "SELECT document FROM documents WHERE id = ?"
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|err| {
-        tracing::error!("Failed to get document {}: {}", id, err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let row: Option<(Vec<u8>,)> = sqlx::query_as("SELECT document FROM documents WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|err| {
+            tracing::error!("Failed to get document {}: {}", id, err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     // If we have an existing document, merge with the client's version
     let (merged_binary, updated) = if let Some((server_binary,)) = row {
-        let mut server_doc = automerge::AutoCommit::load(&server_binary)
-            .map_err(|err| {
-                tracing::error!("Failed to load server document: {}", err);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-        let client_doc = automerge::AutoCommit::load(&client_binary)
-            .map_err(|err| {
-                tracing::error!("Failed to load client document: {}", err);
-                StatusCode::BAD_REQUEST
-            })?;
+        let mut server_doc = automerge::AutoCommit::load(&server_binary).map_err(|err| {
+            tracing::error!("Failed to load server document: {}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        let client_doc = automerge::AutoCommit::load(&client_binary).map_err(|err| {
+            tracing::error!("Failed to load client document: {}", err);
+            StatusCode::BAD_REQUEST
+        })?;
 
         // Merge the client's changes into the server document
-        server_doc
-            .merge(&mut client_doc.clone())
-            .map_err(|err| {
-                tracing::error!("Failed to merge documents: {}", err);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+        server_doc.merge(&mut client_doc.clone()).map_err(|err| {
+            tracing::error!("Failed to merge documents: {}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
         let merged = server_doc.save();
         let updated = merged != client_binary;
@@ -381,7 +377,7 @@ async fn sync_document(
             title = excluded.title,
             document = excluded.document,
             updated_at = excluded.updated_at
-        "#
+        "#,
     )
     .bind(&id)
     .bind(&title)
@@ -432,14 +428,12 @@ async fn handle_socket(socket: WebSocket, document_id: String, state: AppState) 
 
     // Send current document state on connection
     {
-        let row: Option<(Vec<u8>,)> = sqlx::query_as(
-            "SELECT document FROM documents WHERE id = ?"
-        )
-        .bind(&document_id)
-        .fetch_optional(&state.db)
-        .await
-        .ok()
-        .flatten();
+        let row: Option<(Vec<u8>,)> = sqlx::query_as("SELECT document FROM documents WHERE id = ?")
+            .bind(&document_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
 
         if let Some((binary,)) = row {
             let msg = WsMessage::Connected {
@@ -497,7 +491,9 @@ async fn handle_socket(socket: WebSocket, document_id: String, state: AppState) 
                                 if let Ok(client_binary) = BASE64.decode(&document) {
                                     let sender_id = {
                                         let client_id_guard = client_id_for_recv.read().await;
-                                        client_id_guard.clone().unwrap_or_else(|| "unknown".to_string())
+                                        client_id_guard
+                                            .clone()
+                                            .unwrap_or_else(|| "unknown".to_string())
                                     };
 
                                     let now = std::time::SystemTime::now()
@@ -507,7 +503,7 @@ async fn handle_socket(socket: WebSocket, document_id: String, state: AppState) 
 
                                     // Fetch existing document from database
                                     let row: Option<(Vec<u8>,)> = sqlx::query_as(
-                                        "SELECT document FROM documents WHERE id = ?"
+                                        "SELECT document FROM documents WHERE id = ?",
                                     )
                                     .bind(&document_id_clone)
                                     .fetch_optional(&state_clone.db)
@@ -517,8 +513,12 @@ async fn handle_socket(socket: WebSocket, document_id: String, state: AppState) 
 
                                     // Merge with server document
                                     let merged_binary = if let Some((server_binary,)) = row {
-                                        if let Ok(mut server_doc) = automerge::AutoCommit::load(&server_binary) {
-                                            if let Ok(client_doc) = automerge::AutoCommit::load(&client_binary) {
+                                        if let Ok(mut server_doc) =
+                                            automerge::AutoCommit::load(&server_binary)
+                                        {
+                                            if let Ok(client_doc) =
+                                                automerge::AutoCommit::load(&client_binary)
+                                            {
                                                 let _ = server_doc.merge(&mut client_doc.clone());
                                                 server_doc.save()
                                             } else {
@@ -532,14 +532,25 @@ async fn handle_socket(socket: WebSocket, document_id: String, state: AppState) 
                                     };
 
                                     // Update title from the merged document
-                                    let title = if let Ok(doc) = automerge::AutoCommit::load(&merged_binary) {
+                                    let title = if let Ok(doc) =
+                                        automerge::AutoCommit::load(&merged_binary)
+                                    {
                                         doc.get(automerge::ROOT, "title")
                                             .ok()
                                             .flatten()
                                             .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
-                                            .unwrap_or_else(|| format!("Document {}", &document_id_clone[..8.min(document_id_clone.len())]))
+                                            .unwrap_or_else(|| {
+                                                format!(
+                                                    "Document {}",
+                                                    &document_id_clone
+                                                        [..8.min(document_id_clone.len())]
+                                                )
+                                            })
                                     } else {
-                                        format!("Document {}", &document_id_clone[..8.min(document_id_clone.len())])
+                                        format!(
+                                            "Document {}",
+                                            &document_id_clone[..8.min(document_id_clone.len())]
+                                        )
                                     };
 
                                     // Upsert the document to database
@@ -562,7 +573,13 @@ async fn handle_socket(socket: WebSocket, document_id: String, state: AppState) 
                                     .await;
 
                                     // Broadcast to other clients
-                                    broadcast_update(&state_clone, &document_id_clone, &merged_binary, &sender_id).await;
+                                    broadcast_update(
+                                        &state_clone,
+                                        &document_id_clone,
+                                        &merged_binary,
+                                        &sender_id,
+                                    )
+                                    .await;
                                 }
                             }
                             _ => {}

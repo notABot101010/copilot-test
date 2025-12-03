@@ -297,9 +297,11 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListDeploymentsResponse, Error> {
-        let mut url =
-            Url::parse(&format!("{}/regions/{}/deployments", INFERENCE_API_URL, region))
-                .expect("valid URL");
+        let mut url = Url::parse(&format!(
+            "{}/regions/{}/deployments",
+            INFERENCE_API_URL, region
+        ))
+        .expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -525,9 +527,8 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListModelsResponse, Error> {
-        let mut url =
-            Url::parse(&format!("{}/regions/{}/models", INFERENCE_API_URL, region))
-                .expect("valid URL");
+        let mut url = Url::parse(&format!("{}/regions/{}/models", INFERENCE_API_URL, region))
+            .expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -577,7 +578,10 @@ impl Client {
 
     /// Get a model by ID
     pub async fn get_model(&self, region: &str, model_id: &str) -> Result<Model, Error> {
-        let url = format!("{}/regions/{}/models/{}", INFERENCE_API_URL, region, model_id);
+        let url = format!(
+            "{}/regions/{}/models/{}",
+            INFERENCE_API_URL, region, model_id
+        );
 
         let res = self
             .http_client
@@ -593,7 +597,10 @@ impl Client {
 
     /// Delete a model
     pub async fn delete_model(&self, region: &str, model_id: &str) -> Result<Model, Error> {
-        let url = format!("{}/regions/{}/models/{}", INFERENCE_API_URL, region, model_id);
+        let url = format!(
+            "{}/regions/{}/models/{}",
+            INFERENCE_API_URL, region, model_id
+        );
 
         let res = self
             .http_client
@@ -637,9 +644,11 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListNodeTypesResponse, Error> {
-        let mut url =
-            Url::parse(&format!("{}/regions/{}/node-types", INFERENCE_API_URL, region))
-                .expect("valid URL");
+        let mut url = Url::parse(&format!(
+            "{}/regions/{}/node-types",
+            INFERENCE_API_URL, region
+        ))
+        .expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();

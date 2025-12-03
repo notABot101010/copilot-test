@@ -48,7 +48,8 @@ impl TestCerts {
 
 /// Create a test server configuration
 fn create_server_config(certs: &TestCerts) -> quiche::Config {
-    let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).expect("Failed to create config");
+    let mut config =
+        quiche::Config::new(quiche::PROTOCOL_VERSION).expect("Failed to create config");
     config
         .load_cert_chain_from_pem_file(certs.cert_path.to_str().expect("Invalid path"))
         .expect("Failed to load cert");
@@ -71,7 +72,8 @@ fn create_server_config(certs: &TestCerts) -> quiche::Config {
 
 /// Create a test client configuration
 fn create_client_config() -> quiche::Config {
-    let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).expect("Failed to create config");
+    let mut config =
+        quiche::Config::new(quiche::PROTOCOL_VERSION).expect("Failed to create config");
     config
         .set_application_protos(&[b"quic-vpn"])
         .expect("Failed to set ALPN");
@@ -110,12 +112,16 @@ async fn establish_connection(
     let server_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind server socket");
-    let server_addr = server_socket.local_addr().expect("Failed to get server address");
+    let server_addr = server_socket
+        .local_addr()
+        .expect("Failed to get server address");
 
     let client_socket = UdpSocket::bind("127.0.0.1:0")
         .await
         .expect("Failed to bind client socket");
-    let client_addr = client_socket.local_addr().expect("Failed to get client address");
+    let client_addr = client_socket
+        .local_addr()
+        .expect("Failed to get client address");
 
     let mut server_config = create_server_config(certs);
     let mut client_config = create_client_config();
@@ -152,8 +158,11 @@ async fn establish_connection(
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), server_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            server_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 if server_conn.is_none() {
@@ -196,8 +205,11 @@ async fn establish_connection(
             }
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), client_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            client_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -274,8 +286,11 @@ async fn test_no_traffic_leaks() {
         }
 
         // Server receives
-        match tokio::time::timeout(Duration::from_millis(50), server_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            server_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -309,8 +324,11 @@ async fn test_no_traffic_leaks() {
         }
 
         // Client receives
-        match tokio::time::timeout(Duration::from_millis(50), client_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            client_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -343,7 +361,9 @@ async fn test_data_integrity_in_tunnel() {
     // Create test data with known patterns that would reveal corruption
     let test_patterns: Vec<Vec<u8>> = vec![
         // Alternating bits pattern
-        (0..256).map(|i| if i % 2 == 0 { 0xAA } else { 0x55 }).collect(),
+        (0..256)
+            .map(|i| if i % 2 == 0 { 0xAA } else { 0x55 })
+            .collect(),
         // Sequential values
         (0..255u8).collect(),
         // All zeros
@@ -386,8 +406,11 @@ async fn test_data_integrity_in_tunnel() {
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), server_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            server_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -419,8 +442,11 @@ async fn test_data_integrity_in_tunnel() {
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), client_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            client_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -463,13 +489,7 @@ async fn test_mtu_boundary_packets() {
 
     // Test packets at various sizes
     // We test smaller sizes that definitely fit within a single stream frame
-    let sizes = vec![
-        1,
-        100,
-        500,
-        1000,
-        1200,
-    ];
+    let sizes = vec![1, 100, 500, 1000, 1200];
 
     let mut received_sizes: Vec<usize> = Vec::new();
 
@@ -498,8 +518,11 @@ async fn test_mtu_boundary_packets() {
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), server_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            server_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -531,8 +554,11 @@ async fn test_mtu_boundary_packets() {
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), client_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            client_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -600,8 +626,11 @@ async fn test_concurrent_streams_isolation() {
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), server_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            server_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -633,8 +662,11 @@ async fn test_concurrent_streams_isolation() {
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), client_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            client_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -703,8 +735,11 @@ async fn test_ping_pong_roundtrip() {
         }
 
         // Server receives and responds
-        match tokio::time::timeout(Duration::from_millis(50), server_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            server_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -738,8 +773,11 @@ async fn test_ping_pong_roundtrip() {
         }
 
         // Client receives pong
-        match tokio::time::timeout(Duration::from_millis(50), client_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            client_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -816,8 +854,11 @@ async fn test_packet_ordering() {
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), server_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            server_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -850,8 +891,11 @@ async fn test_packet_ordering() {
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), client_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            client_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -875,7 +919,9 @@ async fn test_packet_ordering() {
     for idx in 0..num_packets {
         let stream_id = (idx as u64) * 4;
         let expected = format!("{:04}", idx);
-        let received = received_data.get(&stream_id).expect("Stream data should exist");
+        let received = received_data
+            .get(&stream_id)
+            .expect("Stream data should exist");
         assert_eq!(
             received, &expected,
             "Stream {} should have correct data",
@@ -941,8 +987,11 @@ async fn test_graceful_connection_close() {
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), server_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            server_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -961,8 +1010,11 @@ async fn test_graceful_connection_close() {
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), client_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            client_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -987,8 +1039,11 @@ async fn test_graceful_connection_close() {
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), server_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            server_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {
@@ -1007,8 +1062,11 @@ async fn test_graceful_connection_close() {
                 .expect("Failed to send");
         }
 
-        match tokio::time::timeout(Duration::from_millis(50), client_socket.recv_from(&mut recv_buf))
-            .await
+        match tokio::time::timeout(
+            Duration::from_millis(50),
+            client_socket.recv_from(&mut recv_buf),
+        )
+        .await
         {
             Ok(Ok((len, from))) => {
                 let recv_info = quiche::RecvInfo {

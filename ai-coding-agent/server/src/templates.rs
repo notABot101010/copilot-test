@@ -60,10 +60,7 @@ impl TemplateManager {
                     name: "Research".to_string(),
                     subagent: SubAgentType::Research,
                     system_prompt: RESEARCH_PROMPT.to_string(),
-                    variables: vec![
-                        "tech_stack".to_string(),
-                        "research_question".to_string(),
-                    ],
+                    variables: vec!["tech_stack".to_string(), "research_question".to_string()],
                 },
             ],
         }
@@ -86,7 +83,11 @@ impl TemplateManager {
         }
     }
 
-    pub fn render(&self, id: &str, vars: &std::collections::HashMap<String, String>) -> Option<String> {
+    pub fn render(
+        &self,
+        id: &str,
+        vars: &std::collections::HashMap<String, String>,
+    ) -> Option<String> {
         let template = self.get(id)?;
         let mut result = template.system_prompt.clone();
         for (key, value) in vars {

@@ -361,11 +361,7 @@ async fn test_sdk_multipart_upload() {
         .multipart_upload(completed_parts)
         .send()
         .await;
-    assert!(
-        result.is_ok(),
-        "Complete upload failed: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "Complete upload failed: {:?}", result.err());
 
     // Test 4: Verify the complete object
     let result = client

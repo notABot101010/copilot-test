@@ -202,7 +202,11 @@ impl VpnClient {
         loop {
             match self.conn.send(out_buf) {
                 Ok((written, _send_info)) => {
-                    if let Err(err) = self.socket.send_to(&out_buf[..written], self.server_addr).await {
+                    if let Err(err) = self
+                        .socket
+                        .send_to(&out_buf[..written], self.server_addr)
+                        .await
+                    {
                         error!("UDP send error: {}", err);
                         break;
                     }

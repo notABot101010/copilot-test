@@ -1,6 +1,9 @@
 use sqlx::SqlitePool;
 
-use crate::http_server::{IssueInfo, IssueCommentInfo, PullRequestInfo, PullRequestCommentInfo, OrganizationInfo, ProjectInfo, TagInfo};
+use crate::http_server::{
+    IssueCommentInfo, IssueInfo, OrganizationInfo, ProjectInfo, PullRequestCommentInfo,
+    PullRequestInfo, TagInfo,
+};
 
 /// Database manager for git repositories
 #[derive(Clone)]
@@ -112,7 +115,7 @@ impl Database {
         // Migrations: These ALTER TABLE statements add columns if they don't exist.
         // We use `let _ = ...` to ignore errors (e.g., "duplicate column name")
         // which occurs when the column already exists from CREATE TABLE.
-        
+
         // Migration: add due_date column if it doesn't exist (legacy, will be replaced by target_date)
         let _ = sqlx::query("ALTER TABLE issues ADD COLUMN due_date TEXT")
             .execute(&self.pool)
@@ -184,9 +187,11 @@ impl Database {
         .await?;
 
         // Migration: add updated_at column to issue_comments if it doesn't exist
-        let _ = sqlx::query("ALTER TABLE issue_comments ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP")
-            .execute(&self.pool)
-            .await;
+        let _ = sqlx::query(
+            "ALTER TABLE issue_comments ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+        )
+        .execute(&self.pool)
+        .await;
 
         // Pull requests table
         sqlx::query(
@@ -233,14 +238,21 @@ impl Database {
     // ============ Organization Methods ============
 
     /// Create a new organization
-    pub async fn create_organization(&self, name: &str, display_name: &str, description: &str) -> Result<OrganizationInfo, sqlx::Error> {
-        let result = sqlx::query("INSERT INTO organizations (name, display_name, description) VALUES (?, ?, ?)")
-            .bind(name)
-            .bind(display_name)
-            .bind(description)
-            .execute(&self.pool)
-            .await?;
-        
+    pub async fn create_organization(
+        &self,
+        name: &str,
+        display_name: &str,
+        description: &str,
+    ) -> Result<OrganizationInfo, sqlx::Error> {
+        let result = sqlx::query(
+            "INSERT INTO organizations (name, display_name, description) VALUES (?, ?, ?)",
+        )
+        .bind(name)
+        .bind(display_name)
+        .bind(description)
+        .execute(&self.pool)
+        .await?;
+
         Ok(OrganizationInfo {
             id: result.last_insert_rowid(),
             name: name.to_string(),
@@ -251,7 +263,10 @@ impl Database {
     }
 
     /// Get organization by name
-    pub async fn get_organization(&self, name: &str) -> Result<Option<OrganizationInfo>, sqlx::Error> {
+    pub async fn get_organization(
+        &self,
+        name: &str,
+    ) -> Result<Option<OrganizationInfo>, sqlx::Error> {
         sqlx::query_as::<_, OrganizationInfo>("SELECT id, name, display_name, description, created_at FROM organizations WHERE name = ?")
             .bind(name)
             .fetch_optional(&self.pool)
@@ -279,7 +294,7 @@ impl Database {
         if description.is_some() {
             updates.push("description = ?");
         }
-        
+
         if updates.is_empty() {
             return self.get_organization(name).await;
         }
@@ -305,15 +320,23 @@ impl Database {
     // ============ Project Methods ============
 
     /// Create a new project
-    pub async fn create_project(&self, org_name: &str, name: &str, display_name: &str, description: &str) -> Result<ProjectInfo, sqlx::Error> {
-        let result = sqlx::query("INSERT INTO projects (org_name, name, display_name, description) VALUES (?, ?, ?, ?)")
-            .bind(org_name)
-            .bind(name)
-            .bind(display_name)
-            .bind(description)
-            .execute(&self.pool)
-            .await?;
-        
+    pub async fn create_project(
+        &self,
+        org_name: &str,
+        name: &str,
+        display_name: &str,
+        description: &str,
+    ) -> Result<ProjectInfo, sqlx::Error> {
+        let result = sqlx::query(
+            "INSERT INTO projects (org_name, name, display_name, description) VALUES (?, ?, ?, ?)",
+        )
+        .bind(org_name)
+        .bind(name)
+        .bind(display_name)
+        .bind(description)
+        .execute(&self.pool)
+        .await?;
+
         Ok(ProjectInfo {
             id: result.last_insert_rowid(),
             name: name.to_string(),
@@ -325,7 +348,11 @@ impl Database {
     }
 
     /// Get project by org and name
-    pub async fn get_project(&self, org_name: &str, name: &str) -> Result<Option<ProjectInfo>, sqlx::Error> {
+    pub async fn get_project(
+        &self,
+        org_name: &str,
+        name: &str,
+    ) -> Result<Option<ProjectInfo>, sqlx::Error> {
         sqlx::query_as::<_, ProjectInfo>("SELECT id, name, org_name, display_name, description, created_at FROM projects WHERE org_name = ? AND name = ?")
             .bind(org_name)
             .bind(name)
@@ -356,7 +383,7 @@ impl Database {
         if description.is_some() {
             updates.push("description = ?");
         }
-        
+
         if updates.is_empty() {
             return self.get_project(org_name, name).await;
         }
@@ -382,19 +409,34 @@ impl Database {
     // ============ Repository Methods ============
 
     /// Create a new repository entry in a project
-    pub async fn create_repository(&self, org_name: &str, project_name: &str, name: &str, path: &str) -> Result<i64, sqlx::Error> {
-        let result = sqlx::query("INSERT INTO repositories (org_name, project_name, name, path) VALUES (?, ?, ?, ?)")
-            .bind(org_name)
-            .bind(project_name)
-            .bind(name)
-            .bind(path)
-            .execute(&self.pool)
-            .await?;
+    pub async fn create_repository(
+        &self,
+        org_name: &str,
+        project_name: &str,
+        name: &str,
+        path: &str,
+    ) -> Result<i64, sqlx::Error> {
+        let result = sqlx::query(
+            "INSERT INTO repositories (org_name, project_name, name, path) VALUES (?, ?, ?, ?)",
+        )
+        .bind(org_name)
+        .bind(project_name)
+        .bind(name)
+        .bind(path)
+        .execute(&self.pool)
+        .await?;
         Ok(result.last_insert_rowid())
     }
 
     /// Create a new repository entry with fork info in a project
-    pub async fn create_repository_with_fork(&self, org_name: &str, project_name: &str, name: &str, path: &str, forked_from: &str) -> Result<i64, sqlx::Error> {
+    pub async fn create_repository_with_fork(
+        &self,
+        org_name: &str,
+        project_name: &str,
+        name: &str,
+        path: &str,
+        forked_from: &str,
+    ) -> Result<i64, sqlx::Error> {
         let result = sqlx::query("INSERT INTO repositories (org_name, project_name, name, path, forked_from) VALUES (?, ?, ?, ?, ?)")
             .bind(org_name)
             .bind(project_name)
@@ -407,7 +449,12 @@ impl Database {
     }
 
     /// Get repository by org, project and name
-    pub async fn get_repository(&self, org_name: &str, project_name: &str, name: &str) -> Result<Option<Repository>, sqlx::Error> {
+    pub async fn get_repository(
+        &self,
+        org_name: &str,
+        project_name: &str,
+        name: &str,
+    ) -> Result<Option<Repository>, sqlx::Error> {
         sqlx::query_as::<_, Repository>("SELECT id, org_name, project_name, name, path, forked_from FROM repositories WHERE org_name = ? AND project_name = ? AND name = ?")
             .bind(org_name)
             .bind(project_name)
@@ -417,7 +464,11 @@ impl Database {
     }
 
     /// List all repositories for a project
-    pub async fn list_repositories(&self, org_name: &str, project_name: &str) -> Result<Vec<Repository>, sqlx::Error> {
+    pub async fn list_repositories(
+        &self,
+        org_name: &str,
+        project_name: &str,
+    ) -> Result<Vec<Repository>, sqlx::Error> {
         sqlx::query_as::<_, Repository>("SELECT id, org_name, project_name, name, path, forked_from FROM repositories WHERE org_name = ? AND project_name = ? ORDER BY name")
             .bind(org_name)
             .bind(project_name)
@@ -437,17 +488,27 @@ impl Database {
 
     /// Get next issue number for a repository
     async fn next_issue_number(&self, repo_name: &str) -> Result<i64, sqlx::Error> {
-        let result = sqlx::query_as::<_, NextNumber>("SELECT COALESCE(MAX(number), 0) + 1 as next FROM issues WHERE repo_name = ?")
-            .bind(repo_name)
-            .fetch_one(&self.pool)
-            .await?;
+        let result = sqlx::query_as::<_, NextNumber>(
+            "SELECT COALESCE(MAX(number), 0) + 1 as next FROM issues WHERE repo_name = ?",
+        )
+        .bind(repo_name)
+        .fetch_one(&self.pool)
+        .await?;
         Ok(result.next)
     }
 
     /// Create a new issue
-    pub async fn create_issue(&self, repo_name: &str, title: &str, body: &str, author: &str, start_date: Option<&str>, target_date: Option<&str>) -> Result<IssueInfo, sqlx::Error> {
+    pub async fn create_issue(
+        &self,
+        repo_name: &str,
+        title: &str,
+        body: &str,
+        author: &str,
+        start_date: Option<&str>,
+        target_date: Option<&str>,
+    ) -> Result<IssueInfo, sqlx::Error> {
         let number = self.next_issue_number(repo_name).await?;
-        
+
         let result = sqlx::query(
             "INSERT INTO issues (repo_name, number, title, body, author, start_date, target_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'todo')"
         )
@@ -462,7 +523,7 @@ impl Database {
         .await?;
 
         let id = result.last_insert_rowid();
-        
+
         Ok(IssueInfo {
             id,
             repo_name: repo_name.to_string(),
@@ -480,7 +541,11 @@ impl Database {
     }
 
     /// Get issue by repo and number
-    pub async fn get_issue(&self, repo_name: &str, number: i64) -> Result<Option<IssueInfo>, sqlx::Error> {
+    pub async fn get_issue(
+        &self,
+        repo_name: &str,
+        number: i64,
+    ) -> Result<Option<IssueInfo>, sqlx::Error> {
         sqlx::query_as::<_, IssueInfo>(
             "SELECT id, repo_name, number, title, body, state, status, start_date, target_date, author, created_at, updated_at FROM issues WHERE repo_name = ? AND number = ?"
         )
@@ -532,7 +597,7 @@ impl Database {
         if target_date.is_some() {
             updates.push("target_date = ?");
         }
-        
+
         if updates.is_empty() {
             return self.get_issue(repo_name, number).await;
         }
@@ -569,7 +634,10 @@ impl Database {
     }
 
     /// List comments for an issue
-    pub async fn list_issue_comments(&self, issue_id: i64) -> Result<Vec<IssueCommentInfo>, sqlx::Error> {
+    pub async fn list_issue_comments(
+        &self,
+        issue_id: i64,
+    ) -> Result<Vec<IssueCommentInfo>, sqlx::Error> {
         sqlx::query_as::<_, IssueCommentInfo>(
             "SELECT id, issue_id, body, author, created_at, updated_at FROM issue_comments WHERE issue_id = ? ORDER BY created_at ASC"
         )
@@ -579,18 +647,22 @@ impl Database {
     }
 
     /// Create a comment on an issue
-    pub async fn create_issue_comment(&self, issue_id: i64, body: &str, author: &str) -> Result<IssueCommentInfo, sqlx::Error> {
-        let result = sqlx::query(
-            "INSERT INTO issue_comments (issue_id, body, author) VALUES (?, ?, ?)"
-        )
-        .bind(issue_id)
-        .bind(body)
-        .bind(author)
-        .execute(&self.pool)
-        .await?;
+    pub async fn create_issue_comment(
+        &self,
+        issue_id: i64,
+        body: &str,
+        author: &str,
+    ) -> Result<IssueCommentInfo, sqlx::Error> {
+        let result =
+            sqlx::query("INSERT INTO issue_comments (issue_id, body, author) VALUES (?, ?, ?)")
+                .bind(issue_id)
+                .bind(body)
+                .bind(author)
+                .execute(&self.pool)
+                .await?;
 
         let id = result.last_insert_rowid();
-        
+
         Ok(IssueCommentInfo {
             id,
             issue_id,
@@ -602,9 +674,13 @@ impl Database {
     }
 
     /// Update a comment on an issue
-    pub async fn update_issue_comment(&self, comment_id: i64, body: &str) -> Result<Option<IssueCommentInfo>, sqlx::Error> {
+    pub async fn update_issue_comment(
+        &self,
+        comment_id: i64,
+        body: &str,
+    ) -> Result<Option<IssueCommentInfo>, sqlx::Error> {
         sqlx::query(
-            "UPDATE issue_comments SET body = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+            "UPDATE issue_comments SET body = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         )
         .bind(body)
         .bind(comment_id)
@@ -620,7 +696,10 @@ impl Database {
     }
 
     /// Get a single comment by ID
-    pub async fn get_issue_comment(&self, comment_id: i64) -> Result<Option<IssueCommentInfo>, sqlx::Error> {
+    pub async fn get_issue_comment(
+        &self,
+        comment_id: i64,
+    ) -> Result<Option<IssueCommentInfo>, sqlx::Error> {
         sqlx::query_as::<_, IssueCommentInfo>(
             "SELECT id, issue_id, body, author, created_at, updated_at FROM issue_comments WHERE id = ?"
         )
@@ -633,10 +712,12 @@ impl Database {
 
     /// Get next PR number for a repository
     async fn next_pr_number(&self, repo_name: &str) -> Result<i64, sqlx::Error> {
-        let result = sqlx::query_as::<_, NextNumber>("SELECT COALESCE(MAX(number), 0) + 1 as next FROM pull_requests WHERE repo_name = ?")
-            .bind(repo_name)
-            .fetch_one(&self.pool)
-            .await?;
+        let result = sqlx::query_as::<_, NextNumber>(
+            "SELECT COALESCE(MAX(number), 0) + 1 as next FROM pull_requests WHERE repo_name = ?",
+        )
+        .bind(repo_name)
+        .fetch_one(&self.pool)
+        .await?;
         Ok(result.next)
     }
 
@@ -652,7 +733,7 @@ impl Database {
         author: &str,
     ) -> Result<PullRequestInfo, sqlx::Error> {
         let number = self.next_pr_number(repo_name).await?;
-        
+
         let result = sqlx::query(
             "INSERT INTO pull_requests (repo_name, number, title, body, source_repo, source_branch, target_branch, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         )
@@ -668,7 +749,7 @@ impl Database {
         .await?;
 
         let id = result.last_insert_rowid();
-        
+
         Ok(PullRequestInfo {
             id,
             repo_name: repo_name.to_string(),
@@ -686,7 +767,11 @@ impl Database {
     }
 
     /// Get pull request by repo and number
-    pub async fn get_pull_request(&self, repo_name: &str, number: i64) -> Result<Option<PullRequestInfo>, sqlx::Error> {
+    pub async fn get_pull_request(
+        &self,
+        repo_name: &str,
+        number: i64,
+    ) -> Result<Option<PullRequestInfo>, sqlx::Error> {
         sqlx::query_as::<_, PullRequestInfo>(
             "SELECT id, repo_name, number, title, body, state, source_repo, source_branch, target_branch, author, created_at, updated_at FROM pull_requests WHERE repo_name = ? AND number = ?"
         )
@@ -697,7 +782,10 @@ impl Database {
     }
 
     /// List pull requests for a repository
-    pub async fn list_pull_requests(&self, repo_name: &str) -> Result<Vec<PullRequestInfo>, sqlx::Error> {
+    pub async fn list_pull_requests(
+        &self,
+        repo_name: &str,
+    ) -> Result<Vec<PullRequestInfo>, sqlx::Error> {
         sqlx::query_as::<_, PullRequestInfo>(
             "SELECT id, repo_name, number, title, body, state, source_repo, source_branch, target_branch, author, created_at, updated_at FROM pull_requests WHERE repo_name = ? ORDER BY number DESC"
         )
@@ -725,7 +813,7 @@ impl Database {
         if state.is_some() {
             updates.push("state = ?");
         }
-        
+
         if updates.is_empty() {
             return self.get_pull_request(repo_name, number).await;
         }
@@ -753,7 +841,10 @@ impl Database {
     }
 
     /// List comments for a pull request
-    pub async fn list_pr_comments(&self, pr_id: i64) -> Result<Vec<PullRequestCommentInfo>, sqlx::Error> {
+    pub async fn list_pr_comments(
+        &self,
+        pr_id: i64,
+    ) -> Result<Vec<PullRequestCommentInfo>, sqlx::Error> {
         sqlx::query_as::<_, PullRequestCommentInfo>(
             "SELECT id, pr_id, body, author, created_at FROM pr_comments WHERE pr_id = ? ORDER BY created_at ASC"
         )
@@ -763,18 +854,21 @@ impl Database {
     }
 
     /// Create a comment on a pull request
-    pub async fn create_pr_comment(&self, pr_id: i64, body: &str, author: &str) -> Result<PullRequestCommentInfo, sqlx::Error> {
-        let result = sqlx::query(
-            "INSERT INTO pr_comments (pr_id, body, author) VALUES (?, ?, ?)"
-        )
-        .bind(pr_id)
-        .bind(body)
-        .bind(author)
-        .execute(&self.pool)
-        .await?;
+    pub async fn create_pr_comment(
+        &self,
+        pr_id: i64,
+        body: &str,
+        author: &str,
+    ) -> Result<PullRequestCommentInfo, sqlx::Error> {
+        let result = sqlx::query("INSERT INTO pr_comments (pr_id, body, author) VALUES (?, ?, ?)")
+            .bind(pr_id)
+            .bind(body)
+            .bind(author)
+            .execute(&self.pool)
+            .await?;
 
         let id = result.last_insert_rowid();
-        
+
         Ok(PullRequestCommentInfo {
             id,
             pr_id,
@@ -787,18 +881,21 @@ impl Database {
     // ============ Tag Methods ============
 
     /// Create a new tag
-    pub async fn create_tag(&self, repo_name: &str, name: &str, color: &str) -> Result<TagInfo, sqlx::Error> {
-        let result = sqlx::query(
-            "INSERT INTO tags (repo_name, name, color) VALUES (?, ?, ?)"
-        )
-        .bind(repo_name)
-        .bind(name)
-        .bind(color)
-        .execute(&self.pool)
-        .await?;
+    pub async fn create_tag(
+        &self,
+        repo_name: &str,
+        name: &str,
+        color: &str,
+    ) -> Result<TagInfo, sqlx::Error> {
+        let result = sqlx::query("INSERT INTO tags (repo_name, name, color) VALUES (?, ?, ?)")
+            .bind(repo_name)
+            .bind(name)
+            .bind(color)
+            .execute(&self.pool)
+            .await?;
 
         let id = result.last_insert_rowid();
-        
+
         Ok(TagInfo {
             id,
             repo_name: repo_name.to_string(),
@@ -808,9 +905,13 @@ impl Database {
     }
 
     /// Get tag by repo and name
-    pub async fn get_tag(&self, repo_name: &str, name: &str) -> Result<Option<TagInfo>, sqlx::Error> {
+    pub async fn get_tag(
+        &self,
+        repo_name: &str,
+        name: &str,
+    ) -> Result<Option<TagInfo>, sqlx::Error> {
         sqlx::query_as::<_, TagInfo>(
-            "SELECT id, repo_name, name, color FROM tags WHERE repo_name = ? AND name = ?"
+            "SELECT id, repo_name, name, color FROM tags WHERE repo_name = ? AND name = ?",
         )
         .bind(repo_name)
         .bind(name)
@@ -820,18 +921,16 @@ impl Database {
 
     /// Get tag by id
     pub async fn get_tag_by_id(&self, id: i64) -> Result<Option<TagInfo>, sqlx::Error> {
-        sqlx::query_as::<_, TagInfo>(
-            "SELECT id, repo_name, name, color FROM tags WHERE id = ?"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await
+        sqlx::query_as::<_, TagInfo>("SELECT id, repo_name, name, color FROM tags WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
     }
 
     /// List all tags for a repository
     pub async fn list_tags(&self, repo_name: &str) -> Result<Vec<TagInfo>, sqlx::Error> {
         sqlx::query_as::<_, TagInfo>(
-            "SELECT id, repo_name, name, color FROM tags WHERE repo_name = ? ORDER BY name"
+            "SELECT id, repo_name, name, color FROM tags WHERE repo_name = ? ORDER BY name",
         )
         .bind(repo_name)
         .fetch_all(&self.pool)
@@ -839,7 +938,12 @@ impl Database {
     }
 
     /// Update a tag
-    pub async fn update_tag(&self, id: i64, name: Option<&str>, color: Option<&str>) -> Result<Option<TagInfo>, sqlx::Error> {
+    pub async fn update_tag(
+        &self,
+        id: i64,
+        name: Option<&str>,
+        color: Option<&str>,
+    ) -> Result<Option<TagInfo>, sqlx::Error> {
         let mut updates = Vec::new();
         if name.is_some() {
             updates.push("name = ?");
@@ -847,15 +951,12 @@ impl Database {
         if color.is_some() {
             updates.push("color = ?");
         }
-        
+
         if updates.is_empty() {
             return self.get_tag_by_id(id).await;
         }
 
-        let query = format!(
-            "UPDATE tags SET {} WHERE id = ?",
-            updates.join(", ")
-        );
+        let query = format!("UPDATE tags SET {} WHERE id = ?", updates.join(", "));
 
         let mut q = sqlx::query(&query);
         if let Some(n) = name {
@@ -877,37 +978,39 @@ impl Database {
             .bind(id)
             .execute(&self.pool)
             .await?;
-        
+
         // Then delete the tag itself
         sqlx::query("DELETE FROM tags WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(())
     }
 
     /// Add a tag to an issue
     pub async fn add_tag_to_issue(&self, issue_id: i64, tag_id: i64) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT OR IGNORE INTO issue_tags (issue_id, tag_id) VALUES (?, ?)"
-        )
-        .bind(issue_id)
-        .bind(tag_id)
-        .execute(&self.pool)
-        .await?;
-        
+        sqlx::query("INSERT OR IGNORE INTO issue_tags (issue_id, tag_id) VALUES (?, ?)")
+            .bind(issue_id)
+            .bind(tag_id)
+            .execute(&self.pool)
+            .await?;
+
         Ok(())
     }
 
     /// Remove a tag from an issue
-    pub async fn remove_tag_from_issue(&self, issue_id: i64, tag_id: i64) -> Result<(), sqlx::Error> {
+    pub async fn remove_tag_from_issue(
+        &self,
+        issue_id: i64,
+        tag_id: i64,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query("DELETE FROM issue_tags WHERE issue_id = ? AND tag_id = ?")
             .bind(issue_id)
             .bind(tag_id)
             .execute(&self.pool)
             .await?;
-        
+
         Ok(())
     }
 
@@ -916,7 +1019,7 @@ impl Database {
         sqlx::query_as::<_, TagInfo>(
             "SELECT t.id, t.repo_name, t.name, t.color FROM tags t 
              INNER JOIN issue_tags it ON t.id = it.tag_id 
-             WHERE it.issue_id = ? ORDER BY t.name"
+             WHERE it.issue_id = ? ORDER BY t.name",
         )
         .bind(issue_id)
         .fetch_all(&self.pool)

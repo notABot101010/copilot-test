@@ -1,0 +1,27 @@
+name: tests
+
+on:
+  push:
+    branches:
+      - "*"
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Update Rust to latest stable
+        run: |
+          rustup default stable
+          rustup update
+
+      - name: Run clippy
+        run: cargo clippy -p chacha -- -D warnings
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run tests
+        run: cargo test -p chacha --verbose

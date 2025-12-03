@@ -11,10 +11,7 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use sqlx::{sqlite::SqlitePool, FromRow};
-use std::{
-    collections::HashMap,
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{broadcast, RwLock};
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
@@ -144,8 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001")
-        .await?;
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await?;
 
     info!("Server listening on http://0.0.0.0:3001");
 
@@ -154,11 +150,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn list_documents(
-    State(state): State<AppState>,
-) -> Result<Json<Vec<Document>>, AppError> {
+async fn list_documents(State(state): State<AppState>) -> Result<Json<Vec<Document>>, AppError> {
     let docs = sqlx::query_as::<_, DbDocument>(
-        "SELECT id, encrypted_data, created_at FROM documents ORDER BY created_at DESC"
+        "SELECT id, encrypted_data, created_at FROM documents ORDER BY created_at DESC",
     )
     .fetch_all(&state.db)
     .await?;
@@ -182,14 +176,12 @@ async fn create_document(
     let id = Uuid::new_v4().to_string();
     let timestamp = chrono::Utc::now().timestamp();
 
-    sqlx::query(
-        "INSERT INTO documents (id, encrypted_data, created_at) VALUES (?, ?, ?)"
-    )
-    .bind(&id)
-    .bind(&req.encrypted_data)
-    .bind(timestamp)
-    .execute(&state.db)
-    .await?;
+    sqlx::query("INSERT INTO documents (id, encrypted_data, created_at) VALUES (?, ?, ?)")
+        .bind(&id)
+        .bind(&req.encrypted_data)
+        .bind(timestamp)
+        .execute(&state.db)
+        .await?;
 
     info!("Created document: {}", id);
 
@@ -208,7 +200,7 @@ async fn get_document(
     Path(id): Path<String>,
 ) -> Result<Json<Document>, AppError> {
     let doc = sqlx::query_as::<_, DbDocument>(
-        "SELECT id, encrypted_data, created_at FROM documents WHERE id = ?"
+        "SELECT id, encrypted_data, created_at FROM documents WHERE id = ?",
     )
     .bind(&id)
     .fetch_one(&state.db)
@@ -237,7 +229,7 @@ async fn update_document(
         .await?;
 
     sqlx::query(
-        "INSERT INTO operations (document_id, encrypted_operation, timestamp) VALUES (?, ?, ?)"
+        "INSERT INTO operations (document_id, encrypted_operation, timestamp) VALUES (?, ?, ?)",
     )
     .bind(&id)
     .bind(&req.encrypted_operation)
@@ -253,7 +245,10 @@ async fn update_document(
 
     match state.broadcast_tx.send(msg) {
         Ok(receiver_count) => {
-            info!("Broadcasted operation for document {} to {} receivers", id, receiver_count);
+            info!(
+                "Broadcasted operation for document {} to {} receivers",
+                id, receiver_count
+            );
         }
         Err(err) => {
             error!("Failed to broadcast operation for document {}: {}", id, err);
@@ -286,10 +281,7 @@ async fn get_operations(
     Ok(Json(operations))
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<AppState>,
-) -> Response {
+async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
@@ -335,7 +327,10 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         encrypted_operation,
                         timestamp,
                     } => {
-                        info!("Received operation via WebSocket for document: {}", document_id);
+                        info!(
+                            "Received operation via WebSocket for document: {}",
+                            document_id
+                        );
                         if let Err(err) = sqlx::query(
                             "INSERT INTO operations (document_id, encrypted_operation, timestamp) VALUES (?, ?, ?)"
                         )
@@ -352,7 +347,10 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                             encrypted_operation,
                             timestamp,
                         }) {
-                            Ok(count) => info!("Broadcasted WebSocket operation for {} to {} receivers", document_id, count),
+                            Ok(count) => info!(
+                                "Broadcasted WebSocket operation for {} to {} receivers",
+                                document_id, count
+                            ),
                             Err(err) => error!("Failed to broadcast WebSocket operation: {}", err),
                         }
                     }

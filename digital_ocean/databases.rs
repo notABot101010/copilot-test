@@ -340,7 +340,10 @@ impl Client {
         cluster_id: &str,
         username: &str,
     ) -> Result<(), Error> {
-        let url = Url::parse(&format!("{}/databases/{}/users/{}", API_BASE_URL, cluster_id, username))?;
+        let url = Url::parse(&format!(
+            "{}/databases/{}/users/{}",
+            API_BASE_URL, cluster_id, username
+        ))?;
 
         let res = self
             .http_client
@@ -402,7 +405,10 @@ impl Client {
     /// * `cluster_id` - The ID of the database cluster.
     /// * `db_name` - The name of the database to delete.
     pub async fn delete_database(&self, cluster_id: &str, db_name: &str) -> Result<(), Error> {
-        let url = Url::parse(&format!("{}/databases/{}/dbs/{}", API_BASE_URL, cluster_id, db_name))?;
+        let url = Url::parse(&format!(
+            "{}/databases/{}/dbs/{}",
+            API_BASE_URL, cluster_id, db_name
+        ))?;
 
         let res = self
             .http_client

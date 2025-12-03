@@ -1,6 +1,6 @@
 //! Integration tests for TurboSHAKE, KangarooTwelve, and AEAD
 
-use turboshake::{AeadError, KT128, KT256, TurboShake128, TurboShake256, TurboShakeAead};
+use turboshake::{AeadError, TurboShake128, TurboShake256, TurboShakeAead, KT128, KT256};
 
 // ===== TurboSHAKE integration tests =====
 
@@ -13,7 +13,10 @@ fn test_turboshake128_vs_256_different_output() {
     TurboShake128::hash(data, &mut out128);
     TurboShake256::hash(data, &mut out256);
 
-    assert_ne!(out128, out256, "TurboSHAKE128 and 256 should produce different outputs");
+    assert_ne!(
+        out128, out256,
+        "TurboSHAKE128 and 256 should produce different outputs"
+    );
 }
 
 #[test]
@@ -57,7 +60,10 @@ fn test_kt128_vs_kt256_different_output() {
     KT128::hash(data, &[], &mut out128);
     KT256::hash(data, &[], &mut out256);
 
-    assert_ne!(out128, out256, "KT128 and KT256 should produce different outputs");
+    assert_ne!(
+        out128, out256,
+        "KT128 and KT256 should produce different outputs"
+    );
 }
 
 #[test]

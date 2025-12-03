@@ -12,8 +12,8 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tower_http::cors::CorsLayer;
-use tower_http::trace::TraceLayer;
 use tower_http::services::ServeDir;
+use tower_http::trace::TraceLayer;
 use tracing::info;
 
 /// Cookie name for session token
@@ -158,7 +158,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/playlists/:id", get(get_playlist))
         .route("/api/playlists/:id", delete(delete_playlist))
         .route("/api/playlists/:id/items", post(add_to_playlist))
-        .route("/api/playlists/:id/items/:media_id", delete(remove_from_playlist))
+        .route(
+            "/api/playlists/:id/items/:media_id",
+            delete(remove_from_playlist),
+        )
         // Album routes
         .route("/api/albums", get(list_albums))
         .route("/api/albums", post(create_album))
@@ -167,7 +170,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/albums/:id/items", post(add_to_album))
         .route("/api/albums/:id/items/:media_id", delete(remove_from_album))
         // Serve static files (webapp)
-        .nest_service("/", ServeDir::new(static_path).append_index_html_on_directories(true))
+        .nest_service(
+            "/",
+            ServeDir::new(static_path).append_index_html_on_directories(true),
+        )
         // Increase body limit for large file uploads (10GB)
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024 * 1024))
         .layer(TraceLayer::new_for_http())
@@ -199,7 +205,7 @@ async fn get_user_from_headers(state: &AppState, headers: &HeaderMap) -> Result<
 fn get_token_from_cookie(headers: &HeaderMap) -> Option<String> {
     let cookie_header = headers.get(header::COOKIE)?.to_str().ok()?;
     let cookie_prefix = format!("{}=", SESSION_COOKIE_NAME);
-    
+
     for cookie in cookie_header.split(';') {
         let cookie = cookie.trim();
         if let Some(value) = cookie.strip_prefix(&cookie_prefix) {
@@ -214,30 +220,34 @@ fn get_token_from_cookie(headers: &HeaderMap) -> Option<String> {
 /// like video/audio/img src attributes, which can't send Authorization headers
 async fn get_user_from_headers_or_cookie(state: &AppState, headers: &HeaderMap) -> Result<i64> {
     // First try Authorization header
-    if let Some(auth_header) = headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+    if let Some(auth_header) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    {
         if let Some(token) = auth_header.strip_prefix("Bearer ") {
             if let Some(session) = state.db.get_session_by_token(token).await? {
                 return Ok(session.user_id);
             }
         }
     }
-    
+
     // Fall back to cookie
     if let Some(token) = get_token_from_cookie(headers) {
         if let Some(session) = state.db.get_session_by_token(&token).await? {
             return Ok(session.user_id);
         }
     }
-    
-    Err(ApiError::Unauthorized("Invalid or expired session".to_string()))
+
+    Err(ApiError::Unauthorized(
+        "Invalid or expired session".to_string(),
+    ))
 }
 
 /// Create a Set-Cookie header value for the session token
 fn create_session_cookie(token: &str) -> String {
     format!(
         "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800",
-        SESSION_COOKIE_NAME,
-        token
+        SESSION_COOKIE_NAME, token
     )
 }
 
@@ -255,11 +265,15 @@ async fn register(
     Json(req): Json<RegisterRequest>,
 ) -> Result<Response> {
     if req.username.is_empty() || req.password.is_empty() {
-        return Err(ApiError::BadRequest("Username and password are required".to_string()));
+        return Err(ApiError::BadRequest(
+            "Username and password are required".to_string(),
+        ));
     }
 
     if req.password.len() < 6 {
-        return Err(ApiError::BadRequest("Password must be at least 6 characters".to_string()));
+        return Err(ApiError::BadRequest(
+            "Password must be at least 6 characters".to_string(),
+        ));
     }
 
     let password_hash = hash_password(&req.password);
@@ -271,7 +285,10 @@ async fn register(
         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
         .ok_or_else(|| ApiError::Internal("Failed to calculate expiry".to_string()))?;
 
-    state.db.create_session(user.id, &token, &expires_at).await?;
+    state
+        .db
+        .create_session(user.id, &token, &expires_at)
+        .await?;
 
     let auth_response = AuthResponse {
         token: token.clone(),
@@ -287,14 +304,11 @@ async fn register(
         header::SET_COOKIE,
         HeaderValue::from_str(&cookie).map_err(|err| ApiError::Internal(err.to_string()))?,
     );
-    
+
     Ok(response)
 }
 
-async fn login(
-    State(state): State<AppState>,
-    Json(req): Json<LoginRequest>,
-) -> Result<Response> {
+async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> Result<Response> {
     let user = state
         .db
         .get_user_by_username(&req.username)
@@ -302,7 +316,9 @@ async fn login(
         .ok_or_else(|| ApiError::Unauthorized("Invalid username or password".to_string()))?;
 
     if !verify_password(&req.password, &user.password_hash) {
-        return Err(ApiError::Unauthorized("Invalid username or password".to_string()));
+        return Err(ApiError::Unauthorized(
+            "Invalid username or password".to_string(),
+        ));
     }
 
     let token = generate_token();
@@ -311,7 +327,10 @@ async fn login(
         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
         .ok_or_else(|| ApiError::Internal("Failed to calculate expiry".to_string()))?;
 
-    state.db.create_session(user.id, &token, &expires_at).await?;
+    state
+        .db
+        .create_session(user.id, &token, &expires_at)
+        .await?;
 
     let auth_response = AuthResponse {
         token: token.clone(),
@@ -327,7 +346,7 @@ async fn login(
         header::SET_COOKIE,
         HeaderValue::from_str(&cookie).map_err(|err| ApiError::Internal(err.to_string()))?,
     );
-    
+
     Ok(response)
 }
 
@@ -340,7 +359,7 @@ async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Res
             }
         }
     }
-    
+
     // Also try to delete session from cookie
     if let Some(token) = get_token_from_cookie(&headers) {
         state.db.delete_session(&token).await?;
@@ -353,7 +372,7 @@ async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Res
         header::SET_COOKIE,
         HeaderValue::from_str(&cookie).map_err(|err| ApiError::Internal(err.to_string()))?,
     );
-    
+
     Ok(response)
 }
 
@@ -384,7 +403,10 @@ async fn list_media(
     let user_id = get_user_from_headers(&state, &headers).await?;
 
     let media_type = if let Some(ref mt) = query.media_type {
-        Some(mt.parse::<MediaType>().map_err(|err| ApiError::BadRequest(err))?)
+        Some(
+            mt.parse::<MediaType>()
+                .map_err(|err| ApiError::BadRequest(err))?,
+        )
     } else {
         None
     };
@@ -430,11 +452,16 @@ async fn upload_media(
                 let media_type = determine_media_type(&ct);
                 let fname = filename.clone().unwrap_or_else(|| "unknown".to_string());
 
-                let path = state.storage.create_storage_path(user_id, &media_type.to_string(), &fname);
+                let path =
+                    state
+                        .storage
+                        .create_storage_path(user_id, &media_type.to_string(), &fname);
 
                 // Stream upload to file
                 let stream = field.map(|result| {
-                    result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_string()))
+                    result.map_err(|err| {
+                        std::io::Error::new(std::io::ErrorKind::Other, err.to_string())
+                    })
                 });
 
                 size = state.storage.write_stream(&path, stream).await?;
@@ -445,7 +472,8 @@ async fn upload_media(
     }
 
     let filename = filename.ok_or_else(|| ApiError::BadRequest("No file provided".to_string()))?;
-    let storage_path = storage_path.ok_or_else(|| ApiError::BadRequest("No file provided".to_string()))?;
+    let storage_path =
+        storage_path.ok_or_else(|| ApiError::BadRequest("No file provided".to_string()))?;
     let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
     let title = title.unwrap_or_else(|| {
         // Use filename without extension as title
@@ -483,9 +511,15 @@ async fn upload_media(
         let thumb_path = storage.create_thumbnail_path(user_id, &filename);
 
         tokio::spawn(async move {
-            if let Err(err) = storage.generate_video_thumbnail(&video_path, &thumb_path).await {
+            if let Err(err) = storage
+                .generate_video_thumbnail(&video_path, &thumb_path)
+                .await
+            {
                 tracing::warn!("Failed to generate thumbnail: {}", err);
-            } else if let Err(err) = db.update_media_thumbnail(media_id, &thumb_path.display().to_string()).await {
+            } else if let Err(err) = db
+                .update_media_thumbnail(media_id, &thumb_path.display().to_string())
+                .await
+            {
                 tracing::warn!("Failed to update thumbnail path: {}", err);
             } else {
                 info!("Generated thumbnail for media {}", media_id);
@@ -690,7 +724,9 @@ async fn create_playlist(
     let user_id = get_user_from_headers(&state, &headers).await?;
 
     if req.name.is_empty() {
-        return Err(ApiError::BadRequest("Playlist name is required".to_string()));
+        return Err(ApiError::BadRequest(
+            "Playlist name is required".to_string(),
+        ));
     }
 
     let playlist = state.db.create_playlist(user_id, &req.name).await?;

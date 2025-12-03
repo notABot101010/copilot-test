@@ -212,7 +212,8 @@ pub unsafe fn decode_avx2(
     let input_len = input.len();
 
     // Only use SIMD for standard alphabet and sufficient length
-    let use_simd = (alphabet == ALPHABET_STANDARD_BYTES || alphabet == ALPHABET_HEX_BYTES) && input_len >= 16;
+    let use_simd =
+        (alphabet == ALPHABET_STANDARD_BYTES || alphabet == ALPHABET_HEX_BYTES) && input_len >= 16;
 
     if !use_simd {
         let input_str = std::str::from_utf8(input).map_err(|_| Error::InvalidCharacter('\0'))?;

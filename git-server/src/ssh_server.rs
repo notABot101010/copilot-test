@@ -13,7 +13,7 @@ use tracing::{debug, error, info, warn};
 use crate::config::Config;
 use crate::database::Database;
 use crate::git_ops;
-use crate::sandbox::{validate_repo_path, validate_path_within_base};
+use crate::sandbox::{validate_path_within_base, validate_repo_path};
 
 /// SSH server for git operations
 pub struct GitServer {
@@ -158,27 +158,40 @@ impl russh::server::Handler for GitSessionHandler {
         // Parse org/project/repo format
         let repo_parts: Vec<&str> = repo_path_str.split('/').collect();
         if repo_parts.len() != 3 {
-            warn!("Invalid repository path format (expected org/project/repo): {}", repo_path_str);
+            warn!(
+                "Invalid repository path format (expected org/project/repo): {}",
+                repo_path_str
+            );
             session.channel_failure(channel)?;
             return Ok(());
         }
-        
+
         let org_name = repo_parts[0];
         let project_name = repo_parts[1];
         let repo_name = repo_parts[2];
 
         // Use sandbox validation for repository path components
         if let Err(err) = validate_repo_path(org_name, project_name, repo_name) {
-            warn!("Invalid repository name (sandbox validation failed): {} - {}", repo_path_str, err);
+            warn!(
+                "Invalid repository name (sandbox validation failed): {} - {}",
+                repo_path_str, err
+            );
             session.channel_failure(channel)?;
             return Ok(());
         }
 
         // Look up repository
-        let repo = match self.db.get_repository(org_name, project_name, repo_name).await {
+        let repo = match self
+            .db
+            .get_repository(org_name, project_name, repo_name)
+            .await
+        {
             Ok(Some(repo)) => repo,
             Ok(None) => {
-                warn!("Repository not found: {}/{}/{}", org_name, project_name, repo_name);
+                warn!(
+                    "Repository not found: {}/{}/{}",
+                    org_name, project_name, repo_name
+                );
                 session.channel_failure(channel)?;
                 return Ok(());
             }
@@ -202,7 +215,10 @@ impl russh::server::Handler for GitSessionHandler {
         let canonical_repo = match validate_path_within_base(&repo_path, &self.repos_path) {
             Ok(p) => p,
             Err(e) => {
-                warn!("Repository path escape attempt detected: {} - {}", repo.path, e);
+                warn!(
+                    "Repository path escape attempt detected: {} - {}",
+                    repo.path, e
+                );
                 session.channel_failure(channel)?;
                 return Ok(());
             }
@@ -249,7 +265,7 @@ impl russh::server::Handler for GitSessionHandler {
                     for chunk in output.chunks(CHUNK_SIZE) {
                         session.data(channel, CryptoVec::from(chunk))?;
                     }
-                    
+
                     // Exit with success
                     session.exit_status_request(channel, 0)?;
                 }
@@ -258,7 +274,7 @@ impl russh::server::Handler for GitSessionHandler {
                     session.exit_status_request(channel, 1)?;
                 }
             }
-            
+
             session.close(channel)?;
         }
 

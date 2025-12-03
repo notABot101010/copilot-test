@@ -33,10 +33,9 @@ fn default_http_port() -> u16 {
 impl Config {
     /// Load configuration from a JSON file
     pub fn load(path: &PathBuf) -> Result<Self, ConfigError> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| ConfigError::ReadError(path.clone(), e))?;
-        serde_json::from_str(&content)
-            .map_err(|e| ConfigError::ParseError(path.clone(), e))
+        let content =
+            std::fs::read_to_string(path).map_err(|e| ConfigError::ReadError(path.clone(), e))?;
+        serde_json::from_str(&content).map_err(|e| ConfigError::ParseError(path.clone(), e))
     }
 
     /// Create a default configuration

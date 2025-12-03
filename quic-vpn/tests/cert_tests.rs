@@ -9,15 +9,17 @@ fn test_generate_self_signed_cert() {
     let key_path = temp_dir.path().join("test_key.pem");
 
     let result = generate_self_signed_cert(&cert_path, &key_path);
-    assert!(result.is_ok(), "Failed to generate certificates: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Failed to generate certificates: {:?}",
+        result
+    );
 
     assert!(cert_path.exists(), "Certificate file should exist");
     assert!(key_path.exists(), "Key file should exist");
 
-    let cert_contents = fs::read_to_string(&cert_path)
-        .expect("Failed to read certificate");
-    let key_contents = fs::read_to_string(&key_path)
-        .expect("Failed to read key");
+    let cert_contents = fs::read_to_string(&cert_path).expect("Failed to read certificate");
+    let key_contents = fs::read_to_string(&key_path).expect("Failed to read key");
 
     assert!(cert_contents.contains("BEGIN CERTIFICATE"));
     assert!(cert_contents.contains("END CERTIFICATE"));
@@ -35,7 +37,11 @@ fn test_ensure_certificates_creates_if_missing() {
     assert!(!key_path.exists(), "Key should not exist initially");
 
     let result = ensure_certificates(&cert_path, &key_path);
-    assert!(result.is_ok(), "Failed to ensure certificates: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Failed to ensure certificates: {:?}",
+        result
+    );
 
     assert!(cert_path.exists(), "Certificate should be created");
     assert!(key_path.exists(), "Key should be created");
@@ -54,12 +60,19 @@ fn test_ensure_certificates_preserves_existing() {
     let original_key = fs::read(&key_path).expect("Failed to read key");
 
     let result = ensure_certificates(&cert_path, &key_path);
-    assert!(result.is_ok(), "Failed to ensure certificates: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Failed to ensure certificates: {:?}",
+        result
+    );
 
     let final_cert = fs::read(&cert_path).expect("Failed to read cert after ensure");
     let final_key = fs::read(&key_path).expect("Failed to read key after ensure");
 
-    assert_eq!(original_cert, final_cert, "Certificate should not be regenerated");
+    assert_eq!(
+        original_cert, final_cert,
+        "Certificate should not be regenerated"
+    );
     assert_eq!(original_key, final_key, "Key should not be regenerated");
 }
 
@@ -71,8 +84,15 @@ fn test_cert_generation_in_nested_directory() {
     let key_path = nested_path.join("key.pem");
 
     let result = ensure_certificates(&cert_path, &key_path);
-    assert!(result.is_ok(), "Failed to create certs in nested directory: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Failed to create certs in nested directory: {:?}",
+        result
+    );
 
-    assert!(cert_path.exists(), "Certificate should exist in nested directory");
+    assert!(
+        cert_path.exists(),
+        "Certificate should exist in nested directory"
+    );
     assert!(key_path.exists(), "Key should exist in nested directory");
 }

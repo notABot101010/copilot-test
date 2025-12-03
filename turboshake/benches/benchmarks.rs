@@ -2,7 +2,7 @@
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::hint::black_box;
-use turboshake::{KT128, KT256, TurboShake128, TurboShake256, TurboShakeAead};
+use turboshake::{TurboShake128, TurboShake256, TurboShakeAead, KT128, KT256};
 
 /// Sample data sizes for benchmarking
 const SIZES: &[usize] = &[16, 64, 256, 1024, 4096, 16384];
@@ -151,15 +151,11 @@ fn bench_turboshake256_variable_output(c: &mut Criterion) {
         let mut output = vec![0u8; out_size];
 
         group.throughput(Throughput::Bytes(out_size as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(out_size),
-            &input,
-            |b, input| {
-                b.iter(|| {
-                    TurboShake256::hash(black_box(input), black_box(&mut output));
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(out_size), &input, |b, input| {
+            b.iter(|| {
+                TurboShake256::hash(black_box(input), black_box(&mut output));
+            });
+        });
     }
 
     group.finish();

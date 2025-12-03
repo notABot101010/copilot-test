@@ -23,7 +23,10 @@ type WorkspaceChannels = Arc<RwLock<HashMap<String, broadcast::Sender<WsEvent>>>
 #[serde(tag = "type")]
 enum WsEvent {
     #[serde(rename = "new_message")]
-    NewMessage { conversation_id: String, message: MessageResponse },
+    NewMessage {
+        conversation_id: String,
+        message: MessageResponse,
+    },
     #[serde(rename = "new_conversation")]
     NewConversation { conversation: ConversationResponse },
     #[serde(rename = "conversation_updated")]
@@ -345,12 +348,10 @@ fn hash_for_anonymous_id(ip: &str, user_agent: &str) -> String {
 }
 
 async fn ensure_workspace_exists(pool: &SqlitePool, workspace_id: &str) -> Result<(), sqlx::Error> {
-    let existing = sqlx::query_as::<_, Workspace>(
-        "SELECT * FROM workspaces WHERE id = ?",
-    )
-    .bind(workspace_id)
-    .fetch_optional(pool)
-    .await?;
+    let existing = sqlx::query_as::<_, Workspace>("SELECT * FROM workspaces WHERE id = ?")
+        .bind(workspace_id)
+        .fetch_optional(pool)
+        .await?;
 
     if existing.is_none() {
         let now = get_current_time();
@@ -442,17 +443,16 @@ async fn get_workspace(
     Path(workspace_id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<WorkspaceResponse>, StatusCode> {
-    let workspace = sqlx::query_as::<_, Workspace>(
-        "SELECT id, name, created_at FROM workspaces WHERE id = ?",
-    )
-    .bind(&workspace_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|err| {
-        tracing::error!("Failed to get workspace: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let workspace =
+        sqlx::query_as::<_, Workspace>("SELECT id, name, created_at FROM workspaces WHERE id = ?")
+            .bind(&workspace_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|err| {
+                tracing::error!("Failed to get workspace: {:?}", err);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(WorkspaceResponse {
         id: workspace.id,
@@ -576,18 +576,17 @@ async fn get_contact(
     Path((workspace_id, contact_id)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Result<Json<ContactResponse>, StatusCode> {
-    let contact = sqlx::query_as::<_, Contact>(
-        "SELECT * FROM contacts WHERE id = ? AND workspace_id = ?",
-    )
-    .bind(&contact_id)
-    .bind(&workspace_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|err| {
-        tracing::error!("Failed to get contact: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let contact =
+        sqlx::query_as::<_, Contact>("SELECT * FROM contacts WHERE id = ? AND workspace_id = ?")
+            .bind(&contact_id)
+            .bind(&workspace_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|err| {
+                tracing::error!("Failed to get contact: {:?}", err);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(ContactResponse {
         id: contact.id,
@@ -605,18 +604,17 @@ async fn update_contact(
     State(state): State<AppState>,
     Json(payload): Json<UpdateContactRequest>,
 ) -> Result<Json<ContactResponse>, StatusCode> {
-    let contact = sqlx::query_as::<_, Contact>(
-        "SELECT * FROM contacts WHERE id = ? AND workspace_id = ?",
-    )
-    .bind(&contact_id)
-    .bind(&workspace_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|err| {
-        tracing::error!("Failed to get contact: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .ok_or(StatusCode::NOT_FOUND)?;
+    let contact =
+        sqlx::query_as::<_, Contact>("SELECT * FROM contacts WHERE id = ? AND workspace_id = ?")
+            .bind(&contact_id)
+            .bind(&workspace_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|err| {
+                tracing::error!("Failed to get contact: {:?}", err);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .ok_or(StatusCode::NOT_FOUND)?;
 
     let name = payload.name.or(contact.name.clone());
     let email = payload.email.or(contact.email.clone());
@@ -744,9 +742,14 @@ async fn create_conversation(
     };
 
     // Broadcast new conversation event
-    broadcast_event(&state, &workspace_id, WsEvent::NewConversation {
-        conversation: response.clone(),
-    }).await;
+    broadcast_event(
+        &state,
+        &workspace_id,
+        WsEvent::NewConversation {
+            conversation: response.clone(),
+        },
+    )
+    .await;
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -864,17 +867,19 @@ async fn update_conversation(
 ) -> Result<Json<ConversationResponse>, StatusCode> {
     let now = get_current_time();
 
-    sqlx::query("UPDATE conversations SET status = ?, updated_at = ? WHERE id = ? AND workspace_id = ?")
-        .bind(&payload.status)
-        .bind(now)
-        .bind(&conversation_id)
-        .bind(&workspace_id)
-        .execute(&state.db)
-        .await
-        .map_err(|err| {
-            tracing::error!("Failed to update conversation: {:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    sqlx::query(
+        "UPDATE conversations SET status = ?, updated_at = ? WHERE id = ? AND workspace_id = ?",
+    )
+    .bind(&payload.status)
+    .bind(now)
+    .bind(&conversation_id)
+    .bind(&workspace_id)
+    .execute(&state.db)
+    .await
+    .map_err(|err| {
+        tracing::error!("Failed to update conversation: {:?}", err);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     get_conversation(Path((workspace_id, conversation_id)), State(state)).await
 }
@@ -939,10 +944,15 @@ async fn send_message(
     };
 
     // Broadcast message event
-    broadcast_event(&state, &conversation.workspace_id, WsEvent::NewMessage {
-        conversation_id: conversation_id.clone(),
-        message: message.clone(),
-    }).await;
+    broadcast_event(
+        &state,
+        &conversation.workspace_id,
+        WsEvent::NewMessage {
+            conversation_id: conversation_id.clone(),
+            message: message.clone(),
+        },
+    )
+    .await;
 
     Ok((StatusCode::CREATED, Json(message)))
 }
@@ -1014,7 +1024,7 @@ async fn track_page_view(
         .get("user-agent")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("Unknown");
-    
+
     let ip = extract_ip(&addr, &headers);
     let anonymous_id = hash_for_anonymous_id(&ip, user_agent);
     let browser = extract_browser(user_agent);
@@ -1357,9 +1367,14 @@ async fn visitor_send_message(
             created_at: now,
             updated_at: now,
         };
-        broadcast_event(&state, &workspace_id, WsEvent::NewConversation {
-            conversation: conv_response,
-        }).await;
+        broadcast_event(
+            &state,
+            &workspace_id,
+            WsEvent::NewConversation {
+                conversation: conv_response,
+            },
+        )
+        .await;
 
         id
     };
@@ -1402,10 +1417,15 @@ async fn visitor_send_message(
     };
 
     // Broadcast message
-    broadcast_event(&state, &workspace_id, WsEvent::NewMessage {
-        conversation_id: conversation_id.clone(),
-        message: message.clone(),
-    }).await;
+    broadcast_event(
+        &state,
+        &workspace_id,
+        WsEvent::NewMessage {
+            conversation_id: conversation_id.clone(),
+            message: message.clone(),
+        },
+    )
+    .await;
 
     Ok((
         StatusCode::CREATED,
@@ -1497,10 +1517,7 @@ async fn poll_events(
     let start = tokio::time::Instant::now();
 
     while start.elapsed() < timeout_duration {
-        match tokio::time::timeout(
-            timeout_duration - start.elapsed(),
-            rx.recv()
-        ).await {
+        match tokio::time::timeout(timeout_duration - start.elapsed(), rx.recv()).await {
             Ok(Ok(event)) => {
                 events.push(event);
                 // Return immediately if we got at least one event
@@ -1529,15 +1546,17 @@ async fn main() {
 
     let db_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "sqlite:customer_support.db?mode=rwc".to_string());
-    
+
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
-        .after_connect(|conn, _| Box::pin(async move {
-            sqlx::query("PRAGMA foreign_keys = ON")
-                .execute(conn)
-                .await?;
-            Ok(())
-        }))
+        .after_connect(|conn, _| {
+            Box::pin(async move {
+                sqlx::query("PRAGMA foreign_keys = ON")
+                    .execute(conn)
+                    .await?;
+                Ok(())
+            })
+        })
         .connect(&db_url)
         .await
         .expect("Failed to connect to database");
@@ -1556,22 +1575,55 @@ async fn main() {
 
     let app = Router::new()
         // Workspaces
-        .route("/api/workspaces", get(list_workspaces).post(create_workspace))
+        .route(
+            "/api/workspaces",
+            get(list_workspaces).post(create_workspace),
+        )
         .route("/api/workspaces/{workspace_id}", get(get_workspace))
         // Contacts
-        .route("/api/workspaces/{workspace_id}/contacts", get(list_contacts).post(create_contact))
-        .route("/api/workspaces/{workspace_id}/contacts/{contact_id}", get(get_contact).patch(update_contact))
-        .route("/api/workspaces/{workspace_id}/contacts/{contact_id}/conversations", get(get_contact_conversations))
+        .route(
+            "/api/workspaces/{workspace_id}/contacts",
+            get(list_contacts).post(create_contact),
+        )
+        .route(
+            "/api/workspaces/{workspace_id}/contacts/{contact_id}",
+            get(get_contact).patch(update_contact),
+        )
+        .route(
+            "/api/workspaces/{workspace_id}/contacts/{contact_id}/conversations",
+            get(get_contact_conversations),
+        )
         // Conversations
-        .route("/api/workspaces/{workspace_id}/conversations", get(list_conversations).post(create_conversation))
-        .route("/api/workspaces/{workspace_id}/conversations/{conversation_id}", get(get_conversation).patch(update_conversation))
-        .route("/api/workspaces/{workspace_id}/conversations/{conversation_id}/messages", get(list_messages).post(send_message))
+        .route(
+            "/api/workspaces/{workspace_id}/conversations",
+            get(list_conversations).post(create_conversation),
+        )
+        .route(
+            "/api/workspaces/{workspace_id}/conversations/{conversation_id}",
+            get(get_conversation).patch(update_conversation),
+        )
+        .route(
+            "/api/workspaces/{workspace_id}/conversations/{conversation_id}/messages",
+            get(list_messages).post(send_message),
+        )
         // Analytics
-        .route("/api/workspaces/{workspace_id}/analytics", get(get_analytics))
-        .route("/api/workspaces/{workspace_id}/track", post(track_page_view))
+        .route(
+            "/api/workspaces/{workspace_id}/analytics",
+            get(get_analytics),
+        )
+        .route(
+            "/api/workspaces/{workspace_id}/track",
+            post(track_page_view),
+        )
         // Visitor (SDK) endpoints
-        .route("/api/workspaces/{workspace_id}/visitor/init", post(visitor_init))
-        .route("/api/workspaces/{workspace_id}/visitor/message", post(visitor_send_message))
+        .route(
+            "/api/workspaces/{workspace_id}/visitor/init",
+            post(visitor_init),
+        )
+        .route(
+            "/api/workspaces/{workspace_id}/visitor/message",
+            post(visitor_send_message),
+        )
         // Long polling
         .route("/api/workspaces/{workspace_id}/events", get(poll_events))
         // WebSocket (deprecated, keeping for backward compatibility)
@@ -1580,7 +1632,11 @@ async fn main() {
         .with_state(state)
         .into_make_service_with_connect_info::<SocketAddr>();
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:4001").await.expect("Failed to bind");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:4001")
+        .await
+        .expect("Failed to bind");
     tracing::info!("Customer Support server listening on http://0.0.0.0:4001");
-    axum::serve(listener, app).await.expect("Failed to start server");
+    axum::serve(listener, app)
+        .await
+        .expect("Failed to start server");
 }

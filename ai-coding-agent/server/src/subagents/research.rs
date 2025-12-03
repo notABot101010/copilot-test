@@ -1,10 +1,10 @@
-use async_trait::async_trait;
-use std::collections::HashMap;
-use std::sync::Arc;
+use super::SubAgent;
 use crate::llm::{ChatMessage, LlmClient};
 use crate::models::{SubAgentType, Task};
 use crate::templates::TemplateManager;
-use super::SubAgent;
+use async_trait::async_trait;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct ResearchAgent {
     llm_client: Arc<dyn LlmClient>,
@@ -30,12 +30,20 @@ impl SubAgent for ResearchAgent {
         &self.llm_client
     }
 
-    async fn execute(&self, task: &Task, templates: &TemplateManager) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    async fn execute(
+        &self,
+        task: &Task,
+        templates: &TemplateManager,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let mut vars = HashMap::new();
-        vars.insert("tech_stack".to_string(), "Rust, TypeScript, Preact".to_string());
+        vars.insert(
+            "tech_stack".to_string(),
+            "Rust, TypeScript, Preact".to_string(),
+        );
         vars.insert("research_question".to_string(), task.description.clone());
 
-        let system_prompt = templates.render("research", &vars)
+        let system_prompt = templates
+            .render("research", &vars)
             .unwrap_or_else(|| task.description.clone());
 
         let messages = vec![

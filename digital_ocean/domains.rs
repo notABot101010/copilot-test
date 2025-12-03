@@ -232,7 +232,10 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn create_domain(&self, request: CreateDomainRequest) -> Result<DomainResponse, Error> {
+    pub async fn create_domain(
+        &self,
+        request: CreateDomainRequest,
+    ) -> Result<DomainResponse, Error> {
         let url = Url::parse(&format!("{}/domains", API_BASE_URL))?;
 
         let res = self
@@ -311,7 +314,10 @@ impl Client {
         domain_name: &str,
         record_id: u64,
     ) -> Result<DomainRecordResponse, Error> {
-        let url = Url::parse(&format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id))?;
+        let url = Url::parse(&format!(
+            "{}/domains/{}/records/{}",
+            API_BASE_URL, domain_name, record_id
+        ))?;
 
         let res = self
             .http_client
@@ -382,7 +388,10 @@ impl Client {
         record_id: u64,
         request: UpdateDomainRecordRequest,
     ) -> Result<DomainRecordResponse, Error> {
-        let url = Url::parse(&format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id))?;
+        let url = Url::parse(&format!(
+            "{}/domains/{}/records/{}",
+            API_BASE_URL, domain_name, record_id
+        ))?;
 
         let res = self
             .http_client
@@ -401,8 +410,15 @@ impl Client {
     ///
     /// * `domain_name` - The domain name.
     /// * `record_id` - The record ID.
-    pub async fn delete_domain_record(&self, domain_name: &str, record_id: u64) -> Result<(), Error> {
-        let url = Url::parse(&format!("{}/domains/{}/records/{}", API_BASE_URL, domain_name, record_id))?;
+    pub async fn delete_domain_record(
+        &self,
+        domain_name: &str,
+        record_id: u64,
+    ) -> Result<(), Error> {
+        let url = Url::parse(&format!(
+            "{}/domains/{}/records/{}",
+            API_BASE_URL, domain_name, record_id
+        ))?;
 
         let res = self
             .http_client

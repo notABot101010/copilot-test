@@ -90,10 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = if cli.config.exists() {
         Config::load(&cli.config)?
     } else {
-        warn!(
-            "Config file not found at {:?}, using defaults",
-            cli.config
-        );
+        warn!("Config file not found at {:?}, using defaults", cli.config);
         Config::default_config()
     };
 
@@ -118,7 +115,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::CreateOrg { name, display_name } => {
             create_organization(&db, &name, display_name.as_deref(), &cli.repos_path).await?;
         }
-        Commands::CreateProject { org, name, display_name } => {
+        Commands::CreateProject {
+            org,
+            name,
+            display_name,
+        } => {
             create_project(&db, &org, &name, display_name.as_deref(), &cli.repos_path).await?;
         }
         Commands::CreateRepo { org, project, name } => {
@@ -204,7 +205,10 @@ async fn create_repository(
     }
 
     // Create repository path
-    let repo_path = repos_path.join(org).join(project).join(format!("{}.git", name));
+    let repo_path = repos_path
+        .join(org)
+        .join(project)
+        .join(format!("{}.git", name));
 
     // Ensure project directory exists
     std::fs::create_dir_all(repos_path.join(org).join(project))?;
@@ -215,9 +219,13 @@ async fn create_repository(
 
     // Store in database
     let relative_path = format!("{}/{}/{}.git", org, project, name);
-    db.create_repository(org, project, name, &relative_path).await?;
+    db.create_repository(org, project, name, &relative_path)
+        .await?;
 
-    info!("Created repository '{}/{}/{}' at {:?}", org, project, name, repo_path);
+    info!(
+        "Created repository '{}/{}/{}' at {:?}",
+        org, project, name, repo_path
+    );
 
     Ok(())
 }

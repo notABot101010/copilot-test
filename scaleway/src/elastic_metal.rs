@@ -427,9 +427,8 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListBaremetalServersResponse, Error> {
-        let mut url =
-            Url::parse(&format!("{}/zones/{}/servers", BAREMETAL_API_URL, zone))
-                .expect("valid URL");
+        let mut url = Url::parse(&format!("{}/zones/{}/servers", BAREMETAL_API_URL, zone))
+            .expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -645,11 +644,7 @@ impl Client {
     // ========================================================================
 
     /// Get BMC access for a server
-    pub async fn get_bmc_access(
-        &self,
-        zone: &str,
-        server_id: &str,
-    ) -> Result<BMCAccess, Error> {
+    pub async fn get_bmc_access(&self, zone: &str, server_id: &str) -> Result<BMCAccess, Error> {
         let url = format!(
             "{}/zones/{}/servers/{}/bmc-access",
             BAREMETAL_API_URL, zone, server_id
@@ -668,11 +663,7 @@ impl Client {
     }
 
     /// Start BMC access for a server
-    pub async fn start_bmc_access(
-        &self,
-        zone: &str,
-        server_id: &str,
-    ) -> Result<BMCAccess, Error> {
+    pub async fn start_bmc_access(&self, zone: &str, server_id: &str) -> Result<BMCAccess, Error> {
         let url = format!(
             "{}/zones/{}/servers/{}/bmc-access",
             BAREMETAL_API_URL, zone, server_id
@@ -867,8 +858,7 @@ impl Client {
         page_size: Option<u32>,
     ) -> Result<ListOffersResponse, Error> {
         let mut url =
-            Url::parse(&format!("{}/zones/{}/offers", BAREMETAL_API_URL, zone))
-                .expect("valid URL");
+            Url::parse(&format!("{}/zones/{}/offers", BAREMETAL_API_URL, zone)).expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -919,9 +909,8 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListOptionsResponse, Error> {
-        let mut url =
-            Url::parse(&format!("{}/zones/{}/options", BAREMETAL_API_URL, zone))
-                .expect("valid URL");
+        let mut url = Url::parse(&format!("{}/zones/{}/options", BAREMETAL_API_URL, zone))
+            .expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -977,8 +966,7 @@ impl Client {
         page_size: Option<u32>,
     ) -> Result<ListOSResponse, Error> {
         let mut url =
-            Url::parse(&format!("{}/zones/{}/os", BAREMETAL_API_URL, zone))
-                .expect("valid URL");
+            Url::parse(&format!("{}/zones/{}/os", BAREMETAL_API_URL, zone)).expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -1081,9 +1069,8 @@ impl Client {
         page: Option<u32>,
         page_size: Option<u32>,
     ) -> Result<ListSettingsResponse, Error> {
-        let mut url =
-            Url::parse(&format!("{}/zones/{}/settings", BAREMETAL_API_URL, zone))
-                .expect("valid URL");
+        let mut url = Url::parse(&format!("{}/zones/{}/settings", BAREMETAL_API_URL, zone))
+            .expect("valid URL");
 
         {
             let mut pairs = url.query_pairs_mut();
@@ -1117,7 +1104,10 @@ impl Client {
         setting_id: &str,
         request: UpdateSettingRequest,
     ) -> Result<Setting, Error> {
-        let url = format!("{}/zones/{}/settings/{}", BAREMETAL_API_URL, zone, setting_id);
+        let url = format!(
+            "{}/zones/{}/settings/{}",
+            BAREMETAL_API_URL, zone, setting_id
+        );
 
         let res = self
             .http_client

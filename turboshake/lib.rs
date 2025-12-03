@@ -10,10 +10,10 @@
 //! All functions use the Keccak-p[1600,12] permutation (12 rounds) for
 //! improved performance over SHA-3/SHAKE.
 
-mod turboshake;
 mod kangaroo;
+mod turboshake;
 mod turboshake_aead;
 
+pub use kangaroo::{length_encode, KT128, KT256};
 pub use turboshake::{TurboShake128, TurboShake256};
-pub use kangaroo::{KT128, KT256, length_encode};
-pub use turboshake_aead::{TurboShakeAead, AeadError};
+pub use turboshake_aead::{AeadError, TurboShakeAead};

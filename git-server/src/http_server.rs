@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::{
     body::Body,
     extract::{Path, Query, State},
-    http::{header, Method, StatusCode, Request},
+    http::{header, Method, Request, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Json, Response},
     routing::get,
@@ -292,7 +292,13 @@ pub fn create_router(state: AppState) -> Router {
     // Configure CORS
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers(Any);
 
     let api_routes = Router::new()
@@ -300,60 +306,184 @@ pub fn create_router(state: AppState) -> Router {
         .route("/orgs", get(list_orgs).post(create_org))
         .route("/orgs/:org", get(get_org).patch(update_org))
         // Project routes (a project now directly contains a git repository with same name)
-        .route("/orgs/:org/projects", get(list_projects).post(create_project))
-        .route("/orgs/:org/projects/:project", get(get_project).patch(update_project))
+        .route(
+            "/orgs/:org/projects",
+            get(list_projects).post(create_project),
+        )
+        .route(
+            "/orgs/:org/projects/:project",
+            get(get_project).patch(update_project),
+        )
         // Project git operations (project = repository, using project name as repo name)
-        .route("/orgs/:org/projects/:project/files", get(project_list_files).post(project_update_file).delete(project_delete_file))
-        .route("/orgs/:org/projects/:project/commits", get(project_list_commits))
+        .route(
+            "/orgs/:org/projects/:project/files",
+            get(project_list_files)
+                .post(project_update_file)
+                .delete(project_delete_file),
+        )
+        .route(
+            "/orgs/:org/projects/:project/commits",
+            get(project_list_commits),
+        )
         .route("/orgs/:org/projects/:project/tree", get(project_get_tree))
         .route("/orgs/:org/projects/:project/blob", get(project_get_blob))
-        .route("/orgs/:org/projects/:project/branches", get(project_list_branches))
-        .route("/orgs/:org/projects/:project/fork", axum::routing::post(project_fork))
+        .route(
+            "/orgs/:org/projects/:project/branches",
+            get(project_list_branches),
+        )
+        .route(
+            "/orgs/:org/projects/:project/fork",
+            axum::routing::post(project_fork),
+        )
         // Project issue routes
-        .route("/orgs/:org/projects/:project/issues", get(project_list_issues).post(project_create_issue))
-        .route("/orgs/:org/projects/:project/issues/:number", get(project_get_issue).patch(project_update_issue))
-        .route("/orgs/:org/projects/:project/issues/:number/comments", get(project_list_issue_comments).post(project_create_issue_comment))
-        .route("/orgs/:org/projects/:project/issues/:number/comments/:comment_id", axum::routing::patch(project_update_issue_comment))
-        .route("/orgs/:org/projects/:project/issues/:number/tags", get(project_get_issue_tags).post(project_add_issue_tag))
-        .route("/orgs/:org/projects/:project/issues/:number/tags/:tag_id", axum::routing::delete(project_remove_issue_tag))
+        .route(
+            "/orgs/:org/projects/:project/issues",
+            get(project_list_issues).post(project_create_issue),
+        )
+        .route(
+            "/orgs/:org/projects/:project/issues/:number",
+            get(project_get_issue).patch(project_update_issue),
+        )
+        .route(
+            "/orgs/:org/projects/:project/issues/:number/comments",
+            get(project_list_issue_comments).post(project_create_issue_comment),
+        )
+        .route(
+            "/orgs/:org/projects/:project/issues/:number/comments/:comment_id",
+            axum::routing::patch(project_update_issue_comment),
+        )
+        .route(
+            "/orgs/:org/projects/:project/issues/:number/tags",
+            get(project_get_issue_tags).post(project_add_issue_tag),
+        )
+        .route(
+            "/orgs/:org/projects/:project/issues/:number/tags/:tag_id",
+            axum::routing::delete(project_remove_issue_tag),
+        )
         // Project tag routes
-        .route("/orgs/:org/projects/:project/tags", get(project_list_tags).post(project_create_tag))
-        .route("/orgs/:org/projects/:project/tags/:tag_id", get(project_get_tag).patch(project_update_tag).delete(project_delete_tag))
+        .route(
+            "/orgs/:org/projects/:project/tags",
+            get(project_list_tags).post(project_create_tag),
+        )
+        .route(
+            "/orgs/:org/projects/:project/tags/:tag_id",
+            get(project_get_tag)
+                .patch(project_update_tag)
+                .delete(project_delete_tag),
+        )
         // Project pull request routes
-        .route("/orgs/:org/projects/:project/pulls", get(project_list_pull_requests).post(project_create_pull_request))
-        .route("/orgs/:org/projects/:project/pulls/:number", get(project_get_pull_request).patch(project_update_pull_request))
-        .route("/orgs/:org/projects/:project/pulls/:number/comments", get(project_list_pr_comments).post(project_create_pr_comment))
-        .route("/orgs/:org/projects/:project/pulls/:number/commits", get(project_get_pr_commits))
-        .route("/orgs/:org/projects/:project/pulls/:number/files", get(project_get_pr_files))
+        .route(
+            "/orgs/:org/projects/:project/pulls",
+            get(project_list_pull_requests).post(project_create_pull_request),
+        )
+        .route(
+            "/orgs/:org/projects/:project/pulls/:number",
+            get(project_get_pull_request).patch(project_update_pull_request),
+        )
+        .route(
+            "/orgs/:org/projects/:project/pulls/:number/comments",
+            get(project_list_pr_comments).post(project_create_pr_comment),
+        )
+        .route(
+            "/orgs/:org/projects/:project/pulls/:number/commits",
+            get(project_get_pr_commits),
+        )
+        .route(
+            "/orgs/:org/projects/:project/pulls/:number/files",
+            get(project_get_pr_files),
+        )
         // Legacy repository routes (kept for backward compatibility)
-        .route("/orgs/:org/projects/:project/repos", get(list_repos).post(create_repo))
+        .route(
+            "/orgs/:org/projects/:project/repos",
+            get(list_repos).post(create_repo),
+        )
         .route("/orgs/:org/projects/:project/repos/:name", get(get_repo))
-        .route("/orgs/:org/projects/:project/repos/:name/files", get(list_files).post(update_file).delete(delete_file))
-        .route("/orgs/:org/projects/:project/repos/:name/commits", get(list_commits))
-        .route("/orgs/:org/projects/:project/repos/:name/tree", get(get_tree))
-        .route("/orgs/:org/projects/:project/repos/:name/blob", get(get_blob_root))
-        .route("/orgs/:org/projects/:project/repos/:name/branches", get(list_branches))
-        .route("/orgs/:org/projects/:project/repos/:name/fork", axum::routing::post(fork_repo))
-        .route("/orgs/:org/projects/:project/repos/:name/issues", get(list_issues).post(create_issue))
-        .route("/orgs/:org/projects/:project/repos/:name/issues/:number", get(get_issue).patch(update_issue))
-        .route("/orgs/:org/projects/:project/repos/:name/issues/:number/comments", get(list_issue_comments).post(create_issue_comment))
-        .route("/orgs/:org/projects/:project/repos/:name/issues/:number/comments/:comment_id", axum::routing::patch(update_issue_comment))
-        .route("/orgs/:org/projects/:project/repos/:name/pulls", get(list_pull_requests).post(create_pull_request))
-        .route("/orgs/:org/projects/:project/repos/:name/pulls/:number", get(get_pull_request).patch(update_pull_request))
-        .route("/orgs/:org/projects/:project/repos/:name/pulls/:number/comments", get(list_pr_comments).post(create_pr_comment))
-        .route("/orgs/:org/projects/:project/repos/:name/pulls/:number/commits", get(get_pr_commits))
-        .route("/orgs/:org/projects/:project/repos/:name/pulls/:number/files", get(get_pr_files))
-        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/files",
+            get(list_files).post(update_file).delete(delete_file),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/commits",
+            get(list_commits),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/tree",
+            get(get_tree),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/blob",
+            get(get_blob_root),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/branches",
+            get(list_branches),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/fork",
+            axum::routing::post(fork_repo),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/issues",
+            get(list_issues).post(create_issue),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/issues/:number",
+            get(get_issue).patch(update_issue),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/issues/:number/comments",
+            get(list_issue_comments).post(create_issue_comment),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/issues/:number/comments/:comment_id",
+            axum::routing::patch(update_issue_comment),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/pulls",
+            get(list_pull_requests).post(create_pull_request),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/pulls/:number",
+            get(get_pull_request).patch(update_pull_request),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/pulls/:number/comments",
+            get(list_pr_comments).post(create_pr_comment),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/pulls/:number/commits",
+            get(get_pr_commits),
+        )
+        .route(
+            "/orgs/:org/projects/:project/repos/:name/pulls/:number/files",
+            get(get_pr_files),
+        )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ));
 
     // Git HTTP Smart Protocol routes - now just /:org/:project.git (project = repo)
     let git_routes = Router::new()
         .route("/:org/:project.git/info/refs", get(project_git_info_refs))
-        .route("/:org/:project.git/git-upload-pack", axum::routing::post(project_git_upload_pack))
-        .route("/:org/:project.git/git-receive-pack", axum::routing::post(project_git_receive_pack))
+        .route(
+            "/:org/:project.git/git-upload-pack",
+            axum::routing::post(project_git_upload_pack),
+        )
+        .route(
+            "/:org/:project.git/git-receive-pack",
+            axum::routing::post(project_git_receive_pack),
+        )
         // Legacy: keep old routes for backward compatibility
         .route("/:org/:project/:name.git/info/refs", get(git_info_refs))
-        .route("/:org/:project/:name.git/git-upload-pack", axum::routing::post(git_upload_pack))
-        .route("/:org/:project/:name.git/git-receive-pack", axum::routing::post(git_receive_pack))
+        .route(
+            "/:org/:project/:name.git/git-upload-pack",
+            axum::routing::post(git_upload_pack),
+        )
+        .route(
+            "/:org/:project/:name.git/git-receive-pack",
+            axum::routing::post(git_receive_pack),
+        )
         .with_state(state.clone());
 
     // Try to find static directory - check multiple locations
@@ -432,10 +562,9 @@ async fn auth_middleware(
     match auth_header {
         Some(auth) if auth.starts_with("Basic ") => {
             let encoded = &auth[6..];
-            if let Ok(decoded) = base64::Engine::decode(
-                &base64::engine::general_purpose::STANDARD,
-                encoded,
-            ) {
+            if let Ok(decoded) =
+                base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encoded)
+            {
                 if let Ok(credentials) = String::from_utf8(decoded) {
                     if let Some((user, password)) = credentials.split_once(':') {
                         // Hash the password
@@ -496,8 +625,13 @@ async fn create_org(
         return Err(AppError::bad_request("Organization name is required"));
     }
 
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        return Err(AppError::bad_request("Organization name contains invalid characters"));
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(AppError::bad_request(
+            "Organization name contains invalid characters",
+        ));
     }
 
     // Check if already exists
@@ -517,7 +651,8 @@ async fn create_org(
         body.display_name.trim().to_string()
     };
 
-    let org = state.db
+    let org = state
+        .db
         .create_organization(name, &display_name, &body.description)
         .await?;
 
@@ -544,8 +679,13 @@ async fn update_org(
     Path(org_name): Path<String>,
     Json(body): Json<UpdateOrgRequest>,
 ) -> Result<Json<OrganizationInfo>, AppError> {
-    let org = state.db
-        .update_organization(&org_name, body.display_name.as_deref(), body.description.as_deref())
+    let org = state
+        .db
+        .update_organization(
+            &org_name,
+            body.display_name.as_deref(),
+            body.description.as_deref(),
+        )
         .await?
         .ok_or_else(|| AppError::not_found("Organization not found"))?;
 
@@ -560,7 +700,8 @@ async fn list_projects(
     Path(org): Path<String>,
 ) -> Result<Json<Vec<ProjectInfo>>, AppError> {
     // Verify org exists
-    state.db
+    state
+        .db
         .get_organization(&org)
         .await?
         .ok_or_else(|| AppError::not_found("Organization not found"))?;
@@ -577,7 +718,8 @@ async fn create_project(
     Json(body): Json<CreateProjectRequest>,
 ) -> Result<Json<ProjectInfo>, AppError> {
     // Verify org exists
-    state.db
+    state
+        .db
         .get_organization(&org)
         .await?
         .ok_or_else(|| AppError::not_found("Organization not found"))?;
@@ -587,8 +729,13 @@ async fn create_project(
         return Err(AppError::bad_request("Project name is required"));
     }
 
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        return Err(AppError::bad_request("Project name contains invalid characters"));
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(AppError::bad_request(
+            "Project name contains invalid characters",
+        ));
     }
 
     // Check if already exists
@@ -608,7 +755,8 @@ async fn create_project(
         body.display_name.trim().to_string()
     };
 
-    let project = state.db
+    let project = state
+        .db
         .create_project(&org, name, &display_name, &body.description)
         .await?;
 
@@ -623,7 +771,8 @@ async fn create_project(
 
     // Add to database - store relative path from repos root
     let relative_path = format!("{}/{}/{}", org, name, repo_dir_name);
-    state.db
+    state
+        .db
         .create_repository(&org, name, name, &relative_path)
         .await?;
 
@@ -650,10 +799,15 @@ async fn update_project(
     Path((org, project_name)): Path<(String, String)>,
     Json(body): Json<UpdateProjectRequest>,
 ) -> Result<Json<ProjectInfo>, AppError> {
-    let project = state.db
-        .update_project(&org, &project_name, body.display_name.as_deref(), body.description.as_deref())
-        .await
-        ?
+    let project = state
+        .db
+        .update_project(
+            &org,
+            &project_name,
+            body.display_name.as_deref(),
+            body.description.as_deref(),
+        )
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     Ok(Json(project))
@@ -667,17 +821,13 @@ async fn list_repos(
     Path((org, project)): Path<(String, String)>,
 ) -> Result<Json<Vec<RepoInfo>>, AppError> {
     // Verify project exists
-    state.db
+    state
+        .db
         .get_project(&org, &project)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
-    let repos = state
-        .db
-        .list_repositories(&org, &project)
-        .await
-        ?;
+    let repos = state.db.list_repositories(&org, &project).await?;
 
     let repo_infos: Vec<RepoInfo> = repos
         .into_iter()
@@ -700,10 +850,10 @@ async fn create_repo(
     Json(body): Json<CreateRepoRequest>,
 ) -> Result<Json<RepoInfo>, AppError> {
     // Verify project exists
-    state.db
+    state
+        .db
         .get_project(&org, &project)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Validate name
@@ -713,15 +863,17 @@ async fn create_repo(
     }
 
     // Check for invalid characters in name
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
-        return Err(AppError::bad_request("Repository name contains invalid characters"));
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return Err(AppError::bad_request(
+            "Repository name contains invalid characters",
+        ));
     }
 
     // Check if already exists
-    let existing = state.db
-        .get_repository(&org, &project, name)
-        .await
-        ?;
+    let existing = state.db.get_repository(&org, &project, name).await?;
 
     if existing.is_some() {
         return Err(AppError::conflict("Repository already exists"));
@@ -733,12 +885,14 @@ async fn create_repo(
     } else {
         format!("{}.git", name)
     };
-    let repo_path = state.repos_path.join(&org).join(&project).join(&repo_dir_name);
+    let repo_path = state
+        .repos_path
+        .join(&org)
+        .join(&project)
+        .join(&repo_dir_name);
 
     // Ensure project directory exists
-    fs::create_dir_all(state.repos_path.join(&org).join(&project))
-        .await
-        ?;
+    fs::create_dir_all(state.repos_path.join(&org).join(&project)).await?;
 
     // Initialize bare git repository with main as default branch using git2
     git_ops::init_bare_repo(&repo_path, "main")
@@ -746,10 +900,10 @@ async fn create_repo(
 
     // Add to database - store relative path from repos root
     let relative_path = format!("{}/{}/{}", org, project, repo_dir_name);
-    state.db
+    state
+        .db
         .create_repository(&org, &project, name, &relative_path)
-        .await
-        ?;
+        .await?;
 
     Ok(Json(RepoInfo {
         name: name.to_string(),
@@ -768,8 +922,7 @@ async fn get_repo(
     let repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     Ok(Json(RepoInfo {
@@ -789,8 +942,7 @@ async fn list_files(
     let repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
@@ -819,8 +971,7 @@ async fn update_file(
     let repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
@@ -852,8 +1003,7 @@ async fn delete_file(
     let repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
@@ -873,8 +1023,7 @@ async fn list_commits(
     let repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
@@ -892,8 +1041,7 @@ async fn get_tree(
     let repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
@@ -913,13 +1061,15 @@ async fn get_blob_root(
     let repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
     let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
-    let path = query.path.as_deref().ok_or_else(|| AppError::bad_request("path query parameter required"))?;
+    let path = query
+        .path
+        .as_deref()
+        .ok_or_else(|| AppError::bad_request("path query parameter required"))?;
     let content = get_git_blob(&repo_path, git_ref, path)?;
 
     Ok(content)
@@ -943,17 +1093,20 @@ fn list_git_files(
 
     // Use git2 to list files
     match git_ops::list_files(repo_path, git_ref, path) {
-        Ok(entries) => {
-            Ok(entries.into_iter().map(|e| FileEntry {
+        Ok(entries) => Ok(entries
+            .into_iter()
+            .map(|e| FileEntry {
                 name: e.name,
                 path: e.path,
                 entry_type: e.entry_type,
                 size: e.size,
-            }).collect())
-        }
+            })
+            .collect()),
         Err(git_ops::GitError::Git(err)) => {
             // Empty repo or invalid ref
-            if err.code() == git2::ErrorCode::NotFound || err.code() == git2::ErrorCode::UnbornBranch {
+            if err.code() == git2::ErrorCode::NotFound
+                || err.code() == git2::ErrorCode::UnbornBranch
+            {
                 Ok(vec![])
             } else {
                 Err(AppError::internal(err.to_string()))
@@ -966,18 +1119,21 @@ fn list_git_files(
 /// List commits in a git repository
 fn list_git_commits(repo_path: &PathBuf) -> Result<Vec<CommitInfo>, AppError> {
     match git_ops::list_commits(repo_path, 50) {
-        Ok(commits) => {
-            Ok(commits.into_iter().map(|c| CommitInfo {
+        Ok(commits) => Ok(commits
+            .into_iter()
+            .map(|c| CommitInfo {
                 hash: c.hash,
                 short_hash: c.short_hash,
                 author: c.author,
                 date: c.date,
                 message: c.message,
-            }).collect())
-        }
+            })
+            .collect()),
         Err(git_ops::GitError::Git(err)) => {
             // Empty repo
-            if err.code() == git2::ErrorCode::NotFound || err.code() == git2::ErrorCode::UnbornBranch {
+            if err.code() == git2::ErrorCode::NotFound
+                || err.code() == git2::ErrorCode::UnbornBranch
+            {
                 Ok(vec![])
             } else {
                 Err(AppError::internal(err.to_string()))
@@ -988,11 +1144,7 @@ fn list_git_commits(repo_path: &PathBuf) -> Result<Vec<CommitInfo>, AppError> {
 }
 
 /// Get blob content from git
-fn get_git_blob(
-    repo_path: &PathBuf,
-    git_ref: &str,
-    path: &str,
-) -> Result<String, AppError> {
+fn get_git_blob(repo_path: &PathBuf, git_ref: &str, path: &str) -> Result<String, AppError> {
     // Validate ref to prevent command injection
     if !is_safe_git_ref(git_ref) {
         return Err(AppError::bad_request("Invalid git ref"));
@@ -1005,9 +1157,7 @@ fn get_git_blob(
 
     match git_ops::get_blob_content(repo_path, git_ref, path) {
         Ok(content) => Ok(content),
-        Err(git_ops::GitError::Git(err)) => {
-            Err(AppError::not_found(err.to_string()))
-        }
+        Err(git_ops::GitError::Git(err)) => Err(AppError::not_found(err.to_string())),
         Err(e) => Err(AppError::not_found(e.to_string())),
     }
 }
@@ -1061,8 +1211,7 @@ async fn list_branches(
     let repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
@@ -1091,8 +1240,7 @@ async fn fork_repo(
     let source_repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let new_name = body.name.trim();
@@ -1100,8 +1248,13 @@ async fn fork_repo(
         return Err(AppError::bad_request("New repository name is required"));
     }
 
-    if !new_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
-        return Err(AppError::bad_request("Repository name contains invalid characters"));
+    if !new_name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return Err(AppError::bad_request(
+            "Repository name contains invalid characters",
+        ));
     }
 
     // Determine target org and project (default to source org and project)
@@ -1109,17 +1262,17 @@ async fn fork_repo(
     let target_project = body.target_project.as_deref().unwrap_or(&project);
 
     // Verify target project exists
-    state.db
+    state
+        .db
         .get_project(target_org, target_project)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Check if already exists
-    let existing = state.db
+    let existing = state
+        .db
         .get_repository(target_org, target_project, new_name)
-        .await
-        ?;
+        .await?;
 
     if existing.is_some() {
         return Err(AppError::conflict("Repository already exists"));
@@ -1131,13 +1284,15 @@ async fn fork_repo(
     } else {
         format!("{}.git", new_name)
     };
-    let new_repo_path = state.repos_path.join(target_org).join(target_project).join(&new_repo_dir_name);
+    let new_repo_path = state
+        .repos_path
+        .join(target_org)
+        .join(target_project)
+        .join(&new_repo_dir_name);
     let source_repo_path = state.repos_path.join(&source_repo.path);
 
     // Ensure target project directory exists
-    fs::create_dir_all(state.repos_path.join(target_org).join(target_project))
-        .await
-        ?;
+    fs::create_dir_all(state.repos_path.join(target_org).join(target_project)).await?;
 
     // Clone the repository using git2
     git_ops::clone_bare(&source_repo_path, &new_repo_path)
@@ -1146,10 +1301,16 @@ async fn fork_repo(
     // Add to database with fork info
     let forked_from = format!("{}/{}/{}", org, project, name);
     let relative_path = format!("{}/{}/{}", target_org, target_project, new_repo_dir_name);
-    state.db
-        .create_repository_with_fork(target_org, target_project, new_name, &relative_path, &forked_from)
-        .await
-        ?;
+    state
+        .db
+        .create_repository_with_fork(
+            target_org,
+            target_project,
+            new_name,
+            &relative_path,
+            &forked_from,
+        )
+        .await?;
 
     Ok(Json(RepoInfo {
         name: new_name.to_string(),
@@ -1170,15 +1331,11 @@ async fn list_issues(
     let _repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let full_name = format!("{}/{}/{}", org, project, name);
-    let issues = state.db
-        .list_issues(&full_name)
-        .await
-        ?;
+    let issues = state.db.list_issues(&full_name).await?;
 
     Ok(Json(issues))
 }
@@ -1189,10 +1346,10 @@ async fn get_issue(
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
 ) -> Result<Json<IssueInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
-    let issue = state.db
+    let issue = state
+        .db
         .get_issue(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     Ok(Json(issue))
@@ -1207,8 +1364,7 @@ async fn create_issue(
     let _repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     if body.title.trim().is_empty() {
@@ -1216,10 +1372,17 @@ async fn create_issue(
     }
 
     let full_name = format!("{}/{}/{}", org, project, name);
-    let issue = state.db
-        .create_issue(&full_name, &body.title, &body.body, "anonymous", body.start_date.as_deref(), body.target_date.as_deref())
-        .await
-        ?;
+    let issue = state
+        .db
+        .create_issue(
+            &full_name,
+            &body.title,
+            &body.body,
+            "anonymous",
+            body.start_date.as_deref(),
+            body.target_date.as_deref(),
+        )
+        .await?;
 
     Ok(Json(issue))
 }
@@ -1231,10 +1394,19 @@ async fn update_issue(
     Json(body): Json<UpdateIssueRequest>,
 ) -> Result<Json<IssueInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
-    let issue = state.db
-        .update_issue(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref(), body.status.as_deref(), body.start_date.as_deref(), body.target_date.as_deref())
-        .await
-        ?
+    let issue = state
+        .db
+        .update_issue(
+            &full_name,
+            number,
+            body.title.as_deref(),
+            body.body.as_deref(),
+            body.state.as_deref(),
+            body.status.as_deref(),
+            body.start_date.as_deref(),
+            body.target_date.as_deref(),
+        )
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     Ok(Json(issue))
@@ -1246,16 +1418,13 @@ async fn list_issue_comments(
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
 ) -> Result<Json<Vec<IssueCommentInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
-    let issue = state.db
+    let issue = state
+        .db
         .get_issue(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
-    let comments = state.db
-        .list_issue_comments(issue.id)
-        .await
-        ?;
+    let comments = state.db.list_issue_comments(issue.id).await?;
 
     Ok(Json(comments))
 }
@@ -1267,20 +1436,20 @@ async fn create_issue_comment(
     Json(body): Json<CreateCommentRequest>,
 ) -> Result<Json<IssueCommentInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
-    let issue = state.db
+    let issue = state
+        .db
         .get_issue(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     if body.body.trim().is_empty() {
         return Err(AppError::bad_request("Comment body is required"));
     }
 
-    let comment = state.db
+    let comment = state
+        .db
         .create_issue_comment(issue.id, &body.body, "anonymous")
-        .await
-        ?;
+        .await?;
 
     Ok(Json(comment))
 }
@@ -1292,20 +1461,20 @@ async fn update_issue_comment(
     Json(body): Json<UpdateCommentRequest>,
 ) -> Result<Json<IssueCommentInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
-    let _issue = state.db
+    let _issue = state
+        .db
         .get_issue(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Issue not found"))?;
 
     if body.body.trim().is_empty() {
         return Err(AppError::bad_request("Comment body is required"));
     }
 
-    let comment = state.db
+    let comment = state
+        .db
         .update_issue_comment(comment_id, &body.body)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Comment not found"))?;
 
     Ok(Json(comment))
@@ -1321,15 +1490,11 @@ async fn list_pull_requests(
     let _repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let full_name = format!("{}/{}/{}", org, project, name);
-    let prs = state.db
-        .list_pull_requests(&full_name)
-        .await
-        ?;
+    let prs = state.db.list_pull_requests(&full_name).await?;
 
     Ok(Json(prs))
 }
@@ -1340,10 +1505,10 @@ async fn get_pull_request(
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
 ) -> Result<Json<PullRequestInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
-    let pr = state.db
+    let pr = state
+        .db
         .get_pull_request(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     Ok(Json(pr))
@@ -1358,8 +1523,7 @@ async fn create_pull_request(
     let _repo = state
         .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     if body.title.trim().is_empty() {
@@ -1367,7 +1531,8 @@ async fn create_pull_request(
     }
 
     let full_name = format!("{}/{}/{}", org, project, name);
-    let pr = state.db
+    let pr = state
+        .db
         .create_pull_request(
             &full_name,
             &body.title,
@@ -1377,8 +1542,7 @@ async fn create_pull_request(
             &body.target_branch,
             "anonymous",
         )
-        .await
-        ?;
+        .await?;
 
     Ok(Json(pr))
 }
@@ -1390,10 +1554,16 @@ async fn update_pull_request(
     Json(body): Json<UpdatePullRequestRequest>,
 ) -> Result<Json<PullRequestInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
-    let pr = state.db
-        .update_pull_request(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref())
-        .await
-        ?
+    let pr = state
+        .db
+        .update_pull_request(
+            &full_name,
+            number,
+            body.title.as_deref(),
+            body.body.as_deref(),
+            body.state.as_deref(),
+        )
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     Ok(Json(pr))
@@ -1405,16 +1575,13 @@ async fn list_pr_comments(
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
 ) -> Result<Json<Vec<PullRequestCommentInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
-    let pr = state.db
+    let pr = state
+        .db
         .get_pull_request(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
-    let comments = state.db
-        .list_pr_comments(pr.id)
-        .await
-        ?;
+    let comments = state.db.list_pr_comments(pr.id).await?;
 
     Ok(Json(comments))
 }
@@ -1426,20 +1593,20 @@ async fn create_pr_comment(
     Json(body): Json<CreateCommentRequest>,
 ) -> Result<Json<PullRequestCommentInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
-    let pr = state.db
+    let pr = state
+        .db
         .get_pull_request(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     if body.body.trim().is_empty() {
         return Err(AppError::bad_request("Comment body is required"));
     }
 
-    let comment = state.db
+    let comment = state
+        .db
         .create_pr_comment(pr.id, &body.body, "anonymous")
-        .await
-        ?;
+        .await?;
 
     Ok(Json(comment))
 }
@@ -1450,10 +1617,10 @@ async fn get_pr_commits(
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
 ) -> Result<Json<Vec<CommitInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
-    let pr = state.db
+    let pr = state
+        .db
         .get_pull_request(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Get source repo - source_repo is in org/project/name format
@@ -1464,10 +1631,10 @@ async fn get_pr_commits(
         return Err(AppError::internal("Invalid source repo format"));
     };
 
-    let source_repo = state.db
+    let source_repo = state
+        .db
         .get_repository(source_org, source_project, source_name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&source_repo.path);
@@ -1475,13 +1642,16 @@ async fn get_pr_commits(
     // Get commits between target and source branches using git2
     match git_ops::get_commits_between(&repo_path, &pr.target_branch, &pr.source_branch, 50) {
         Ok(commits) => {
-            let commit_infos: Vec<CommitInfo> = commits.into_iter().map(|c| CommitInfo {
-                hash: c.hash,
-                short_hash: c.short_hash,
-                author: c.author,
-                date: c.date,
-                message: c.message,
-            }).collect();
+            let commit_infos: Vec<CommitInfo> = commits
+                .into_iter()
+                .map(|c| CommitInfo {
+                    hash: c.hash,
+                    short_hash: c.short_hash,
+                    author: c.author,
+                    date: c.date,
+                    message: c.message,
+                })
+                .collect();
             Ok(Json(commit_infos))
         }
         Err(_) => Ok(Json(vec![])),
@@ -1494,17 +1664,17 @@ async fn get_pr_files(
     Path((org, project, name, number)): Path<(String, String, String, i64)>,
 ) -> Result<Json<Vec<FileDiff>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, name);
-    let pr = state.db
+    let pr = state
+        .db
         .get_pull_request(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Get target repo
-    let target_repo = state.db
+    let target_repo = state
+        .db
         .get_repository(&org, &project, &name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Get source repo - source_repo is in org/project/name format
@@ -1515,22 +1685,30 @@ async fn get_pr_files(
         return Err(AppError::internal("Invalid source repo format"));
     };
 
-    let source_repo = state.db
+    let source_repo = state
+        .db
         .get_repository(source_org, source_project, source_name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let source_repo_path = state.repos_path.join(&source_repo.path);
     let target_repo_path = state.repos_path.join(&target_repo.path);
 
     // If same repo, do a simple diff
-    if source_repo.org_name == target_repo.org_name && source_repo.project_name == target_repo.project_name && source_repo.name == target_repo.name {
+    if source_repo.org_name == target_repo.org_name
+        && source_repo.project_name == target_repo.project_name
+        && source_repo.name == target_repo.name
+    {
         return get_branch_diff(&source_repo_path, &pr.target_branch, &pr.source_branch);
     }
 
     // For cross-repo PRs, we need to fetch the target and compare using git2
-    let _ = git_ops::add_remote_and_fetch(&source_repo_path, "target-for-pr", &target_repo_path, &pr.target_branch);
+    let _ = git_ops::add_remote_and_fetch(
+        &source_repo_path,
+        "target-for-pr",
+        &target_repo_path,
+        &pr.target_branch,
+    );
 
     let target_ref = format!("target-for-pr/{}", pr.target_branch);
     get_branch_diff(&source_repo_path, &target_ref, &pr.source_branch)
@@ -1544,13 +1722,16 @@ fn get_branch_diff(
 ) -> Result<Json<Vec<FileDiff>>, AppError> {
     match git_ops::get_branch_diff(repo_path, base, head) {
         Ok(diffs) => {
-            let file_diffs: Vec<FileDiff> = diffs.into_iter().map(|d| FileDiff {
-                path: d.path,
-                status: d.status,
-                additions: d.additions,
-                deletions: d.deletions,
-                diff: d.diff,
-            }).collect();
+            let file_diffs: Vec<FileDiff> = diffs
+                .into_iter()
+                .map(|d| FileDiff {
+                    path: d.path,
+                    status: d.status,
+                    additions: d.additions,
+                    deletions: d.deletions,
+                    diff: d.diff,
+                })
+                .collect();
             Ok(Json(file_diffs))
         }
         Err(_) => Ok(Json(vec![])),
@@ -1575,10 +1756,10 @@ async fn git_info_refs(
     let repo_name = name.strip_suffix(".git").unwrap_or(&name);
 
     // Get repository
-    let repo = state.db
+    let repo = state
+        .db
         .get_repository(&org, &project, repo_name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
@@ -1617,10 +1798,10 @@ async fn git_upload_pack(
     let repo_name = name.strip_suffix(".git").unwrap_or(&name);
 
     // Get repository
-    let repo = state.db
+    let repo = state
+        .db
         .get_repository(&org, &project, repo_name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
@@ -1647,10 +1828,10 @@ async fn git_receive_pack(
     let repo_name = name.strip_suffix(".git").unwrap_or(&name);
 
     // Get repository
-    let repo = state.db
+    let repo = state
+        .db
         .get_repository(&org, &project, repo_name)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     let repo_path = state.repos_path.join(&repo.path);
@@ -1661,7 +1842,10 @@ async fn git_receive_pack(
 
     Ok(Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/x-git-receive-pack-result")
+        .header(
+            header::CONTENT_TYPE,
+            "application/x-git-receive-pack-result",
+        )
         .header("Cache-Control", "no-cache")
         .body(Body::from(response_data))
         .unwrap())
@@ -1676,10 +1860,10 @@ async fn get_project_repo(
     project: &str,
 ) -> Result<crate::database::Repository, AppError> {
     // In the new model, project name = repo name
-    state.db
+    state
+        .db
         .get_repository(org, project, project)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))
 }
 
@@ -1749,7 +1933,10 @@ async fn project_get_blob(
     let repo = get_project_repo(&state, &org, &project).await?;
     let repo_path = state.repos_path.join(&repo.path);
     let git_ref = query.git_ref.as_deref().unwrap_or("HEAD");
-    let path = query.path.as_deref().ok_or_else(|| AppError::bad_request("path query parameter required"))?;
+    let path = query
+        .path
+        .as_deref()
+        .ok_or_else(|| AppError::bad_request("path query parameter required"))?;
     let content = get_git_blob(&repo_path, git_ref, path)?;
     Ok(content)
 }
@@ -1782,8 +1969,13 @@ async fn project_fork(
         return Err(AppError::bad_request("New project name is required"));
     }
 
-    if !new_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
-        return Err(AppError::bad_request("Project name contains invalid characters"));
+    if !new_name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return Err(AppError::bad_request(
+            "Project name contains invalid characters",
+        ));
     }
 
     // Determine target org (default to source org)
@@ -1796,10 +1988,7 @@ async fn project_fork(
     let description = format!("Forked from {}/{}", org, project);
 
     // Check if target project already exists
-    let existing = state.db
-        .get_project(target_org, target_project)
-        .await
-        ?;
+    let existing = state.db.get_project(target_org, target_project).await?;
 
     if existing.is_some() {
         return Err(AppError::conflict("Project already exists"));
@@ -1807,19 +1996,21 @@ async fn project_fork(
 
     // Create project directory
     let project_path = state.repos_path.join(target_org).join(target_project);
-    fs::create_dir_all(&project_path)
-        .await
-        ?;
+    fs::create_dir_all(&project_path).await?;
 
     // Create the project in database
-    state.db
+    state
+        .db
         .create_project(target_org, target_project, &display_name, &description)
-        .await
-        ?;
+        .await?;
 
     // Create the new repository directory
     let new_repo_dir_name = format!("{}.git", target_project);
-    let new_repo_path = state.repos_path.join(target_org).join(target_project).join(&new_repo_dir_name);
+    let new_repo_path = state
+        .repos_path
+        .join(target_org)
+        .join(target_project)
+        .join(&new_repo_dir_name);
     let source_repo_path = state.repos_path.join(&source_repo.path);
 
     // Clone the repository using git2
@@ -1829,10 +2020,16 @@ async fn project_fork(
     // Add to database with fork info
     let forked_from = format!("{}/{}", org, project);
     let relative_path = format!("{}/{}/{}", target_org, target_project, new_repo_dir_name);
-    state.db
-        .create_repository_with_fork(target_org, target_project, target_project, &relative_path, &forked_from)
-        .await
-        ?;
+    state
+        .db
+        .create_repository_with_fork(
+            target_org,
+            target_project,
+            target_project,
+            &relative_path,
+            &forked_from,
+        )
+        .await?;
 
     Ok(Json(RepoInfo {
         name: target_project.to_string(),
@@ -1852,10 +2049,7 @@ async fn project_list_issues(
 ) -> Result<Json<Vec<IssueInfo>>, AppError> {
     let _repo = get_project_repo(&state, &org, &project).await?;
     let full_name = format!("{}/{}/{}", org, project, project);
-    let issues = state.db
-        .list_issues(&full_name)
-        .await
-        ?;
+    let issues = state.db.list_issues(&full_name).await?;
     Ok(Json(issues))
 }
 
@@ -1865,10 +2059,10 @@ async fn project_get_issue(
     Path((org, project, number)): Path<(String, String, i64)>,
 ) -> Result<Json<IssueInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let issue = state.db
+    let issue = state
+        .db
         .get_issue(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
     Ok(Json(issue))
 }
@@ -1886,10 +2080,17 @@ async fn project_create_issue(
     }
 
     let full_name = format!("{}/{}/{}", org, project, project);
-    let issue = state.db
-        .create_issue(&full_name, &body.title, &body.body, "anonymous", body.start_date.as_deref(), body.target_date.as_deref())
-        .await
-        ?;
+    let issue = state
+        .db
+        .create_issue(
+            &full_name,
+            &body.title,
+            &body.body,
+            "anonymous",
+            body.start_date.as_deref(),
+            body.target_date.as_deref(),
+        )
+        .await?;
     Ok(Json(issue))
 }
 
@@ -1900,10 +2101,19 @@ async fn project_update_issue(
     Json(body): Json<UpdateIssueRequest>,
 ) -> Result<Json<IssueInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let issue = state.db
-        .update_issue(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref(), body.status.as_deref(), body.start_date.as_deref(), body.target_date.as_deref())
-        .await
-        ?
+    let issue = state
+        .db
+        .update_issue(
+            &full_name,
+            number,
+            body.title.as_deref(),
+            body.body.as_deref(),
+            body.state.as_deref(),
+            body.status.as_deref(),
+            body.start_date.as_deref(),
+            body.target_date.as_deref(),
+        )
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
     Ok(Json(issue))
 }
@@ -1914,16 +2124,13 @@ async fn project_list_issue_comments(
     Path((org, project, number)): Path<(String, String, i64)>,
 ) -> Result<Json<Vec<IssueCommentInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let issue = state.db
+    let issue = state
+        .db
         .get_issue(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
-    let comments = state.db
-        .list_issue_comments(issue.id)
-        .await
-        ?;
+    let comments = state.db.list_issue_comments(issue.id).await?;
     Ok(Json(comments))
 }
 
@@ -1934,20 +2141,20 @@ async fn project_create_issue_comment(
     Json(body): Json<CreateCommentRequest>,
 ) -> Result<Json<IssueCommentInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let issue = state.db
+    let issue = state
+        .db
         .get_issue(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     if body.body.trim().is_empty() {
         return Err(AppError::bad_request("Comment body is required"));
     }
 
-    let comment = state.db
+    let comment = state
+        .db
         .create_issue_comment(issue.id, &body.body, "anonymous")
-        .await
-        ?;
+        .await?;
     Ok(Json(comment))
 }
 
@@ -1958,20 +2165,20 @@ async fn project_update_issue_comment(
     Json(body): Json<UpdateCommentRequest>,
 ) -> Result<Json<IssueCommentInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let _issue = state.db
+    let _issue = state
+        .db
         .get_issue(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Issue not found"))?;
 
     if body.body.trim().is_empty() {
         return Err(AppError::bad_request("Comment body is required"));
     }
 
-    let comment = state.db
+    let comment = state
+        .db
         .update_issue_comment(comment_id, &body.body)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Comment not found"))?;
     Ok(Json(comment))
 }
@@ -1985,10 +2192,7 @@ async fn project_list_tags(
 ) -> Result<Json<Vec<TagInfo>>, AppError> {
     let _repo = get_project_repo(&state, &org, &project).await?;
     let full_name = format!("{}/{}/{}", org, project, project);
-    let tags = state.db
-        .list_tags(&full_name)
-        .await
-        ?;
+    let tags = state.db.list_tags(&full_name).await?;
     Ok(Json(tags))
 }
 
@@ -2005,10 +2209,10 @@ async fn project_create_tag(
     }
 
     let full_name = format!("{}/{}/{}", org, project, project);
-    let tag = state.db
+    let tag = state
+        .db
         .create_tag(&full_name, &body.name, &body.color)
-        .await
-        ?;
+        .await?;
     Ok(Json(tag))
 }
 
@@ -2018,10 +2222,10 @@ async fn project_get_tag(
     Path((org, project, tag_id)): Path<(String, String, i64)>,
 ) -> Result<Json<TagInfo>, AppError> {
     let _repo = get_project_repo(&state, &org, &project).await?;
-    let tag = state.db
+    let tag = state
+        .db
         .get_tag_by_id(tag_id)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Tag not found"))?;
     Ok(Json(tag))
 }
@@ -2033,10 +2237,10 @@ async fn project_update_tag(
     Json(body): Json<UpdateTagRequest>,
 ) -> Result<Json<TagInfo>, AppError> {
     let _repo = get_project_repo(&state, &org, &project).await?;
-    let tag = state.db
+    let tag = state
+        .db
         .update_tag(tag_id, body.name.as_deref(), body.color.as_deref())
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Tag not found"))?;
     Ok(Json(tag))
 }
@@ -2047,10 +2251,7 @@ async fn project_delete_tag(
     Path((org, project, tag_id)): Path<(String, String, i64)>,
 ) -> Result<(), AppError> {
     let _repo = get_project_repo(&state, &org, &project).await?;
-    state.db
-        .delete_tag(tag_id)
-        .await
-        ?;
+    state.db.delete_tag(tag_id).await?;
     Ok(())
 }
 
@@ -2060,16 +2261,13 @@ async fn project_get_issue_tags(
     Path((org, project, number)): Path<(String, String, i64)>,
 ) -> Result<Json<Vec<TagInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let issue = state.db
+    let issue = state
+        .db
         .get_issue(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Issue not found"))?;
-    
-    let tags = state.db
-        .get_issue_tags(issue.id)
-        .await
-        ?;
+
+    let tags = state.db.get_issue_tags(issue.id).await?;
     Ok(Json(tags))
 }
 
@@ -2086,16 +2284,13 @@ async fn project_add_issue_tag(
     Json(body): Json<AddTagToIssueRequest>,
 ) -> Result<(), AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let issue = state.db
+    let issue = state
+        .db
         .get_issue(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Issue not found"))?;
-    
-    state.db
-        .add_tag_to_issue(issue.id, body.tag_id)
-        .await
-        ?;
+
+    state.db.add_tag_to_issue(issue.id, body.tag_id).await?;
     Ok(())
 }
 
@@ -2105,16 +2300,13 @@ async fn project_remove_issue_tag(
     Path((org, project, number, tag_id)): Path<(String, String, i64, i64)>,
 ) -> Result<(), AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let issue = state.db
+    let issue = state
+        .db
         .get_issue(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Issue not found"))?;
-    
-    state.db
-        .remove_tag_from_issue(issue.id, tag_id)
-        .await
-        ?;
+
+    state.db.remove_tag_from_issue(issue.id, tag_id).await?;
     Ok(())
 }
 
@@ -2127,10 +2319,7 @@ async fn project_list_pull_requests(
 ) -> Result<Json<Vec<PullRequestInfo>>, AppError> {
     let _repo = get_project_repo(&state, &org, &project).await?;
     let full_name = format!("{}/{}/{}", org, project, project);
-    let prs = state.db
-        .list_pull_requests(&full_name)
-        .await
-        ?;
+    let prs = state.db.list_pull_requests(&full_name).await?;
     Ok(Json(prs))
 }
 
@@ -2140,10 +2329,10 @@ async fn project_get_pull_request(
     Path((org, project, number)): Path<(String, String, i64)>,
 ) -> Result<Json<PullRequestInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let pr = state.db
+    let pr = state
+        .db
         .get_pull_request(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
     Ok(Json(pr))
 }
@@ -2161,7 +2350,8 @@ async fn project_create_pull_request(
     }
 
     let full_name = format!("{}/{}/{}", org, project, project);
-    let pr = state.db
+    let pr = state
+        .db
         .create_pull_request(
             &full_name,
             &body.title,
@@ -2171,8 +2361,7 @@ async fn project_create_pull_request(
             &body.target_branch,
             "anonymous",
         )
-        .await
-        ?;
+        .await?;
     Ok(Json(pr))
 }
 
@@ -2183,10 +2372,16 @@ async fn project_update_pull_request(
     Json(body): Json<UpdatePullRequestRequest>,
 ) -> Result<Json<PullRequestInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let pr = state.db
-        .update_pull_request(&full_name, number, body.title.as_deref(), body.body.as_deref(), body.state.as_deref())
-        .await
-        ?
+    let pr = state
+        .db
+        .update_pull_request(
+            &full_name,
+            number,
+            body.title.as_deref(),
+            body.body.as_deref(),
+            body.state.as_deref(),
+        )
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
     Ok(Json(pr))
 }
@@ -2197,16 +2392,13 @@ async fn project_list_pr_comments(
     Path((org, project, number)): Path<(String, String, i64)>,
 ) -> Result<Json<Vec<PullRequestCommentInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let pr = state.db
+    let pr = state
+        .db
         .get_pull_request(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
-    let comments = state.db
-        .list_pr_comments(pr.id)
-        .await
-        ?;
+    let comments = state.db.list_pr_comments(pr.id).await?;
     Ok(Json(comments))
 }
 
@@ -2217,20 +2409,20 @@ async fn project_create_pr_comment(
     Json(body): Json<CreateCommentRequest>,
 ) -> Result<Json<PullRequestCommentInfo>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let pr = state.db
+    let pr = state
+        .db
         .get_pull_request(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     if body.body.trim().is_empty() {
         return Err(AppError::bad_request("Comment body is required"));
     }
 
-    let comment = state.db
+    let comment = state
+        .db
         .create_pr_comment(pr.id, &body.body, "anonymous")
-        .await
-        ?;
+        .await?;
     Ok(Json(comment))
 }
 
@@ -2240,10 +2432,10 @@ async fn project_get_pr_commits(
     Path((org, project, number)): Path<(String, String, i64)>,
 ) -> Result<Json<Vec<CommitInfo>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let pr = state.db
+    let pr = state
+        .db
         .get_pull_request(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Get source repo
@@ -2260,13 +2452,16 @@ async fn project_get_pr_commits(
     // Get commits between target and source branches using git2
     match git_ops::get_commits_between(&repo_path, &pr.target_branch, &pr.source_branch, 50) {
         Ok(commits) => {
-            let commit_infos: Vec<CommitInfo> = commits.into_iter().map(|c| CommitInfo {
-                hash: c.hash,
-                short_hash: c.short_hash,
-                author: c.author,
-                date: c.date,
-                message: c.message,
-            }).collect();
+            let commit_infos: Vec<CommitInfo> = commits
+                .into_iter()
+                .map(|c| CommitInfo {
+                    hash: c.hash,
+                    short_hash: c.short_hash,
+                    author: c.author,
+                    date: c.date,
+                    message: c.message,
+                })
+                .collect();
             Ok(Json(commit_infos))
         }
         Err(_) => Ok(Json(vec![])),
@@ -2279,10 +2474,10 @@ async fn project_get_pr_files(
     Path((org, project, number)): Path<(String, String, i64)>,
 ) -> Result<Json<Vec<FileDiff>>, AppError> {
     let full_name = format!("{}/{}/{}", org, project, project);
-    let pr = state.db
+    let pr = state
+        .db
         .get_pull_request(&full_name, number)
-        .await
-        ?
+        .await?
         .ok_or_else(|| AppError::not_found("Not found"))?;
 
     // Get target repo
@@ -2302,12 +2497,19 @@ async fn project_get_pr_files(
     let target_repo_path = state.repos_path.join(&target_repo.path);
 
     // If same repo, do a simple diff
-    if source_repo.org_name == target_repo.org_name && source_repo.project_name == target_repo.project_name {
+    if source_repo.org_name == target_repo.org_name
+        && source_repo.project_name == target_repo.project_name
+    {
         return get_branch_diff(&source_repo_path, &pr.target_branch, &pr.source_branch);
     }
 
     // For cross-repo PRs, fetch and compare using git2
-    let _ = git_ops::add_remote_and_fetch(&source_repo_path, "target-for-pr", &target_repo_path, &pr.target_branch);
+    let _ = git_ops::add_remote_and_fetch(
+        &source_repo_path,
+        "target-for-pr",
+        &target_repo_path,
+        &pr.target_branch,
+    );
 
     let target_ref = format!("target-for-pr/{}", pr.target_branch);
     get_branch_diff(&source_repo_path, &target_ref, &pr.source_branch)
@@ -2391,7 +2593,10 @@ async fn project_git_receive_pack(
 
     Ok(Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/x-git-receive-pack-result")
+        .header(
+            header::CONTENT_TYPE,
+            "application/x-git-receive-pack-result",
+        )
         .header("Cache-Control", "no-cache")
         .body(Body::from(response_data))
         .unwrap())

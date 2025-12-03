@@ -36,10 +36,7 @@ async fn main() -> anyhow::Result<()> {
 
     let poll_manager = Arc::new(RwLock::new(LongPollManager::new()));
 
-    let state = AppState {
-        db,
-        poll_manager,
-    };
+    let state = AppState { db, poll_manager };
 
     let app = Router::new()
         .route("/api/auth/register", post(register))
@@ -251,14 +248,12 @@ async fn upload_prekeys(
     let user = user.ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
     for prekey in req.prekeys {
-        sqlx::query(
-            "INSERT INTO prekeys (user_id, public_key, key_id) VALUES (?, ?, ?)"
-        )
-        .bind(user.id)
-        .bind(&prekey.public_key)
-        .bind(prekey.key_id)
-        .execute(&state.db)
-        .await?;
+        sqlx::query("INSERT INTO prekeys (user_id, public_key, key_id) VALUES (?, ?, ?)")
+            .bind(user.id)
+            .bind(&prekey.public_key)
+            .bind(prekey.key_id)
+            .execute(&state.db)
+            .await?;
     }
 
     Ok(Json(GenericResponse { success: true }))
@@ -406,7 +401,10 @@ impl IntoResponse for AppError {
         let (status, message) = match self {
             AppError::Database(err) => {
                 warn!("Database error: {}", err);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
@@ -414,7 +412,10 @@ impl IntoResponse for AppError {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             AppError::Internal(msg) => {
                 warn!("Internal error: {}", msg);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
         };
 

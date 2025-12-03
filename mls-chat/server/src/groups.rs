@@ -147,11 +147,13 @@ pub async fn invite_member(
     .fetch_optional(&state.db)
     .await?;
 
-    let membership =
-        membership.ok_or_else(|| AppError::Unauthorized("Not a member of this group".to_string()))?;
+    let membership = membership
+        .ok_or_else(|| AppError::Unauthorized("Not a member of this group".to_string()))?;
 
     if membership.is_admin == 0 {
-        return Err(AppError::Unauthorized("Only admins can invite members".to_string()));
+        return Err(AppError::Unauthorized(
+            "Only admins can invite members".to_string(),
+        ));
     }
 
     // Get invitee
@@ -162,7 +164,8 @@ pub async fn invite_member(
     .fetch_optional(&state.db)
     .await?;
 
-    let invitee = invitee.ok_or_else(|| AppError::NotFound("User to invite not found".to_string()))?;
+    let invitee =
+        invitee.ok_or_else(|| AppError::NotFound("User to invite not found".to_string()))?;
 
     // Check if already a member
     let existing = sqlx::query_as::<_, GroupMemberRow>(
@@ -185,11 +188,9 @@ pub async fn invite_member(
     .map_err(|_| AppError::BadRequest("Invalid welcome data".to_string()))?;
 
     // Decode commit data
-    let commit_data = base64::Engine::decode(
-        &base64::engine::general_purpose::STANDARD,
-        &req.commit_data,
-    )
-    .map_err(|_| AppError::BadRequest("Invalid commit data".to_string()))?;
+    let commit_data =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &req.commit_data)
+            .map_err(|_| AppError::BadRequest("Invalid commit data".to_string()))?;
 
     // Store pending welcome
     sqlx::query("INSERT INTO pending_welcomes (user_id, group_id, welcome_data, inviter_id) VALUES (?, ?, ?, ?)")
@@ -284,15 +285,19 @@ pub async fn join_group(
     .await?;
 
     if welcome.is_none() {
-        return Err(AppError::NotFound("No pending invitation found".to_string()));
+        return Err(AppError::NotFound(
+            "No pending invitation found".to_string(),
+        ));
     }
 
     // Add user as member
-    sqlx::query("INSERT OR IGNORE INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, 0)")
-        .bind(&group_id)
-        .bind(user.id)
-        .execute(&state.db)
-        .await?;
+    sqlx::query(
+        "INSERT OR IGNORE INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, 0)",
+    )
+    .bind(&group_id)
+    .bind(user.id)
+    .execute(&state.db)
+    .await?;
 
     // Delete the welcome
     sqlx::query("DELETE FROM pending_welcomes WHERE user_id = ? AND group_id = ?")
@@ -329,8 +334,8 @@ pub async fn send_message(
     .fetch_optional(&state.db)
     .await?;
 
-    let membership =
-        membership.ok_or_else(|| AppError::Unauthorized("Not a member of this group".to_string()))?;
+    let membership = membership
+        .ok_or_else(|| AppError::Unauthorized("Not a member of this group".to_string()))?;
 
     // Check if it's a channel and user is not admin
     let group = sqlx::query_as::<_, GroupRow>(
@@ -343,7 +348,9 @@ pub async fn send_message(
     let group = group.ok_or_else(|| AppError::NotFound("Group not found".to_string()))?;
 
     if group.is_channel == 1 && membership.is_admin == 0 {
-        return Err(AppError::Unauthorized("Only admins can post in channels".to_string()));
+        return Err(AppError::Unauthorized(
+            "Only admins can post in channels".to_string(),
+        ));
     }
 
     // Decode message data
@@ -427,7 +434,9 @@ pub async fn get_messages(
     .await?;
 
     if membership.is_none() {
-        return Err(AppError::Unauthorized("Not a member of this group".to_string()));
+        return Err(AppError::Unauthorized(
+            "Not a member of this group".to_string(),
+        ));
     }
 
     let since_id = params.since_id.unwrap_or(0);
@@ -517,11 +526,13 @@ pub async fn subscribe_channel(
     }
 
     // Add user as subscriber (non-admin member)
-    sqlx::query("INSERT OR IGNORE INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, 0)")
-        .bind(&group_id)
-        .bind(user.id)
-        .execute(&state.db)
-        .await?;
+    sqlx::query(
+        "INSERT OR IGNORE INTO group_members (group_id, user_id, is_admin) VALUES (?, ?, 0)",
+    )
+    .bind(&group_id)
+    .bind(user.id)
+    .execute(&state.db)
+    .await?;
 
     info!("User {} subscribed to channel {}", req.username, group_id);
 

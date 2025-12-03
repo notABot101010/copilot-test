@@ -2,13 +2,13 @@ use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use rand_core::OsRng;
 use axum::{
     extract::{Request, State},
     http::StatusCode,
     middleware::Next,
     response::Response,
 };
+use rand_core::OsRng;
 
 pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);

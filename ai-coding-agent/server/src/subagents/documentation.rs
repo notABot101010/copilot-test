@@ -1,10 +1,10 @@
-use async_trait::async_trait;
-use std::collections::HashMap;
-use std::sync::Arc;
+use super::SubAgent;
 use crate::llm::{ChatMessage, LlmClient};
 use crate::models::{SubAgentType, Task};
 use crate::templates::TemplateManager;
-use super::SubAgent;
+use async_trait::async_trait;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct DocumentationAgent {
     llm_client: Arc<dyn LlmClient>,
@@ -30,13 +30,21 @@ impl SubAgent for DocumentationAgent {
         &self.llm_client
     }
 
-    async fn execute(&self, task: &Task, templates: &TemplateManager) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    async fn execute(
+        &self,
+        task: &Task,
+        templates: &TemplateManager,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let mut vars = HashMap::new();
         vars.insert("doc_style".to_string(), "Markdown".to_string());
-        vars.insert("existing_docs".to_string(), "(docs would be analyzed)".to_string());
+        vars.insert(
+            "existing_docs".to_string(),
+            "(docs would be analyzed)".to_string(),
+        );
         vars.insert("task_description".to_string(), task.description.clone());
 
-        let system_prompt = templates.render("documentation", &vars)
+        let system_prompt = templates
+            .render("documentation", &vars)
             .unwrap_or_else(|| task.description.clone());
 
         let messages = vec![

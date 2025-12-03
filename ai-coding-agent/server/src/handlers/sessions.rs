@@ -1,15 +1,13 @@
-use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     Json,
 };
 use chrono::Utc;
+use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::models::{
-    CreateSessionRequest, Message, SendMessageRequest, Session, SteerRequest,
-};
+use crate::models::{CreateSessionRequest, Message, SendMessageRequest, Session, SteerRequest};
 use crate::AppState;
 
 pub async fn create_session(
@@ -150,9 +148,12 @@ pub async fn send_message(
     let templates = state.templates.clone();
     let sid = session_id.clone();
     let content = req.content.clone();
-    
+
     tokio::spawn(async move {
-        if let Err(err) = orchestrator.process_message(&db, &templates, &sid, &content).await {
+        if let Err(err) = orchestrator
+            .process_message(&db, &templates, &sid, &content)
+            .await
+        {
             tracing::error!("Orchestrator error: {:?}", err);
         }
     });
@@ -198,7 +199,10 @@ pub async fn steer_session(
     .map_err(|_| StatusCode::NOT_FOUND)?;
 
     // Send steering command to orchestrator
-    state.orchestrator.steer(&session_id, req.command.clone()).await
+    state
+        .orchestrator
+        .steer(&session_id, req.command.clone())
+        .await
         .map_err(|err| {
             tracing::error!("Failed to steer session: {:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR

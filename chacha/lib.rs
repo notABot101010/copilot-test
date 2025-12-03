@@ -146,7 +146,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
     /// Returns the current counter value.
     #[inline]
     pub fn counter(&self) -> u64 {
-        return ((self.state[13] as u64) << 32) | (self.state[12] as u64);
+        ((self.state[13] as u64) << 32) | (self.state[12] as u64)
     }
 
     /// Increments the 64-bit counter by the given amount.

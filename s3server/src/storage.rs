@@ -41,7 +41,8 @@ impl Storage {
 
     /// Create a unique storage path for a multipart upload part
     pub fn create_part_storage_path(&self, upload_id: &str, part_number: i32) -> String {
-        let hash = crate::auth::sha256_hex_public(format!("{}/{}", upload_id, part_number).as_bytes());
+        let hash =
+            crate::auth::sha256_hex_public(format!("{}/{}", upload_id, part_number).as_bytes());
         format!("parts/{}/{}/{}", &hash[0..2], &hash[2..4], hash)
     }
 
@@ -71,9 +72,8 @@ impl Storage {
         let mut total_size: i64 = 0;
 
         while let Some(chunk) = stream.next().await {
-            let data = chunk.map_err(|err| {
-                std::io::Error::new(std::io::ErrorKind::Other, err.to_string())
-            })?;
+            let data = chunk
+                .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_string()))?;
             hasher.update(&data);
             total_size += data.len() as i64;
             writer.write_all(&data).await?;
@@ -195,7 +195,11 @@ impl Storage {
     }
 
     /// Concatenate multiple files into one (for completing multipart uploads)
-    pub async fn concatenate_files(&self, parts: &[String], output_path: &str) -> Result<(i64, String)> {
+    pub async fn concatenate_files(
+        &self,
+        parts: &[String],
+        output_path: &str,
+    ) -> Result<(i64, String)> {
         use aws_lc_rs::digest;
 
         let out_path = self.get_path(output_path);
@@ -268,10 +272,8 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let storage = Storage::new(temp_dir.path().to_path_buf());
 
-        let chunks: Vec<std::result::Result<Bytes, std::io::Error>> = vec![
-            Ok(Bytes::from("Hello, ")),
-            Ok(Bytes::from("World!")),
-        ];
+        let chunks: Vec<std::result::Result<Bytes, std::io::Error>> =
+            vec![Ok(Bytes::from("Hello, ")), Ok(Bytes::from("World!"))];
         let input_stream = stream::iter(chunks);
 
         let path = "test/stream.txt";

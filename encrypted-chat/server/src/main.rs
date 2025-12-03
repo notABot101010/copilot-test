@@ -234,15 +234,14 @@ async fn register(
     let now = get_current_time();
 
     // Check if user already exists
-    let existing: Option<User> =
-        sqlx::query_as("SELECT * FROM users WHERE username = ?")
-            .bind(&payload.username)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|err| {
-                tracing::error!("Failed to check existing user: {:?}", err);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+    let existing: Option<User> = sqlx::query_as("SELECT * FROM users WHERE username = ?")
+        .bind(&payload.username)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|err| {
+            tracing::error!("Failed to check existing user: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     if existing.is_some() {
         return Err(StatusCode::CONFLICT);
@@ -389,20 +388,21 @@ async fn get_prekey_bundle(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let bundle: PreKeyBundle =
-        sqlx::query_as("SELECT * FROM prekey_bundles WHERE username = ? ORDER BY created_at DESC LIMIT 1")
-            .bind(&username)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|err| {
-                tracing::error!("Failed to get prekey bundle: {:?}", err);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-            .ok_or(StatusCode::NOT_FOUND)?;
+    let bundle: PreKeyBundle = sqlx::query_as(
+        "SELECT * FROM prekey_bundles WHERE username = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(&username)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|err| {
+        tracing::error!("Failed to get prekey bundle: {:?}", err);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .ok_or(StatusCode::NOT_FOUND)?;
 
     // Parse one-time prekeys and consume one if available
-    let mut one_time_prekeys: Vec<String> =
-        serde_json::from_str(&bundle.one_time_prekeys).map_err(|err| {
+    let mut one_time_prekeys: Vec<String> = serde_json::from_str(&bundle.one_time_prekeys)
+        .map_err(|err| {
             tracing::error!("Failed to parse one_time_prekeys: {:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
@@ -492,16 +492,17 @@ async fn get_my_prekeys(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let bundle: PreKeyBundle =
-        sqlx::query_as("SELECT * FROM prekey_bundles WHERE username = ? ORDER BY created_at DESC LIMIT 1")
-            .bind(&username)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|err| {
-                tracing::error!("Failed to get prekey bundle: {:?}", err);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-            .ok_or(StatusCode::NOT_FOUND)?;
+    let bundle: PreKeyBundle = sqlx::query_as(
+        "SELECT * FROM prekey_bundles WHERE username = ? ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(&username)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|err| {
+        tracing::error!("Failed to get prekey bundle: {:?}", err);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(MyPreKeyBundleResponse {
         encrypted_signed_prekey_private: bundle.encrypted_signed_prekey_private,

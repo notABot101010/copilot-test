@@ -1,3 +1,5 @@
+use automerge::transaction::Transactable;
+use automerge::ReadDoc;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -8,8 +10,6 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use automerge::transaction::Transactable;
-use automerge::ReadDoc;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -198,33 +198,87 @@ struct ChessMove {
 impl ChessState {
     fn new() -> Self {
         let mut board: [[Option<Piece>; 8]; 8] = [[None; 8]; 8];
-        
+
         // Set up white pieces
-        board[0][0] = Some(Piece { piece_type: PieceType::Rook, color: Color::White });
-        board[0][1] = Some(Piece { piece_type: PieceType::Knight, color: Color::White });
-        board[0][2] = Some(Piece { piece_type: PieceType::Bishop, color: Color::White });
-        board[0][3] = Some(Piece { piece_type: PieceType::Queen, color: Color::White });
-        board[0][4] = Some(Piece { piece_type: PieceType::King, color: Color::White });
-        board[0][5] = Some(Piece { piece_type: PieceType::Bishop, color: Color::White });
-        board[0][6] = Some(Piece { piece_type: PieceType::Knight, color: Color::White });
-        board[0][7] = Some(Piece { piece_type: PieceType::Rook, color: Color::White });
+        board[0][0] = Some(Piece {
+            piece_type: PieceType::Rook,
+            color: Color::White,
+        });
+        board[0][1] = Some(Piece {
+            piece_type: PieceType::Knight,
+            color: Color::White,
+        });
+        board[0][2] = Some(Piece {
+            piece_type: PieceType::Bishop,
+            color: Color::White,
+        });
+        board[0][3] = Some(Piece {
+            piece_type: PieceType::Queen,
+            color: Color::White,
+        });
+        board[0][4] = Some(Piece {
+            piece_type: PieceType::King,
+            color: Color::White,
+        });
+        board[0][5] = Some(Piece {
+            piece_type: PieceType::Bishop,
+            color: Color::White,
+        });
+        board[0][6] = Some(Piece {
+            piece_type: PieceType::Knight,
+            color: Color::White,
+        });
+        board[0][7] = Some(Piece {
+            piece_type: PieceType::Rook,
+            color: Color::White,
+        });
         for col in 0..8 {
-            board[1][col] = Some(Piece { piece_type: PieceType::Pawn, color: Color::White });
+            board[1][col] = Some(Piece {
+                piece_type: PieceType::Pawn,
+                color: Color::White,
+            });
         }
-        
+
         // Set up black pieces
-        board[7][0] = Some(Piece { piece_type: PieceType::Rook, color: Color::Black });
-        board[7][1] = Some(Piece { piece_type: PieceType::Knight, color: Color::Black });
-        board[7][2] = Some(Piece { piece_type: PieceType::Bishop, color: Color::Black });
-        board[7][3] = Some(Piece { piece_type: PieceType::Queen, color: Color::Black });
-        board[7][4] = Some(Piece { piece_type: PieceType::King, color: Color::Black });
-        board[7][5] = Some(Piece { piece_type: PieceType::Bishop, color: Color::Black });
-        board[7][6] = Some(Piece { piece_type: PieceType::Knight, color: Color::Black });
-        board[7][7] = Some(Piece { piece_type: PieceType::Rook, color: Color::Black });
+        board[7][0] = Some(Piece {
+            piece_type: PieceType::Rook,
+            color: Color::Black,
+        });
+        board[7][1] = Some(Piece {
+            piece_type: PieceType::Knight,
+            color: Color::Black,
+        });
+        board[7][2] = Some(Piece {
+            piece_type: PieceType::Bishop,
+            color: Color::Black,
+        });
+        board[7][3] = Some(Piece {
+            piece_type: PieceType::Queen,
+            color: Color::Black,
+        });
+        board[7][4] = Some(Piece {
+            piece_type: PieceType::King,
+            color: Color::Black,
+        });
+        board[7][5] = Some(Piece {
+            piece_type: PieceType::Bishop,
+            color: Color::Black,
+        });
+        board[7][6] = Some(Piece {
+            piece_type: PieceType::Knight,
+            color: Color::Black,
+        });
+        board[7][7] = Some(Piece {
+            piece_type: PieceType::Rook,
+            color: Color::Black,
+        });
         for col in 0..8 {
-            board[6][col] = Some(Piece { piece_type: PieceType::Pawn, color: Color::Black });
+            board[6][col] = Some(Piece {
+                piece_type: PieceType::Pawn,
+                color: Color::Black,
+            });
         }
-        
+
         ChessState {
             board,
             current_turn: Color::White,
@@ -237,7 +291,7 @@ impl ChessState {
             en_passant_target: None,
         }
     }
-    
+
     fn parse_square(square: &str) -> Option<(usize, usize)> {
         if square.len() != 2 {
             return None;
@@ -267,30 +321,30 @@ impl ChessState {
         };
         Some((row, col))
     }
-    
+
     fn is_valid_move(&self, from: (usize, usize), to: (usize, usize), player_color: Color) -> bool {
         let piece = match self.board[from.0][from.1] {
             Some(p) => p,
             None => return false,
         };
-        
+
         // Check if it's this player's piece
         if piece.color != player_color {
             return false;
         }
-        
+
         // Check if it's this player's turn
         if piece.color != self.current_turn {
             return false;
         }
-        
+
         // Can't capture own piece
         if let Some(target) = self.board[to.0][to.1] {
             if target.color == piece.color {
                 return false;
             }
         }
-        
+
         // Validate move based on piece type
         let valid_pattern = match piece.piece_type {
             PieceType::King => self.is_valid_king_move(from, to),
@@ -300,37 +354,39 @@ impl ChessState {
             PieceType::Knight => self.is_valid_knight_move(from, to),
             PieceType::Pawn => self.is_valid_pawn_move(from, to, piece.color),
         };
-        
+
         if !valid_pattern {
             return false;
         }
-        
+
         // Check if move would leave king in check
         let mut test_state = self.clone();
         test_state.board[to.0][to.1] = test_state.board[from.0][from.1].take();
         if test_state.is_in_check(player_color) {
             return false;
         }
-        
+
         true
     }
-    
+
     fn is_valid_king_move(&self, from: (usize, usize), to: (usize, usize)) -> bool {
         let row_diff = (to.0 as i32 - from.0 as i32).abs();
         let col_diff = (to.1 as i32 - from.1 as i32).abs();
-        
+
         // Normal king move
         if row_diff <= 1 && col_diff <= 1 {
             return true;
         }
-        
+
         // Castling
         if row_diff == 0 && col_diff == 2 {
-            let color = self.board[from.0][from.1].map(|p| p.color).unwrap_or(Color::White);
+            let color = self.board[from.0][from.1]
+                .map(|p| p.color)
+                .unwrap_or(Color::White);
             if self.is_in_check(color) {
                 return false;
             }
-            
+
             // Kingside castling
             if to.1 == 6 {
                 let can_castle = if color == Color::White {
@@ -338,9 +394,8 @@ impl ChessState {
                 } else {
                     self.black_can_castle_kingside
                 };
-                if can_castle 
-                    && self.board[from.0][5].is_none() 
-                    && self.board[from.0][6].is_none() {
+                if can_castle && self.board[from.0][5].is_none() && self.board[from.0][6].is_none()
+                {
                     // Check if king passes through check
                     let mut test_state = self.clone();
                     test_state.board[from.0][5] = test_state.board[from.0][from.1].take();
@@ -349,7 +404,7 @@ impl ChessState {
                     }
                 }
             }
-            
+
             // Queenside castling
             if to.1 == 2 {
                 let can_castle = if color == Color::White {
@@ -357,10 +412,11 @@ impl ChessState {
                 } else {
                     self.black_can_castle_queenside
                 };
-                if can_castle 
-                    && self.board[from.0][1].is_none() 
-                    && self.board[from.0][2].is_none() 
-                    && self.board[from.0][3].is_none() {
+                if can_castle
+                    && self.board[from.0][1].is_none()
+                    && self.board[from.0][2].is_none()
+                    && self.board[from.0][3].is_none()
+                {
                     // Check if king passes through check
                     let mut test_state = self.clone();
                     test_state.board[from.0][3] = test_state.board[from.0][from.1].take();
@@ -370,54 +426,62 @@ impl ChessState {
                 }
             }
         }
-        
+
         false
     }
-    
+
     fn is_valid_queen_move(&self, from: (usize, usize), to: (usize, usize)) -> bool {
         self.is_valid_rook_move(from, to) || self.is_valid_bishop_move(from, to)
     }
-    
+
     fn is_valid_rook_move(&self, from: (usize, usize), to: (usize, usize)) -> bool {
         if from.0 != to.0 && from.1 != to.1 {
             return false;
         }
-        
+
         // Check path is clear
         if from.0 == to.0 {
-            let (min_col, max_col) = if from.1 < to.1 { (from.1, to.1) } else { (to.1, from.1) };
+            let (min_col, max_col) = if from.1 < to.1 {
+                (from.1, to.1)
+            } else {
+                (to.1, from.1)
+            };
             for col in (min_col + 1)..max_col {
                 if self.board[from.0][col].is_some() {
                     return false;
                 }
             }
         } else {
-            let (min_row, max_row) = if from.0 < to.0 { (from.0, to.0) } else { (to.0, from.0) };
+            let (min_row, max_row) = if from.0 < to.0 {
+                (from.0, to.0)
+            } else {
+                (to.0, from.0)
+            };
             for row in (min_row + 1)..max_row {
                 if self.board[row][from.1].is_some() {
                     return false;
                 }
             }
         }
-        
+
         true
     }
-    
+
     fn is_valid_bishop_move(&self, from: (usize, usize), to: (usize, usize)) -> bool {
         let row_diff = (to.0 as i32 - from.0 as i32).abs();
         let col_diff = (to.1 as i32 - from.1 as i32).abs();
-        
+
         if row_diff != col_diff {
             return false;
         }
-        
+
         // Check path is clear
         let row_dir = if to.0 > from.0 { 1i32 } else { -1 };
         let col_dir = if to.1 > from.1 { 1i32 } else { -1 };
-        
+
         let mut row = from.0 as i32 + row_dir;
         let mut col = from.1 as i32 + col_dir;
-        
+
         while row != to.0 as i32 && col != to.1 as i32 {
             if self.board[row as usize][col as usize].is_some() {
                 return false;
@@ -425,38 +489,39 @@ impl ChessState {
             row += row_dir;
             col += col_dir;
         }
-        
+
         true
     }
-    
+
     fn is_valid_knight_move(&self, from: (usize, usize), to: (usize, usize)) -> bool {
         let row_diff = (to.0 as i32 - from.0 as i32).abs();
         let col_diff = (to.1 as i32 - from.1 as i32).abs();
-        
+
         (row_diff == 2 && col_diff == 1) || (row_diff == 1 && col_diff == 2)
     }
-    
+
     fn is_valid_pawn_move(&self, from: (usize, usize), to: (usize, usize), color: Color) -> bool {
         let direction: i32 = if color == Color::White { 1 } else { -1 };
         let start_row = if color == Color::White { 1 } else { 6 };
-        
+
         let row_diff = to.0 as i32 - from.0 as i32;
         let col_diff = (to.1 as i32 - from.1 as i32).abs();
-        
+
         // Forward move
         if col_diff == 0 {
             if row_diff == direction && self.board[to.0][to.1].is_none() {
                 return true;
             }
             // Double move from starting position
-            if from.0 == start_row 
-                && row_diff == 2 * direction 
-                && self.board[to.0][to.1].is_none() 
-                && self.board[(from.0 as i32 + direction) as usize][from.1].is_none() {
+            if from.0 == start_row
+                && row_diff == 2 * direction
+                && self.board[to.0][to.1].is_none()
+                && self.board[(from.0 as i32 + direction) as usize][from.1].is_none()
+            {
                 return true;
             }
         }
-        
+
         // Capture
         if col_diff == 1 && row_diff == direction {
             // Normal capture
@@ -470,10 +535,10 @@ impl ChessState {
                 }
             }
         }
-        
+
         false
     }
-    
+
     fn find_king(&self, color: Color) -> Option<(usize, usize)> {
         for row in 0..8 {
             for col in 0..8 {
@@ -486,7 +551,7 @@ impl ChessState {
         }
         None
     }
-    
+
     fn is_square_attacked(&self, square: (usize, usize), by_color: Color) -> bool {
         for row in 0..8 {
             for col in 0..8 {
@@ -499,7 +564,7 @@ impl ChessState {
                                 row_diff <= 1 && col_diff <= 1
                             }
                             PieceType::Queen => {
-                                self.is_valid_rook_move((row, col), square) 
+                                self.is_valid_rook_move((row, col), square)
                                     || self.is_valid_bishop_move((row, col), square)
                             }
                             PieceType::Rook => self.is_valid_rook_move((row, col), square),
@@ -521,15 +586,19 @@ impl ChessState {
         }
         false
     }
-    
+
     fn is_in_check(&self, color: Color) -> bool {
         if let Some(king_pos) = self.find_king(color) {
-            let opponent_color = if color == Color::White { Color::Black } else { Color::White };
+            let opponent_color = if color == Color::White {
+                Color::Black
+            } else {
+                Color::White
+            };
             return self.is_square_attacked(king_pos, opponent_color);
         }
         false
     }
-    
+
     fn has_legal_moves(&self, color: Color) -> bool {
         for from_row in 0..8 {
             for from_col in 0..8 {
@@ -537,7 +606,8 @@ impl ChessState {
                     if piece.color == color {
                         for to_row in 0..8 {
                             for to_col in 0..8 {
-                                if self.is_valid_move((from_row, from_col), (to_row, to_col), color) {
+                                if self.is_valid_move((from_row, from_col), (to_row, to_col), color)
+                                {
                                     return true;
                                 }
                             }
@@ -548,22 +618,31 @@ impl ChessState {
         }
         false
     }
-    
-    fn make_move(&mut self, from: (usize, usize), to: (usize, usize), promotion: Option<PieceType>) -> Option<ChessMove> {
+
+    fn make_move(
+        &mut self,
+        from: (usize, usize),
+        to: (usize, usize),
+        promotion: Option<PieceType>,
+    ) -> Option<ChessMove> {
         let piece = self.board[from.0][from.1]?;
         let captured = self.board[to.0][to.1];
-        
+
         // Handle en passant capture
         let mut actual_captured = captured;
         if piece.piece_type == PieceType::Pawn {
             if let Some(ep_target) = self.en_passant_target {
                 if ep_target == (to.0, to.1) {
-                    let captured_row = if piece.color == Color::White { to.0 - 1 } else { to.0 + 1 };
+                    let captured_row = if piece.color == Color::White {
+                        to.0 - 1
+                    } else {
+                        to.0 + 1
+                    };
                     actual_captured = self.board[captured_row][to.1].take();
                 }
             }
         }
-        
+
         // Update castling rights
         if piece.piece_type == PieceType::King {
             if piece.color == Color::White {
@@ -573,7 +652,7 @@ impl ChessState {
                 self.black_can_castle_kingside = false;
                 self.black_can_castle_queenside = false;
             }
-            
+
             // Handle castling - move the rook
             let col_diff = to.1 as i32 - from.1 as i32;
             if col_diff == 2 {
@@ -584,7 +663,7 @@ impl ChessState {
                 self.board[from.0][3] = self.board[from.0][0].take();
             }
         }
-        
+
         if piece.piece_type == PieceType::Rook {
             if from == (0, 0) {
                 self.white_can_castle_queenside = false;
@@ -596,42 +675,57 @@ impl ChessState {
                 self.black_can_castle_kingside = false;
             }
         }
-        
+
         // Set en passant target
         self.en_passant_target = None;
         if piece.piece_type == PieceType::Pawn {
             let row_diff = (to.0 as i32 - from.0 as i32).abs();
             if row_diff == 2 {
-                let ep_row = if piece.color == Color::White { from.0 + 1 } else { from.0 - 1 };
+                let ep_row = if piece.color == Color::White {
+                    from.0 + 1
+                } else {
+                    from.0 - 1
+                };
                 self.en_passant_target = Some((ep_row, from.1));
             }
         }
-        
+
         // Move the piece
         self.board[from.0][from.1] = None;
-        
+
         // Handle pawn promotion
         let final_piece = if piece.piece_type == PieceType::Pawn {
             let promotion_row = if piece.color == Color::White { 7 } else { 0 };
             if to.0 == promotion_row {
                 let promo_type = promotion.unwrap_or(PieceType::Queen);
-                Piece { piece_type: promo_type, color: piece.color }
+                Piece {
+                    piece_type: promo_type,
+                    color: piece.color,
+                }
             } else {
                 piece
             }
         } else {
             piece
         };
-        
+
         self.board[to.0][to.1] = Some(final_piece);
-        
+
         // Switch turns
-        self.current_turn = if self.current_turn == Color::White { Color::Black } else { Color::White };
-        
+        self.current_turn = if self.current_turn == Color::White {
+            Color::Black
+        } else {
+            Color::White
+        };
+
         // Check for checkmate or stalemate
         if !self.has_legal_moves(self.current_turn) {
             if self.is_in_check(self.current_turn) {
-                let winner = if self.current_turn == Color::White { "black" } else { "white" };
+                let winner = if self.current_turn == Color::White {
+                    "black"
+                } else {
+                    "white"
+                };
                 self.status = format!("checkmate:{}", winner);
             } else {
                 self.status = "stalemate".to_string();
@@ -641,12 +735,12 @@ impl ChessState {
         } else {
             self.status = "active".to_string();
         }
-        
+
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
-        
+
         let chess_move = ChessMove {
             from: format!("{}{}", (b'a' + from.1 as u8) as char, from.0 + 1),
             to: format!("{}{}", (b'a' + to.1 as u8) as char, to.0 + 1),
@@ -655,9 +749,9 @@ impl ChessState {
             promotion,
             timestamp: now,
         };
-        
+
         self.moves.push(chess_move.clone());
-        
+
         Some(chess_move)
     }
 }
@@ -666,7 +760,8 @@ fn generate_session_token() -> String {
     use aws_lc_rs::rand::{SecureRandom, SystemRandom};
     let rng = SystemRandom::new();
     let mut bytes = vec![0u8; SESSION_TOKEN_LENGTH];
-    rng.fill(&mut bytes).expect("Failed to generate random bytes");
+    rng.fill(&mut bytes)
+        .expect("Failed to generate random bytes");
     BASE64.encode(&bytes)
 }
 
@@ -760,16 +855,17 @@ async fn register(
     Json(payload): Json<RegisterRequest>,
 ) -> Result<(StatusCode, Json<RegisterResponse>), StatusCode> {
     use aws_lc_rs::rand::{SecureRandom, SystemRandom};
-    
+
     // Check if user already exists
-    let existing: Option<(String,)> = sqlx::query_as("SELECT username FROM users WHERE username = ?")
-        .bind(&payload.username)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|err| {
-            tracing::error!("Failed to check existing user: {:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT username FROM users WHERE username = ?")
+            .bind(&payload.username)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|err| {
+                tracing::error!("Failed to check existing user: {:?}", err);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
     if existing.is_some() {
         return Err(StatusCode::CONFLICT);
@@ -814,16 +910,15 @@ async fn login(
     State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
-    let user: Option<(String, Vec<u8>, Vec<u8>)> = sqlx::query_as(
-        "SELECT username, password_hash, salt FROM users WHERE username = ?"
-    )
-    .bind(&payload.username)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|err| {
-        tracing::error!("Failed to get user: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let user: Option<(String, Vec<u8>, Vec<u8>)> =
+        sqlx::query_as("SELECT username, password_hash, salt FROM users WHERE username = ?")
+            .bind(&payload.username)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|err| {
+                tracing::error!("Failed to get user: {:?}", err);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
     let (username, password_hash, salt) = user.ok_or(StatusCode::UNAUTHORIZED)?;
 
@@ -832,7 +927,7 @@ async fn login(
     }
 
     let token = generate_session_token();
-    
+
     {
         let mut sessions = state.sessions.write().await;
         sessions.insert(token.clone(), username.clone());
@@ -843,10 +938,7 @@ async fn login(
     Ok(Json(LoginResponse { username, token }))
 }
 
-async fn logout(
-    State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
-) -> StatusCode {
+async fn logout(State(state): State<AppState>, headers: axum::http::HeaderMap) -> StatusCode {
     if let Some(auth_header) = headers.get("Authorization") {
         if let Ok(auth_str) = auth_header.to_str() {
             if let Some(token) = extract_token(Some(auth_str)) {
@@ -862,11 +954,11 @@ async fn me(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<MeResponse>, StatusCode> {
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok());
+    let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok());
     let token = extract_token(auth_header).ok_or(StatusCode::UNAUTHORIZED)?;
-    let username = get_user_from_token(&state, token).await.ok_or(StatusCode::UNAUTHORIZED)?;
+    let username = get_user_from_token(&state, token)
+        .await
+        .ok_or(StatusCode::UNAUTHORIZED)?;
 
     Ok(Json(MeResponse { username }))
 }
@@ -885,35 +977,43 @@ async fn list_users(State(state): State<AppState>) -> Result<Json<ListUsersRespo
     }))
 }
 
-fn create_initial_match_document(match_id: &str, white_player: &str, black_player: &str) -> Result<Vec<u8>, StatusCode> {
+fn create_initial_match_document(
+    match_id: &str,
+    white_player: &str,
+    black_player: &str,
+) -> Result<Vec<u8>, StatusCode> {
     let now = get_current_time();
     let chess_state = ChessState::new();
     let chess_state_json = serde_json::to_string(&chess_state).map_err(|err| {
         tracing::error!("Failed to serialize chess state: {:?}", err);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    
+
     let mut doc = automerge::AutoCommit::new();
     doc.put(automerge::ROOT, "id", match_id).map_err(|err| {
         tracing::error!("Failed to set match id: {:?}", err);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    doc.put(automerge::ROOT, "whitePlayer", white_player).map_err(|err| {
-        tracing::error!("Failed to set white player: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    doc.put(automerge::ROOT, "blackPlayer", black_player).map_err(|err| {
-        tracing::error!("Failed to set black player: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    doc.put(automerge::ROOT, "status", "active").map_err(|err| {
-        tracing::error!("Failed to set status: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    doc.put(automerge::ROOT, "chessState", &chess_state_json).map_err(|err| {
-        tracing::error!("Failed to set chess state: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    doc.put(automerge::ROOT, "whitePlayer", white_player)
+        .map_err(|err| {
+            tracing::error!("Failed to set white player: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    doc.put(automerge::ROOT, "blackPlayer", black_player)
+        .map_err(|err| {
+            tracing::error!("Failed to set black player: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    doc.put(automerge::ROOT, "status", "active")
+        .map_err(|err| {
+            tracing::error!("Failed to set status: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    doc.put(automerge::ROOT, "chessState", &chess_state_json)
+        .map_err(|err| {
+            tracing::error!("Failed to set chess state: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     doc.put(automerge::ROOT, "createdAt", now).map_err(|err| {
         tracing::error!("Failed to set createdAt: {:?}", err);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -922,7 +1022,7 @@ fn create_initial_match_document(match_id: &str, white_player: &str, black_playe
         tracing::error!("Failed to set updatedAt: {:?}", err);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    
+
     Ok(doc.save())
 }
 
@@ -931,21 +1031,22 @@ async fn create_match(
     headers: axum::http::HeaderMap,
     Json(payload): Json<CreateMatchRequest>,
 ) -> Result<(StatusCode, Json<CreateMatchResponse>), StatusCode> {
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok());
+    let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok());
     let token = extract_token(auth_header).ok_or(StatusCode::UNAUTHORIZED)?;
-    let username = get_user_from_token(&state, token).await.ok_or(StatusCode::UNAUTHORIZED)?;
+    let username = get_user_from_token(&state, token)
+        .await
+        .ok_or(StatusCode::UNAUTHORIZED)?;
 
     // Verify opponent exists
-    let opponent: Option<(String,)> = sqlx::query_as("SELECT username FROM users WHERE username = ?")
-        .bind(&payload.opponent_username)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|err| {
-            tracing::error!("Failed to get opponent: {:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let opponent: Option<(String,)> =
+        sqlx::query_as("SELECT username FROM users WHERE username = ?")
+            .bind(&payload.opponent_username)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|err| {
+                tracing::error!("Failed to get opponent: {:?}", err);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
     if opponent.is_none() {
         return Err(StatusCode::NOT_FOUND);
@@ -981,7 +1082,12 @@ async fn create_match(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    tracing::info!("Match created: {} (white: {}, black: {})", match_id, white_player, black_player);
+    tracing::info!(
+        "Match created: {} (white: {}, black: {})",
+        match_id,
+        white_player,
+        black_player
+    );
 
     Ok((
         StatusCode::CREATED,
@@ -999,11 +1105,11 @@ async fn list_matches(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<ListMatchesResponse>, StatusCode> {
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok());
+    let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok());
     let token = extract_token(auth_header).ok_or(StatusCode::UNAUTHORIZED)?;
-    let username = get_user_from_token(&state, token).await.ok_or(StatusCode::UNAUTHORIZED)?;
+    let username = get_user_from_token(&state, token)
+        .await
+        .ok_or(StatusCode::UNAUTHORIZED)?;
 
     let matches: Vec<(String, String, String, String, i64, i64)> = sqlx::query_as(
         "SELECT id, white_player, black_player, status, created_at, updated_at FROM matches WHERE white_player = ? OR black_player = ? ORDER BY updated_at DESC"
@@ -1019,17 +1125,21 @@ async fn list_matches(
 
     let match_list: Vec<MatchInfo> = matches
         .into_iter()
-        .map(|(id, white_player, black_player, status, created_at, updated_at)| MatchInfo {
-            id,
-            white_player,
-            black_player,
-            status,
-            created_at,
-            updated_at,
-        })
+        .map(
+            |(id, white_player, black_player, status, created_at, updated_at)| MatchInfo {
+                id,
+                white_player,
+                black_player,
+                status,
+                created_at,
+                updated_at,
+            },
+        )
         .collect();
 
-    Ok(Json(ListMatchesResponse { matches: match_list }))
+    Ok(Json(ListMatchesResponse {
+        matches: match_list,
+    }))
 }
 
 async fn get_match(
@@ -1047,7 +1157,8 @@ async fn get_match(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let (id, white_player, black_player, status, document, created_at, updated_at) = row.ok_or(StatusCode::NOT_FOUND)?;
+    let (id, white_player, black_player, status, document, created_at, updated_at) =
+        row.ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(MatchDetailResponse {
         id,
@@ -1066,15 +1177,15 @@ async fn make_move(
     headers: axum::http::HeaderMap,
     Json(payload): Json<MoveRequest>,
 ) -> Result<Json<MoveResponse>, StatusCode> {
-    let auth_header = headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok());
+    let auth_header = headers.get("Authorization").and_then(|v| v.to_str().ok());
     let token = extract_token(auth_header).ok_or(StatusCode::UNAUTHORIZED)?;
-    let username = get_user_from_token(&state, token).await.ok_or(StatusCode::UNAUTHORIZED)?;
+    let username = get_user_from_token(&state, token)
+        .await
+        .ok_or(StatusCode::UNAUTHORIZED)?;
 
     // Get current match state
     let row: Option<(String, String, String, Vec<u8>)> = sqlx::query_as(
-        "SELECT white_player, black_player, status, document FROM matches WHERE id = ?"
+        "SELECT white_player, black_player, status, document FROM matches WHERE id = ?",
     )
     .bind(&id)
     .fetch_optional(&state.db)
@@ -1153,14 +1264,16 @@ async fn make_move(
     })?;
 
     let now = get_current_time();
-    doc.put(automerge::ROOT, "chessState", &new_chess_state_json).map_err(|err| {
-        tracing::error!("Failed to update chessState: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    doc.put(automerge::ROOT, "status", &chess_state.status).map_err(|err| {
-        tracing::error!("Failed to update status: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    doc.put(automerge::ROOT, "chessState", &new_chess_state_json)
+        .map_err(|err| {
+            tracing::error!("Failed to update chessState: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    doc.put(automerge::ROOT, "status", &chess_state.status)
+        .map_err(|err| {
+            tracing::error!("Failed to update status: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     doc.put(automerge::ROOT, "updatedAt", now).map_err(|err| {
         tracing::error!("Failed to update updatedAt: {:?}", err);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -1169,11 +1282,12 @@ async fn make_move(
     let new_document = doc.save();
 
     // Determine match status for DB
-    let db_status = if chess_state.status.starts_with("checkmate:") || chess_state.status == "stalemate" {
-        chess_state.status.clone()
-    } else {
-        "active".to_string()
-    };
+    let db_status =
+        if chess_state.status.starts_with("checkmate:") || chess_state.status == "stalemate" {
+            chess_state.status.clone()
+        } else {
+            "active".to_string()
+        };
 
     // Update database
     sqlx::query("UPDATE matches SET document = ?, status = ?, updated_at = ? WHERE id = ?")
@@ -1224,14 +1338,12 @@ async fn handle_socket(socket: WebSocket, match_id: String, state: AppState) {
 
     // Send current match state on connection
     {
-        let row: Option<(Vec<u8>,)> = sqlx::query_as(
-            "SELECT document FROM matches WHERE id = ?"
-        )
-        .bind(&match_id)
-        .fetch_optional(&state.db)
-        .await
-        .ok()
-        .flatten();
+        let row: Option<(Vec<u8>,)> = sqlx::query_as("SELECT document FROM matches WHERE id = ?")
+            .bind(&match_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
 
         if let Some((binary,)) = row {
             let msg = WsMessage::Connected {
@@ -1311,7 +1423,8 @@ async fn broadcast_update(state: &AppState, match_id: &str, binary: &[u8], sende
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:chess.db?mode=rwc".to_string());
+    let db_url =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:chess.db?mode=rwc".to_string());
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect(&db_url)
@@ -1350,10 +1463,14 @@ async fn main() {
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "4001".to_string());
     let addr = format!("0.0.0.0:{}", port);
-    let listener = tokio::net::TcpListener::bind(&addr).await.expect("Failed to bind to address");
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .expect("Failed to bind to address");
     tracing::info!("Chess server listening on http://{}", addr);
     tracing::info!("WebSocket endpoint: ws://{}/ws/matches/:id", addr);
-    axum::serve(listener, app).await.expect("Failed to start server");
+    axum::serve(listener, app)
+        .await
+        .expect("Failed to start server");
 }
 
 #[cfg(test)]
@@ -1363,17 +1480,35 @@ mod tests {
     #[test]
     fn test_initial_board_setup() {
         let state = ChessState::new();
-        
+
         // Check white pieces
-        assert_eq!(state.board[0][0].map(|p| p.piece_type), Some(PieceType::Rook));
-        assert_eq!(state.board[0][4].map(|p| p.piece_type), Some(PieceType::King));
-        assert_eq!(state.board[1][4].map(|p| p.piece_type), Some(PieceType::Pawn));
-        
+        assert_eq!(
+            state.board[0][0].map(|p| p.piece_type),
+            Some(PieceType::Rook)
+        );
+        assert_eq!(
+            state.board[0][4].map(|p| p.piece_type),
+            Some(PieceType::King)
+        );
+        assert_eq!(
+            state.board[1][4].map(|p| p.piece_type),
+            Some(PieceType::Pawn)
+        );
+
         // Check black pieces
-        assert_eq!(state.board[7][0].map(|p| p.piece_type), Some(PieceType::Rook));
-        assert_eq!(state.board[7][4].map(|p| p.piece_type), Some(PieceType::King));
-        assert_eq!(state.board[6][4].map(|p| p.piece_type), Some(PieceType::Pawn));
-        
+        assert_eq!(
+            state.board[7][0].map(|p| p.piece_type),
+            Some(PieceType::Rook)
+        );
+        assert_eq!(
+            state.board[7][4].map(|p| p.piece_type),
+            Some(PieceType::King)
+        );
+        assert_eq!(
+            state.board[6][4].map(|p| p.piece_type),
+            Some(PieceType::Pawn)
+        );
+
         assert_eq!(state.current_turn, Color::White);
     }
 
@@ -1388,7 +1523,7 @@ mod tests {
     #[test]
     fn test_pawn_move() {
         let state = ChessState::new();
-        
+
         // White pawn e2 to e4
         assert!(state.is_valid_move((1, 4), (3, 4), Color::White));
         // White pawn e2 to e3
@@ -1400,7 +1535,7 @@ mod tests {
     #[test]
     fn test_knight_move() {
         let state = ChessState::new();
-        
+
         // Knight b1 to c3
         assert!(state.is_valid_move((0, 1), (2, 2), Color::White));
         // Knight b1 to a3
@@ -1412,7 +1547,7 @@ mod tests {
     #[test]
     fn test_make_move() {
         let mut state = ChessState::new();
-        
+
         // Move e2 to e4
         let chess_move = state.make_move((1, 4), (3, 4), None);
         assert!(chess_move.is_some());

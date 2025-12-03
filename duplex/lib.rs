@@ -59,9 +59,7 @@ impl KeccakAead {
             return Err(AeadError::InvalidNonceSize);
         }
 
-        let mut cipher = Self {
-            state: [0u64; 25],
-        };
+        let mut cipher = Self { state: [0u64; 25] };
 
         // Initialize with key and nonce
         cipher.absorb(key);
@@ -245,11 +243,9 @@ fn constant_time_compare(a: &[u8], b: &[u8]) -> bool {
     result == 0
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn test_new_valid_key_nonce() {

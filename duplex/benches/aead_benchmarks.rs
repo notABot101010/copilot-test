@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use duplex::{KeccakAead, TurboShake256, TurboShakeAead};
 
 fn encrypt_benchmark(c: &mut Criterion) {
@@ -58,9 +58,7 @@ fn turboshake256_benchmark(c: &mut Criterion) {
 
         group.throughput(Throughput::Bytes(*size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, _| {
-            b.iter(|| {
-                TurboShake256::hash(black_box(&input), black_box(&mut output))
-            });
+            b.iter(|| TurboShake256::hash(black_box(&input), black_box(&mut output)));
         });
     }
 
@@ -96,9 +94,7 @@ fn turboshake256_variable_output_benchmark(c: &mut Criterion) {
 
         group.throughput(Throughput::Bytes(*out_size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(out_size), out_size, |b, _| {
-            b.iter(|| {
-                TurboShake256::hash(black_box(&input), black_box(&mut output))
-            });
+            b.iter(|| TurboShake256::hash(black_box(&input), black_box(&mut output)));
         });
     }
 

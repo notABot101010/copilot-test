@@ -1,21 +1,21 @@
-use std::sync::Arc;
 use axum::{
-    Router,
     routing::{get, post, put},
+    Router,
 };
 use clap::Parser;
+use std::sync::Arc;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use ai_coding_agent_server::{
-    db, handlers, llm, orchestrator, templates,
-};
+use ai_coding_agent_server::{db, handlers, llm, orchestrator, templates};
 use handlers::{
-    sessions::{create_session, get_session, list_sessions, send_message, get_messages, steer_session},
+    sessions::{
+        create_session, get_messages, get_session, list_sessions, send_message, steer_session,
+    },
     templates::{list_templates, update_template},
     websocket::session_stream,
 };
-use llm::{LlmConfig, OpenAiLlmClient, LlmClient};
+use llm::{LlmClient, LlmConfig, OpenAiLlmClient};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -30,7 +30,11 @@ struct Args {
     database: String,
 
     /// OpenAI-compatible API base URL
-    #[arg(long, env = "OPENAI_BASE_URL", default_value = "https://api.openai.com/v1")]
+    #[arg(
+        long,
+        env = "OPENAI_BASE_URL",
+        default_value = "https://api.openai.com/v1"
+    )]
     api_base: String,
 
     /// API key for authentication
@@ -54,17 +58,17 @@ async fn main() -> AppResult<()> {
     let args = Args::parse();
 
     let db = db::init_db(&args.database).await?;
-    
+
     let templates = Arc::new(tokio::sync::RwLock::new(templates::TemplateManager::new()));
-    
+
     // Configure LLM client
     let llm_config = LlmConfig::new()
         .with_api_base(&args.api_base)
         .with_api_key(&args.api_key)
         .with_model(&args.model);
-    
+
     let llm_client: Arc<dyn LlmClient> = Arc::new(OpenAiLlmClient::new(llm_config));
-    
+
     let orchestrator = Arc::new(orchestrator::Orchestrator::new(llm_client.clone()));
 
     let state = Arc::new(ai_coding_agent_server::AppState {

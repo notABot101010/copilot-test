@@ -1,10 +1,10 @@
-use async_trait::async_trait;
-use std::collections::HashMap;
-use std::sync::Arc;
+use super::SubAgent;
 use crate::llm::{ChatMessage, LlmClient};
 use crate::models::{SubAgentType, Task};
 use crate::templates::TemplateManager;
-use super::SubAgent;
+use async_trait::async_trait;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 pub struct CodeEditorAgent {
     llm_client: Arc<dyn LlmClient>,
@@ -30,16 +30,24 @@ impl SubAgent for CodeEditorAgent {
         &self.llm_client
     }
 
-    async fn execute(&self, task: &Task, templates: &TemplateManager) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    async fn execute(
+        &self,
+        task: &Task,
+        templates: &TemplateManager,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         // Build context for template
         let mut vars = HashMap::new();
         vars.insert("project_type".to_string(), "Rust/TypeScript".to_string());
         vars.insert("primary_language".to_string(), "Rust".to_string());
-        vars.insert("relevant_files".to_string(), "(files would be listed here)".to_string());
+        vars.insert(
+            "relevant_files".to_string(),
+            "(files would be listed here)".to_string(),
+        );
         vars.insert("task_description".to_string(), task.description.clone());
 
         // Render prompt template
-        let system_prompt = templates.render("code_editor", &vars)
+        let system_prompt = templates
+            .render("code_editor", &vars)
             .unwrap_or_else(|| task.description.clone());
 
         // Use LLM to generate response

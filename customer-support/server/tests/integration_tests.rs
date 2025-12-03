@@ -89,7 +89,12 @@ struct VisitorSendMessageResponse {
 async fn wait_for_server() {
     let client = Client::new();
     for _ in 0..30 {
-        if client.get(format!("{}/api/workspaces", BASE_URL)).send().await.is_ok() {
+        if client
+            .get(format!("{}/api/workspaces", BASE_URL))
+            .send()
+            .await
+            .is_ok()
+        {
             return;
         }
         sleep(Duration::from_millis(100)).await;
@@ -156,7 +161,10 @@ async fn test_contact_crud() {
 
     // Create contact
     let res = client
-        .post(format!("{}/api/workspaces/{}/contacts", BASE_URL, workspace.id))
+        .post(format!(
+            "{}/api/workspaces/{}/contacts",
+            BASE_URL, workspace.id
+        ))
         .json(&serde_json::json!({
             "visitor_id": "visitor_123",
             "name": "John Doe",
@@ -203,7 +211,10 @@ async fn test_contact_crud() {
 
     // List contacts
     let res = client
-        .get(format!("{}/api/workspaces/{}/contacts", BASE_URL, workspace.id))
+        .get(format!(
+            "{}/api/workspaces/{}/contacts",
+            BASE_URL, workspace.id
+        ))
         .send()
         .await
         .expect("Failed to list contacts");
@@ -230,7 +241,10 @@ async fn test_conversation_and_messages() {
 
     // Create contact
     let res = client
-        .post(format!("{}/api/workspaces/{}/contacts", BASE_URL, workspace.id))
+        .post(format!(
+            "{}/api/workspaces/{}/contacts",
+            BASE_URL, workspace.id
+        ))
         .json(&serde_json::json!({
             "visitor_id": "visitor_456",
             "name": "Test User"
@@ -396,7 +410,10 @@ async fn test_analytics() {
     // Track page views
     for page in ["/home", "/about", "/pricing", "/home", "/home"] {
         let res = client
-            .post(format!("{}/api/workspaces/{}/track", BASE_URL, workspace.id))
+            .post(format!(
+                "{}/api/workspaces/{}/track",
+                BASE_URL, workspace.id
+            ))
             .header("User-Agent", "Mozilla/5.0 Chrome/120.0")
             .json(&serde_json::json!({
                 "page_url": page,
@@ -422,12 +439,12 @@ async fn test_analytics() {
 
     assert_eq!(res.status(), 200);
     let analytics: AnalyticsResponse = res.json().await.expect("Failed to parse response");
-    
+
     // We should have at least some data
     assert!(analytics.total_page_views >= 5);
     assert!(!analytics.top_pages.is_empty());
     assert!(!analytics.top_browsers.is_empty());
-    
+
     // Chrome should be detected
     assert!(analytics.top_browsers.iter().any(|b| b.browser == "Chrome"));
 }
@@ -449,7 +466,10 @@ async fn test_contact_conversations() {
 
     // Create contact
     let res = client
-        .post(format!("{}/api/workspaces/{}/contacts", BASE_URL, workspace.id))
+        .post(format!(
+            "{}/api/workspaces/{}/contacts",
+            BASE_URL, workspace.id
+        ))
         .json(&serde_json::json!({ "visitor_id": "conv_test_visitor" }))
         .send()
         .await
@@ -481,6 +501,7 @@ async fn test_contact_conversations() {
         .expect("Failed to get contact conversations");
 
     assert_eq!(res.status(), 200);
-    let conversations: Vec<ConversationResponse> = res.json().await.expect("Failed to parse response");
+    let conversations: Vec<ConversationResponse> =
+        res.json().await.expect("Failed to parse response");
     assert_eq!(conversations.len(), 3);
 }

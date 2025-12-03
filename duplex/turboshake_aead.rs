@@ -50,10 +50,10 @@ pub struct TurboShakeAead {
 }
 
 impl TurboShakeAead {
-    const RATE: usize = 136;  // Same as TurboSHAKE256
+    const RATE: usize = 136; // Same as TurboSHAKE256
     const TAG_SIZE: usize = 32;
-    const DOMAIN_SEP_AD: u8 = 0x01;   // Domain separator for AD
-    const DOMAIN_SEP_MSG: u8 = 0x02;  // Domain separator for message
+    const DOMAIN_SEP_AD: u8 = 0x01; // Domain separator for AD
+    const DOMAIN_SEP_MSG: u8 = 0x02; // Domain separator for message
 
     /// Create a new AEAD instance
     ///
@@ -68,9 +68,7 @@ impl TurboShakeAead {
             return Err(AeadError::InvalidNonceSize);
         }
 
-        let mut aead = Self {
-            state: [0u64; 25],
-        };
+        let mut aead = Self { state: [0u64; 25] };
 
         // Initialize with key
         aead.absorb_block(key);
