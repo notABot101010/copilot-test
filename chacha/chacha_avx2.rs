@@ -257,29 +257,33 @@ pub unsafe fn chacha_blocks_avx2<const ROUNDS: usize>(state: &[u32; 16], output:
     let r3_1215 = _mm_unpackhi_epi64(t13, t15);
 
     // Store block 0
-    _mm_storeu_si128(output.as_mut_ptr().add(0) as *mut __m128i, r0_03);
-    _mm_storeu_si128(output.as_mut_ptr().add(16) as *mut __m128i, r0_47);
-    _mm_storeu_si128(output.as_mut_ptr().add(32) as *mut __m128i, r0_811);
-    _mm_storeu_si128(output.as_mut_ptr().add(48) as *mut __m128i, r0_1215);
+    _mm_store_si128(output.as_mut_ptr().add(0) as *mut __m128i, r0_03);
+    _mm_store_si128(output.as_mut_ptr().add(16) as *mut __m128i, r0_47);
+    _mm_store_si128(output.as_mut_ptr().add(32) as *mut __m128i, r0_811);
+    _mm_store_si128(output.as_mut_ptr().add(48) as *mut __m128i, r0_1215);
 
     // Store block 1
-    _mm_storeu_si128(output.as_mut_ptr().add(64) as *mut __m128i, r1_03);
-    _mm_storeu_si128(output.as_mut_ptr().add(80) as *mut __m128i, r1_47);
-    _mm_storeu_si128(output.as_mut_ptr().add(96) as *mut __m128i, r1_811);
-    _mm_storeu_si128(output.as_mut_ptr().add(112) as *mut __m128i, r1_1215);
+    _mm_store_si128(output.as_mut_ptr().add(64) as *mut __m128i, r1_03);
+    _mm_store_si128(output.as_mut_ptr().add(80) as *mut __m128i, r1_47);
+    _mm_store_si128(output.as_mut_ptr().add(96) as *mut __m128i, r1_811);
+    _mm_store_si128(output.as_mut_ptr().add(112) as *mut __m128i, r1_1215);
 
     // Store block 2
-    _mm_storeu_si128(output.as_mut_ptr().add(128) as *mut __m128i, r2_03);
-    _mm_storeu_si128(output.as_mut_ptr().add(144) as *mut __m128i, r2_47);
-    _mm_storeu_si128(output.as_mut_ptr().add(160) as *mut __m128i, r2_811);
-    _mm_storeu_si128(output.as_mut_ptr().add(176) as *mut __m128i, r2_1215);
+    _mm_store_si128(output.as_mut_ptr().add(128) as *mut __m128i, r2_03);
+    _mm_store_si128(output.as_mut_ptr().add(144) as *mut __m128i, r2_47);
+    _mm_store_si128(output.as_mut_ptr().add(160) as *mut __m128i, r2_811);
+    _mm_store_si128(output.as_mut_ptr().add(176) as *mut __m128i, r2_1215);
 
     // Store block 3
-    _mm_storeu_si128(output.as_mut_ptr().add(192) as *mut __m128i, r3_03);
-    _mm_storeu_si128(output.as_mut_ptr().add(208) as *mut __m128i, r3_47);
-    _mm_storeu_si128(output.as_mut_ptr().add(224) as *mut __m128i, r3_811);
-    _mm_storeu_si128(output.as_mut_ptr().add(240) as *mut __m128i, r3_1215);
+    _mm_store_si128(output.as_mut_ptr().add(192) as *mut __m128i, r3_03);
+    _mm_store_si128(output.as_mut_ptr().add(208) as *mut __m128i, r3_47);
+    _mm_store_si128(output.as_mut_ptr().add(224) as *mut __m128i, r3_811);
+    _mm_store_si128(output.as_mut_ptr().add(240) as *mut __m128i, r3_1215);
 }
+
+
+#[repr(align(8))]
+pub struct AlignedU8x512(pub [u8; 512]);
 
 /// Process 8 ChaCha blocks in parallel using full AVX2 256-bit registers.
 /// The state array represents the initial state with base counter.
@@ -289,7 +293,7 @@ pub unsafe fn chacha_blocks_avx2<const ROUNDS: usize>(state: &[u32; 16], output:
 #[target_feature(enable = "avx2")]
 pub unsafe fn chacha_blocks_avx2_x8<const ROUNDS: usize>(
     state: &[u32; 16],
-    output: &mut [u8; 512],
+    output: &mut AlignedU8x512,
 ) {
     let counter_base = (state[12] as u64) | ((state[13] as u64) << 32);
 
@@ -555,22 +559,22 @@ pub unsafe fn chacha_blocks_avx2_x8<const ROUNDS: usize>(
     let r15 = _mm_unpackhi_epi64(t13, t15);
 
     // Store blocks 0-3
-    _mm_storeu_si128(output.as_mut_ptr().add(0) as *mut __m128i, r0);
-    _mm_storeu_si128(output.as_mut_ptr().add(16) as *mut __m128i, r4);
-    _mm_storeu_si128(output.as_mut_ptr().add(32) as *mut __m128i, r8);
-    _mm_storeu_si128(output.as_mut_ptr().add(48) as *mut __m128i, r12);
-    _mm_storeu_si128(output.as_mut_ptr().add(64) as *mut __m128i, r1);
-    _mm_storeu_si128(output.as_mut_ptr().add(80) as *mut __m128i, r5);
-    _mm_storeu_si128(output.as_mut_ptr().add(96) as *mut __m128i, r9);
-    _mm_storeu_si128(output.as_mut_ptr().add(112) as *mut __m128i, r13);
-    _mm_storeu_si128(output.as_mut_ptr().add(128) as *mut __m128i, r2);
-    _mm_storeu_si128(output.as_mut_ptr().add(144) as *mut __m128i, r6);
-    _mm_storeu_si128(output.as_mut_ptr().add(160) as *mut __m128i, r10);
-    _mm_storeu_si128(output.as_mut_ptr().add(176) as *mut __m128i, r14);
-    _mm_storeu_si128(output.as_mut_ptr().add(192) as *mut __m128i, r3);
-    _mm_storeu_si128(output.as_mut_ptr().add(208) as *mut __m128i, r7);
-    _mm_storeu_si128(output.as_mut_ptr().add(224) as *mut __m128i, r11);
-    _mm_storeu_si128(output.as_mut_ptr().add(240) as *mut __m128i, r15);
+    _mm_store_si128(output.0.as_mut_ptr().add(0) as *mut __m128i, r0);
+    _mm_store_si128(output.0.as_mut_ptr().add(16) as *mut __m128i, r4);
+    _mm_store_si128(output.0.as_mut_ptr().add(32) as *mut __m128i, r8);
+    _mm_store_si128(output.0.as_mut_ptr().add(48) as *mut __m128i, r12);
+    _mm_store_si128(output.0.as_mut_ptr().add(64) as *mut __m128i, r1);
+    _mm_store_si128(output.0.as_mut_ptr().add(80) as *mut __m128i, r5);
+    _mm_store_si128(output.0.as_mut_ptr().add(96) as *mut __m128i, r9);
+    _mm_store_si128(output.0.as_mut_ptr().add(112) as *mut __m128i, r13);
+    _mm_store_si128(output.0.as_mut_ptr().add(128) as *mut __m128i, r2);
+    _mm_store_si128(output.0.as_mut_ptr().add(144) as *mut __m128i, r6);
+    _mm_store_si128(output.0.as_mut_ptr().add(160) as *mut __m128i, r10);
+    _mm_store_si128(output.0.as_mut_ptr().add(176) as *mut __m128i, r14);
+    _mm_store_si128(output.0.as_mut_ptr().add(192) as *mut __m128i, r3);
+    _mm_store_si128(output.0.as_mut_ptr().add(208) as *mut __m128i, r7);
+    _mm_store_si128(output.0.as_mut_ptr().add(224) as *mut __m128i, r11);
+    _mm_store_si128(output.0.as_mut_ptr().add(240) as *mut __m128i, r15);
 
     // Transpose blocks 4-7 from high halves
     let t0 = _mm_unpacklo_epi32(v0_hi, v1_hi);
@@ -607,22 +611,22 @@ pub unsafe fn chacha_blocks_avx2_x8<const ROUNDS: usize>(
     let r15 = _mm_unpackhi_epi64(t13, t15);
 
     // Store blocks 4-7
-    _mm_storeu_si128(output.as_mut_ptr().add(256) as *mut __m128i, r0);
-    _mm_storeu_si128(output.as_mut_ptr().add(272) as *mut __m128i, r4);
-    _mm_storeu_si128(output.as_mut_ptr().add(288) as *mut __m128i, r8);
-    _mm_storeu_si128(output.as_mut_ptr().add(304) as *mut __m128i, r12);
-    _mm_storeu_si128(output.as_mut_ptr().add(320) as *mut __m128i, r1);
-    _mm_storeu_si128(output.as_mut_ptr().add(336) as *mut __m128i, r5);
-    _mm_storeu_si128(output.as_mut_ptr().add(352) as *mut __m128i, r9);
-    _mm_storeu_si128(output.as_mut_ptr().add(368) as *mut __m128i, r13);
-    _mm_storeu_si128(output.as_mut_ptr().add(384) as *mut __m128i, r2);
-    _mm_storeu_si128(output.as_mut_ptr().add(400) as *mut __m128i, r6);
-    _mm_storeu_si128(output.as_mut_ptr().add(416) as *mut __m128i, r10);
-    _mm_storeu_si128(output.as_mut_ptr().add(432) as *mut __m128i, r14);
-    _mm_storeu_si128(output.as_mut_ptr().add(448) as *mut __m128i, r3);
-    _mm_storeu_si128(output.as_mut_ptr().add(464) as *mut __m128i, r7);
-    _mm_storeu_si128(output.as_mut_ptr().add(480) as *mut __m128i, r11);
-    _mm_storeu_si128(output.as_mut_ptr().add(496) as *mut __m128i, r15);
+    _mm_store_si128(output.0.as_mut_ptr().add(256) as *mut __m128i, r0);
+    _mm_store_si128(output.0.as_mut_ptr().add(272) as *mut __m128i, r4);
+    _mm_store_si128(output.0.as_mut_ptr().add(288) as *mut __m128i, r8);
+    _mm_store_si128(output.0.as_mut_ptr().add(304) as *mut __m128i, r12);
+    _mm_store_si128(output.0.as_mut_ptr().add(320) as *mut __m128i, r1);
+    _mm_store_si128(output.0.as_mut_ptr().add(336) as *mut __m128i, r5);
+    _mm_store_si128(output.0.as_mut_ptr().add(352) as *mut __m128i, r9);
+    _mm_store_si128(output.0.as_mut_ptr().add(368) as *mut __m128i, r13);
+    _mm_store_si128(output.0.as_mut_ptr().add(384) as *mut __m128i, r2);
+    _mm_store_si128(output.0.as_mut_ptr().add(400) as *mut __m128i, r6);
+    _mm_store_si128(output.0.as_mut_ptr().add(416) as *mut __m128i, r10);
+    _mm_store_si128(output.0.as_mut_ptr().add(432) as *mut __m128i, r14);
+    _mm_store_si128(output.0.as_mut_ptr().add(448) as *mut __m128i, r3);
+    _mm_store_si128(output.0.as_mut_ptr().add(464) as *mut __m128i, r7);
+    _mm_store_si128(output.0.as_mut_ptr().add(480) as *mut __m128i, r11);
+    _mm_store_si128(output.0.as_mut_ptr().add(496) as *mut __m128i, r15);
 }
 
 #[cfg(test)]

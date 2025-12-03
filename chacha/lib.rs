@@ -210,10 +210,11 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
         // Use AVX2 for large data if available
         #[cfg(target_arch = "x86_64")]
         {
+            use chacha_avx2::AlignedU8x512;
             if is_x86_feature_detected!("avx2") && (data_len - offset) >= 512 {
                 // Process 512-byte chunks (8 blocks) using full AVX2
                 while offset + 512 <= data_len {
-                    let mut keystream = [0u8; 512];
+                    let mut keystream = AlignedU8x512([0u8; 512]);
                     unsafe {
                         chacha_avx2::chacha_blocks_avx2_x8::<ROUNDS>(&self.state, &mut keystream);
                     }
@@ -223,9 +224,9 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                         use core::arch::x86_64::*;
                         for i in (0..512).step_by(32) {
                             let data_ptr = data.as_mut_ptr().add(offset + i);
-                            let key_ptr = keystream.as_ptr().add(i);
+                            let key_ptr = keystream.0.as_ptr().add(i);
                             let data_vec = _mm256_loadu_si256(data_ptr as *const __m256i);
-                            let key_vec = _mm256_loadu_si256(key_ptr as *const __m256i);
+                            let key_vec = _mm256_load_si256(key_ptr as *const __m256i);
                             let result = _mm256_xor_si256(data_vec, key_vec);
                             _mm256_storeu_si256(data_ptr as *mut __m256i, result);
                         }
