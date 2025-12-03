@@ -8,6 +8,9 @@
 #[cfg(target_arch = "x86_64")]
 mod chacha_avx2;
 
+#[cfg(target_arch = "aarch64")]
+mod chacha_neon;
+
 /// ChaCha stream cipher with parametrized number of rounds.
 ///
 /// The state array contains:
@@ -255,6 +258,36 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                             let key_vec = _mm256_loadu_si256(key_ptr as *const __m256i);
                             let result = _mm256_xor_si256(data_vec, key_vec);
                             _mm256_storeu_si256(data_ptr as *mut __m256i, result);
+                        }
+                    }
+
+                    self.increment_counter(4);
+                    offset += 256;
+                }
+            }
+        }
+
+        // Use NEON for large data if available on ARM64
+        #[cfg(target_arch = "aarch64")]
+        {
+            // Process 256-byte chunks (4 blocks) using NEON
+            if (data_len - offset) >= 256 {
+                while offset + 256 <= data_len {
+                    let mut keystream = [0u8; 256];
+                    unsafe {
+                        chacha_neon::chacha_blocks_neon::<ROUNDS>(&self.state, &mut keystream);
+                    }
+
+                    // XOR keystream with data using NEON
+                    unsafe {
+                        use core::arch::aarch64::*;
+                        for i in (0..256).step_by(16) {
+                            let data_ptr = data.as_mut_ptr().add(offset + i);
+                            let key_ptr = keystream.as_ptr().add(i);
+                            let data_vec = vld1q_u8(data_ptr);
+                            let key_vec = vld1q_u8(key_ptr);
+                            let result = veorq_u8(data_vec, key_vec);
+                            vst1q_u8(data_ptr, result);
                         }
                     }
 
@@ -751,6 +784,82 @@ Expected: {}",
 
         for size in [255, 256, 257, 320, 511, 512, 513, 1023, 1024, 1025] {
             let plaintext: Vec<u8> = (0..size).map(|i| i as u8).collect();
+            let mut data = plaintext.clone();
+
+            let mut cipher = ChaCha20::new(&key, &nonce);
+            cipher.xor_keystream(&mut data);
+
+            // Decrypt
+            let mut cipher = ChaCha20::new(&key, &nonce);
+            cipher.xor_keystream(&mut data);
+
+            assert_eq!(
+                &data[..],
+                &plaintext[..],
+                "Roundtrip failed for size {size}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(target_arch = "aarch64")]
+    fn test_neon_integration() {
+        // Test that NEON path (for data >= 256 bytes) produces correct results
+        let key = hex::decode("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let nonce = [0x00, 0x00, 0x00, 0x4a, 0x00, 0x00, 0x00, 0x00];
+
+        // Test with exactly 256 bytes (should use NEON path entirely)
+        let mut data256 = vec![0u8; 256];
+        let mut cipher1 = ChaCha20::new(&key, &nonce);
+        cipher1.xor_keystream(&mut data256);
+
+        // Test with 512 bytes (multiple NEON iterations)
+        let mut data512 = vec![0u8; 512];
+        let mut cipher2 = ChaCha20::new(&key, &nonce);
+        cipher2.xor_keystream(&mut data512);
+
+        // First 256 bytes should match
+        assert_eq!(
+            &data256[..],
+            &data512[..256],
+            "First 256 bytes should match"
+        );
+
+        // Test encrypt/decrypt roundtrip with large data
+        let plaintext: Vec<u8> = (0..1024).map(|idx| idx as u8).collect();
+        let mut ciphertext = plaintext.clone();
+        let mut cipher3 = ChaCha20::new(&key, &nonce);
+        cipher3.xor_keystream(&mut ciphertext);
+
+        assert_ne!(
+            &ciphertext[..],
+            &plaintext[..],
+            "Ciphertext should differ from plaintext"
+        );
+
+        let mut decrypted = ciphertext.clone();
+        let mut cipher4 = ChaCha20::new(&key, &nonce);
+        cipher4.xor_keystream(&mut decrypted);
+
+        assert_eq!(
+            &decrypted[..],
+            &plaintext[..],
+            "Decryption should recover plaintext"
+        );
+    }
+
+    #[test]
+    #[cfg(target_arch = "aarch64")]
+    fn test_neon_boundary_conditions() {
+        // Test boundary conditions around 256-byte threshold
+        let key = [1u8; 32];
+        let nonce = [2u8; 8];
+
+        for size in [255, 256, 257, 320, 511, 512, 513, 1023, 1024, 1025] {
+            let plaintext: Vec<u8> = (0..size).map(|idx| idx as u8).collect();
             let mut data = plaintext.clone();
 
             let mut cipher = ChaCha20::new(&key, &nonce);
