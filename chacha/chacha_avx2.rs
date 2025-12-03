@@ -281,7 +281,7 @@ pub unsafe fn chacha_blocks_avx2<const ROUNDS: usize>(state: &[u32; 16], output:
     _mm_store_si128(output.as_mut_ptr().add(240) as *mut __m128i, r3_1215);
 }
 
-#[repr(align(8))]
+#[repr(align(32))]
 pub struct AlignedU8x512(pub [u8; 512]);
 
 /// Process 8 ChaCha blocks in parallel using full AVX2 256-bit registers.
