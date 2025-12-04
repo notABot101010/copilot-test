@@ -366,7 +366,14 @@ function KanbanCard({ database, row }: KanbanCardProps) {
 
   const handleKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
     if (listeners?.onKeyDown) {
-      listeners.onKeyDown(e as unknown as KeyboardEvent);
+      // Create a compatible event object for dnd-kit
+      const keyboardEvent = {
+        key: e.key,
+        code: e.code,
+        preventDefault: () => e.preventDefault(),
+        stopPropagation: () => e.stopPropagation(),
+      } as KeyboardEvent;
+      listeners.onKeyDown(keyboardEvent);
     }
   };
 

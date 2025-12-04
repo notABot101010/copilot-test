@@ -204,7 +204,7 @@ export function removeDatabaseColumn(databaseId: string, columnId: string): void
 export function addDatabaseRow(databaseId: string, row?: Partial<DatabaseRow>): DatabaseRow {
   const now = Date.now();
   const database = databases.value.find((db) => db.id === databaseId);
-  const defaultProperties: Record<string, string | number | boolean | string[] | Date | null> = {};
+  const defaultProperties: Record<string, DatabaseCellValue> = {};
   
   database?.columns.forEach((col) => {
     if (col.type === 'checkbox') {
