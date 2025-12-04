@@ -1,100 +1,168 @@
-import { useEffect } from 'preact/hooks';
+import { useCallback } from 'preact/hooks';
 import type { JSX } from 'preact';
-import { useSignal } from '@preact/signals';
-import type { DragEndEvent } from '@dnd-kit/core';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
 import { TextInput, ScrollArea, ActionIcon } from '@mantine/core';
-import { BlockComponent } from './BlockComponent';
-import { CommandPalette } from './CommandPalette';
+import { useCreateBlockNote } from '@blocknote/react';
+import { BlockNoteView } from '@blocknote/mantine';
+import type { Block, PartialBlock } from '@blocknote/core';
+import '@blocknote/mantine/style.css';
 import {
   currentPage,
   updatePage,
-  createBlock,
-  reorderBlocks,
-  openCommandPalette,
   isSidebarOpen,
   toggleSidebar,
-  focusedBlockId,
-  setFocusedBlock,
 } from '../store';
 
-export function PageEditor() {
-  const titleInputRef = useSignal<HTMLInputElement | null>(null);
+// Custom dark theme matching the zinc color scheme
+const darkTheme = {
+  colors: {
+    editor: {
+      text: '#ffffff',
+      background: 'transparent',
+    },
+    menu: {
+      text: '#ffffff',
+      background: '#27272a',
+    },
+    tooltip: {
+      text: '#ffffff',
+      background: '#3f3f46',
+    },
+    hovered: {
+      text: '#ffffff',
+      background: '#3f3f46',
+    },
+    selected: {
+      text: '#ffffff',
+      background: '#52525b',
+    },
+    disabled: {
+      text: '#71717a',
+      background: '#27272a',
+    },
+    shadow: '#00000066',
+    border: '#3f3f46',
+    sideMenu: '#a1a1aa',
+    highlights: {
+      gray: { text: '#d4d4d8', background: '#3f3f46' },
+      brown: { text: '#fcd34d', background: '#78350f' },
+      red: { text: '#fca5a5', background: '#7f1d1d' },
+      orange: { text: '#fdba74', background: '#7c2d12' },
+      yellow: { text: '#fde047', background: '#713f12' },
+      green: { text: '#86efac', background: '#14532d' },
+      blue: { text: '#93c5fd', background: '#1e3a8a' },
+      purple: { text: '#c4b5fd', background: '#4c1d95' },
+      pink: { text: '#f9a8d4', background: '#831843' },
+    },
+  },
+  borderRadius: 6,
+  fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+};
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+// Convert old block format to BlockNote format
+function convertLegacyBlocks(legacyBlocks: Array<{ type: string; content: string; id?: string }>): PartialBlock[] | undefined {
+  if (!legacyBlocks || legacyBlocks.length === 0) return undefined;
+  
+  return legacyBlocks.map((block) => {
+    // Map old block types to BlockNote types
+    switch (block.type) {
+      case 'heading1':
+        return {
+          type: 'heading' as const,
+          props: { level: 1 },
+          content: block.content ? [{ type: 'text' as const, text: block.content.replace(/<[^>]*>/g, ''), styles: {} }] : [],
+        };
+      case 'heading2':
+        return {
+          type: 'heading' as const,
+          props: { level: 2 },
+          content: block.content ? [{ type: 'text' as const, text: block.content.replace(/<[^>]*>/g, ''), styles: {} }] : [],
+        };
+      case 'heading3':
+        return {
+          type: 'heading' as const,
+          props: { level: 3 },
+          content: block.content ? [{ type: 'text' as const, text: block.content.replace(/<[^>]*>/g, ''), styles: {} }] : [],
+        };
+      case 'bulletList':
+        return {
+          type: 'bulletListItem' as const,
+          content: block.content ? [{ type: 'text' as const, text: block.content.replace(/<[^>]*>/g, ''), styles: {} }] : [],
+        };
+      case 'numberedList':
+        return {
+          type: 'numberedListItem' as const,
+          content: block.content ? [{ type: 'text' as const, text: block.content.replace(/<[^>]*>/g, ''), styles: {} }] : [],
+        };
+      case 'todoList':
+        return {
+          type: 'checkListItem' as const,
+          props: { checked: false },
+          content: block.content ? [{ type: 'text' as const, text: block.content.replace(/<[^>]*>/g, ''), styles: {} }] : [],
+        };
+      default:
+        return {
+          type: 'paragraph' as const,
+          content: block.content ? [{ type: 'text' as const, text: block.content.replace(/<[^>]*>/g, ''), styles: {} }] : [],
+        };
+    }
+  });
+}
+
+interface BlockNoteEditorWrapperProps {
+  pageId: string;
+  initialContent?: PartialBlock[];
+  onChange: (blocks: Block[]) => void;
+}
+
+function BlockNoteEditorWrapper({ pageId, initialContent, onChange }: BlockNoteEditorWrapperProps) {
+  const editor = useCreateBlockNote({
+    initialContent: initialContent && initialContent.length > 0 ? initialContent : undefined,
+  }, [pageId]); // Recreate editor when page changes
+
+  return (
+    <BlockNoteView
+      editor={editor}
+      theme={darkTheme}
+      onChange={() => {
+        onChange(editor.document);
+      }}
+    />
   );
+}
 
-  useEffect(() => {
-    if (currentPage.value?.blocks.length === 0 && currentPage.value) {
-      createBlock(currentPage.value.id, 'text');
+export function PageEditor() {
+  // Get initial content for BlockNote
+  const getInitialContent = useCallback(() => {
+    const page = currentPage.value;
+    if (!page) return undefined;
+    
+    // Check if we have blocknote content stored
+    if (page.blocknoteContent && Array.isArray(page.blocknoteContent) && page.blocknoteContent.length > 0) {
+      return page.blocknoteContent as PartialBlock[];
     }
-  }, [currentPage.value?.id]);
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id && currentPage.value) {
-      const oldIndex = currentPage.value.blocks.findIndex(
-        (block) => block.id === active.id
-      );
-      const newIndex = currentPage.value.blocks.findIndex(
-        (block) => block.id === over.id
-      );
-      reorderBlocks(currentPage.value.id, oldIndex, newIndex);
+    
+    // Convert legacy blocks
+    if (page.blocks && page.blocks.length > 0) {
+      return convertLegacyBlocks(page.blocks);
     }
-  };
+    
+    return undefined;
+  }, [currentPage.value?.id, currentPage.value?.blocks, currentPage.value?.blocknoteContent]);
 
-  const handleBlockCreated = (blockId: string) => {
-    setFocusedBlock(blockId);
-  };
-
-  const handleAddBlock = () => {
+  const handleEditorChange = useCallback((blocks: Block[]) => {
     if (!currentPage.value) return;
-    const lastBlockIndex = currentPage.value.blocks.length - 1;
-    const rect = document.querySelector('.page-content')?.getBoundingClientRect();
-    if (rect) {
-      openCommandPalette(rect.left + 60, rect.bottom - 100, lastBlockIndex);
-    }
-  };
+    updatePage(currentPage.value.id, { blocknoteContent: blocks });
+  }, []);
 
   const handleTitleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      const firstBlock = currentPage.value?.blocks[0];
-      if (firstBlock) {
-        setFocusedBlock(firstBlock.id);
+      // Focus the editor
+      const editorElement = document.querySelector('.bn-editor');
+      if (editorElement instanceof HTMLElement) {
+        editorElement.focus();
       }
-    } else if (e.key === '/' && currentPage.value) {
-      e.preventDefault();
-      const rect = (e.target as HTMLElement).getBoundingClientRect();
-      openCommandPalette(rect.left, rect.bottom + 4, -1);
     }
-  };
-
-  // Handle clicking below the last block to create a new block
-  const handleContentAreaClick = () => {
-    if (!currentPage.value) return;
-    
-    const page = currentPage.value;
-    const lastBlockIndex = page.blocks.length - 1;
-    const newBlock = createBlock(page.id, 'text', lastBlockIndex);
-    setFocusedBlock(newBlock.id);
   };
 
   if (!currentPage.value) {
@@ -109,6 +177,7 @@ export function PageEditor() {
   }
 
   const page = currentPage.value;
+  const initialContent = getInitialContent();
 
   return (
     <div className="flex h-screen flex-1 flex-col overflow-hidden">
@@ -132,14 +201,13 @@ export function PageEditor() {
 
       {/* Page content */}
       <ScrollArea className="flex-1">
-        <div className="page-content mx-auto max-w-3xl px-12 py-8">
+        <div className="page-content mx-auto max-w-3xl px-4 py-8 sm:px-12">
           {/* Icon and Title */}
           <div className="mb-8">
             <button className="mb-4 text-5xl transition-transform hover:scale-110">
               {page.icon || '📄'}
             </button>
             <TextInput
-              ref={(el: HTMLInputElement | null) => (titleInputRef.value = el)}
               variant="unstyled"
               placeholder="Untitled"
               value={page.title}
@@ -157,53 +225,17 @@ export function PageEditor() {
             />
           </div>
 
-          {/* Blocks */}
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={page.blocks.map((b) => b.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              <div className="space-y-1">
-                {page.blocks.map((block) => (
-                  <BlockComponent
-                    key={block.id}
-                    block={block}
-                    pageId={page.id}
-                    autoFocus={focusedBlockId.value === block.id}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-
-          {/* Add block button when empty */}
-          {page.blocks.length === 0 && (
-            <button
-              className="flex w-full items-center gap-2 rounded px-2 py-3 text-sm text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-              onClick={handleAddBlock}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-              </svg>
-              Click here or press '/' to add a block
-            </button>
-          )}
-
-          {/* Clickable area below blocks to add new block */}
-          {page.blocks.length > 0 && (
-            <div 
-              className="min-h-48 cursor-text" 
-              onClick={handleContentAreaClick}
+          {/* BlockNote Editor */}
+          <div className="min-h-[300px]">
+            <BlockNoteEditorWrapper
+              key={page.id}
+              pageId={page.id}
+              initialContent={initialContent}
+              onChange={handleEditorChange}
             />
-          )}
+          </div>
         </div>
       </ScrollArea>
-
-      <CommandPalette onBlockCreated={handleBlockCreated} />
     </div>
   );
 }
