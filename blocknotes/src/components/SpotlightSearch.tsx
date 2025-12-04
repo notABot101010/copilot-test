@@ -1,23 +1,24 @@
-import { useEffect, useRef } from 'preact/hooks';
-import { useSignal, computed } from '@preact/signals';
+import type { MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Paper, Text } from '@mantine/core';
 import { pages, setCurrentPage, isSidebarOpen, toggleSidebar } from '../store';
 
 export function SpotlightSearch() {
-  const searchQuery = useSignal('');
-  const selectedIndex = useSignal(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const isOpen = useSignal(false);
+  const [isOpen, setIsOpen] = useState(false);
 
-  // Memoize filtered pages using computed
-  const filteredPages = computed(() => 
+  // Memoize filtered pages
+  const filteredPages = useMemo(() => 
     pages.value.filter(
       (page) =>
-        page.title.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+        page.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         page.blocks.some((block) =>
-          block.content?.toLowerCase().includes(searchQuery.value.toLowerCase())
+          block.content?.toLowerCase().includes(searchQuery.toLowerCase())
         )
-    )
+    ),
+    [searchQuery, pages.value]
   );
 
   useEffect(() => {
@@ -25,72 +26,74 @@ export function SpotlightSearch() {
       // CMD+K or Ctrl+K to open spotlight
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        isOpen.value = !isOpen.value;
-        if (isOpen.value) {
-          searchQuery.value = '';
-          selectedIndex.value = 0;
-        }
+        setIsOpen(prev => {
+          if (!prev) {
+            setSearchQuery('');
+            setSelectedIndex(0);
+          }
+          return !prev;
+        });
       }
 
       // Escape to close
-      if (e.key === 'Escape' && isOpen.value) {
+      if (e.key === 'Escape' && isOpen) {
         e.preventDefault();
-        isOpen.value = false;
-        searchQuery.value = '';
+        setIsOpen(false);
+        setSearchQuery('');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen.value && inputRef.current) {
+    if (isOpen && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [isOpen.value]);
+  }, [isOpen]);
 
   useEffect(() => {
-    selectedIndex.value = 0;
-  }, [searchQuery.value]);
+    setSelectedIndex(0);
+  }, [searchQuery]);
 
   const handleSelectPage = (pageId: string) => {
     setCurrentPage(pageId);
-    isOpen.value = false;
-    searchQuery.value = '';
+    setIsOpen(false);
+    setSearchQuery('');
     // On mobile, ensure sidebar is closed when navigating
     if (window.innerWidth < 768 && isSidebarOpen.value) {
       toggleSidebar();
     }
   };
 
-  const handleKeyDown = (e: KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      selectedIndex.value = Math.min(selectedIndex.value + 1, filteredPages.value.length - 1);
+      setSelectedIndex(prev => Math.min(prev + 1, filteredPages.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
-    } else if (e.key === 'Enter' && filteredPages.value[selectedIndex.value]) {
+      setSelectedIndex(prev => Math.max(prev - 1, 0));
+    } else if (e.key === 'Enter' && filteredPages[selectedIndex]) {
       e.preventDefault();
-      handleSelectPage(filteredPages.value[selectedIndex.value].id);
+      handleSelectPage(filteredPages[selectedIndex].id);
     }
   };
 
-  if (!isOpen.value) return null;
+  if (!isOpen) return null;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-24"
       onClick={() => {
-        isOpen.value = false;
-        searchQuery.value = '';
+        setIsOpen(false);
+        setSearchQuery('');
       }}
     >
       <Paper
         shadow="lg"
         className="w-full max-w-xl overflow-hidden border border-zinc-700 bg-zinc-800"
-        onClick={(e: MouseEvent) => e.stopPropagation()}
+        onClick={(e: ReactMouseEvent<HTMLDivElement>) => e.stopPropagation()}
       >
         <div className="border-b border-zinc-700 p-3">
           <div className="flex items-center gap-3">
@@ -113,8 +116,8 @@ export function SpotlightSearch() {
               type="text"
               placeholder="Search pages..."
               className="flex-1 bg-transparent text-white outline-none placeholder:text-zinc-500"
-              value={searchQuery.value}
-              onInput={(e) => (searchQuery.value = (e.target as HTMLInputElement).value)}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleKeyDown}
             />
             <span className="rounded bg-zinc-700 px-1.5 py-0.5 text-xs text-zinc-400">ESC</span>
@@ -122,12 +125,12 @@ export function SpotlightSearch() {
         </div>
 
         <div className="max-h-80 overflow-y-auto p-2">
-          {filteredPages.value.length > 0 ? (
-            filteredPages.value.map((page, index) => (
+          {filteredPages.length > 0 ? (
+            filteredPages.map((page, index) => (
               <button
                 key={page.id}
                 className={`flex w-full items-center gap-3 rounded px-3 py-2 text-left transition-colors ${
-                  selectedIndex.value === index
+                  selectedIndex === index
                     ? 'bg-zinc-700 text-white'
                     : 'text-zinc-300 hover:bg-zinc-700/50'
                 }`}
@@ -138,8 +141,8 @@ export function SpotlightSearch() {
                   <Text size="sm" fw={500} className="truncate">
                     {page.title || 'Untitled'}
                   </Text>
-                  {searchQuery.value && page.blocks.some((b) => 
-                    b.content?.toLowerCase().includes(searchQuery.value.toLowerCase())
+                  {searchQuery && page.blocks.some((b) => 
+                    b.content?.toLowerCase().includes(searchQuery.toLowerCase())
                   ) && (
                     <Text size="xs" c="dimmed" className="truncate">
                       Found in content
@@ -151,7 +154,7 @@ export function SpotlightSearch() {
           ) : (
             <div className="py-8 text-center">
               <Text size="sm" c="dimmed">
-                {searchQuery.value ? 'No pages found' : 'Start typing to search...'}
+                {searchQuery ? 'No pages found' : 'Start typing to search...'}
               </Text>
             </div>
           )}
