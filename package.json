@@ -15,6 +15,7 @@
     "tvflix/webapp",
     "markdown-editor",
     "telegraf",
-    "notes"
+    "notes",
+    "blocknotes"
   ]
 }
