@@ -1,7 +1,7 @@
 import { useEffect } from 'preact/hooks';
 import { MantineProvider, createTheme } from '@mantine/core';
 import '@mantine/core/styles.css';
-import { Sidebar, PageEditor } from './components';
+import { Sidebar, PageEditor, SpotlightSearch } from './components';
 import { initializeStore } from './store';
 
 const theme = createTheme({
@@ -33,6 +33,7 @@ export function App() {
       <div className="flex h-screen bg-zinc-900 text-white">
         <Sidebar />
         <PageEditor />
+        <SpotlightSearch />
       </div>
     </MantineProvider>
   );

@@ -26,10 +26,11 @@ import {
   openCommandPalette,
   isSidebarOpen,
   toggleSidebar,
+  focusedBlockId,
+  setFocusedBlock,
 } from '../store';
 
 export function PageEditor() {
-  const focusedBlockId = useSignal<string | null>(null);
   const titleInputRef = useSignal<HTMLInputElement | null>(null);
 
   const sensors = useSensors(
@@ -60,7 +61,7 @@ export function PageEditor() {
   };
 
   const handleBlockCreated = (blockId: string) => {
-    focusedBlockId.value = blockId;
+    setFocusedBlock(blockId);
   };
 
   const handleAddBlock = () => {
@@ -77,13 +78,23 @@ export function PageEditor() {
       e.preventDefault();
       const firstBlock = currentPage.value?.blocks[0];
       if (firstBlock) {
-        focusedBlockId.value = firstBlock.id;
+        setFocusedBlock(firstBlock.id);
       }
     } else if (e.key === '/' && currentPage.value) {
       e.preventDefault();
       const rect = (e.target as HTMLElement).getBoundingClientRect();
       openCommandPalette(rect.left, rect.bottom + 4, -1);
     }
+  };
+
+  // Handle clicking below the last block to create a new block
+  const handleContentAreaClick = () => {
+    if (!currentPage.value) return;
+    
+    const page = currentPage.value;
+    const lastBlockIndex = page.blocks.length - 1;
+    const newBlock = createBlock(page.id, 'text', lastBlockIndex);
+    setFocusedBlock(newBlock.id);
   };
 
   if (!currentPage.value) {
@@ -103,18 +114,16 @@ export function PageEditor() {
     <div className="flex h-screen flex-1 flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-zinc-700 px-4 py-2">
-        {!isSidebarOpen.value && (
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            onClick={toggleSidebar}
-            aria-label="Open sidebar"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-            </svg>
-          </ActionIcon>
-        )}
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          onClick={toggleSidebar}
+          aria-label={isSidebarOpen.value ? "Close sidebar" : "Open sidebar"}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+          </svg>
+        </ActionIcon>
         <div className="flex items-center gap-2">
           <span className="text-lg">{page.icon || '📄'}</span>
           <span className="text-sm text-zinc-300">{page.title || 'Untitled'}</span>
@@ -171,7 +180,7 @@ export function PageEditor() {
             </SortableContext>
           </DndContext>
 
-          {/* Add block button */}
+          {/* Add block button when empty */}
           {page.blocks.length === 0 && (
             <button
               className="flex w-full items-center gap-2 rounded px-2 py-3 text-sm text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
@@ -182,6 +191,14 @@ export function PageEditor() {
               </svg>
               Click here or press '/' to add a block
             </button>
+          )}
+
+          {/* Clickable area below blocks to add new block */}
+          {page.blocks.length > 0 && (
+            <div 
+              className="min-h-48 cursor-text" 
+              onClick={handleContentAreaClick}
+            />
           )}
         </div>
       </ScrollArea>

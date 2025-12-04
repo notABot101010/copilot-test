@@ -22,6 +22,29 @@ export const commandPaletteBlockIndex = signal<number | null>(null);
 // Sidebar state
 export const isSidebarOpen = signal(true);
 
+// Block focus state
+export const focusedBlockId = signal<string | null>(null);
+
+export function setFocusedBlock(blockId: string | null): void {
+  focusedBlockId.value = blockId;
+}
+
+export function getPreviousBlock(pageId: string, blockId: string): Block | null {
+  const page = pages.value.find((p) => p.id === pageId);
+  if (!page) return null;
+  const index = page.blocks.findIndex((b) => b.id === blockId);
+  if (index <= 0) return null;
+  return page.blocks[index - 1];
+}
+
+export function getNextBlock(pageId: string, blockId: string): Block | null {
+  const page = pages.value.find((p) => p.id === pageId);
+  if (!page) return null;
+  const index = page.blocks.findIndex((b) => b.id === blockId);
+  if (index < 0 || index >= page.blocks.length - 1) return null;
+  return page.blocks[index + 1];
+}
+
 // Page actions
 export function createPage(title: string = 'Untitled', parentId?: string): Page {
   const now = Date.now();
