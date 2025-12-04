@@ -1,6 +1,6 @@
-import type { JSX } from 'preact';
+import type { ChangeEvent, MouseEvent as ReactMouseEvent } from 'react';
+import { useState } from 'react';
 import { ActionIcon, ScrollArea, Text, TextInput } from '@mantine/core';
-import { useSignal } from '@preact/signals';
 import { 
   pages, 
   currentPageId, 
@@ -12,10 +12,10 @@ import {
 } from '../store';
 
 export function Sidebar() {
-  const searchQuery = useSignal('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const filteredPages = pages.value.filter((page) =>
-    page.title.toLowerCase().includes(searchQuery.value.toLowerCase())
+    page.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleCreatePage = () => {
@@ -23,7 +23,7 @@ export function Sidebar() {
     setCurrentPage(newPage.id);
   };
 
-  const handleDeletePage = (e: MouseEvent, pageId: string) => {
+  const handleDeletePage = (e: ReactMouseEvent<HTMLButtonElement>, pageId: string) => {
     e.stopPropagation();
     deletePage(pageId);
   };
@@ -67,8 +67,8 @@ export function Sidebar() {
         <TextInput
           placeholder="Search pages..."
           size="xs"
-          value={searchQuery.value}
-          onChange={(e: JSX.TargetedEvent<HTMLInputElement>) => (searchQuery.value = e.currentTarget.value)}
+          value={searchQuery}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchQuery(e.currentTarget.value)}
           leftSection={
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -98,7 +98,7 @@ export function Sidebar() {
                 color="red"
                 size="xs"
                 className="opacity-0 group-hover:opacity-100"
-                onClick={(e: MouseEvent) => handleDeletePage(e, page.id)}
+                onClick={(e: ReactMouseEvent<HTMLButtonElement>) => handleDeletePage(e, page.id)}
                 aria-label="Delete page"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
