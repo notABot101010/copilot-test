@@ -14,6 +14,7 @@
     "chesssite/webapp",
     "tvflix/webapp",
     "markdown-editor",
-    "telegraf"
+    "telegraf",
+    "notes"
   ]
 }
