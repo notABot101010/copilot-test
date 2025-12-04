@@ -55,6 +55,7 @@ export interface Page {
   title: string;
   icon?: string;
   blocks: Block[];
+  blocknoteContent?: unknown[]; // BlockNote content as JSON
   parentId?: string;
   children?: string[];
   createdAt: number;

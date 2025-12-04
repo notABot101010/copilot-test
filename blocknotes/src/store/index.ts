@@ -320,11 +320,19 @@ export function toggleSidebar(): void {
 export function initializeStore(): void {
   if (pages.value.length === 0) {
     const page = createPage('Getting Started');
-    createBlock(page.id, 'heading1');
-    updateBlock(page.id, pages.value[0].blocks[0].id, { content: 'Welcome to Notes' });
-    createBlock(page.id, 'text');
-    updateBlock(page.id, pages.value[0].blocks[1].id, { 
-      content: 'Start typing or press "/" to see available commands.' 
+    // Set initial BlockNote content
+    updatePage(page.id, {
+      blocknoteContent: [
+        {
+          type: 'heading',
+          props: { level: 1 },
+          content: [{ type: 'text', text: 'Welcome to Notes', styles: {} }],
+        },
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'Start typing or press "/" to see available commands.', styles: {} }],
+        },
+      ],
     });
     setCurrentPage(page.id);
   }
