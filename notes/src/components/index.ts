@@ -5,3 +5,4 @@ export { RichTextEditor } from './RichTextEditor';
 export { CommandPalette } from './CommandPalette';
 export { TableBlock } from './TableBlock';
 export { DatabaseBlock } from './DatabaseBlock';
+export { SpotlightSearch } from './SpotlightSearch';

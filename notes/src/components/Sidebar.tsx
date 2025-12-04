@@ -28,25 +28,27 @@ export function Sidebar() {
     deletePage(pageId);
   };
 
+  const handlePageClick = (pageId: string) => {
+    setCurrentPage(pageId);
+    // Close sidebar on mobile after selecting a page
+    if (window.innerWidth < 768) {
+      toggleSidebar();
+    }
+  };
+
   if (!isSidebarOpen.value) {
-    return (
-      <div className="fixed left-0 top-0 z-10 p-2">
-        <ActionIcon
-          variant="subtle"
-          color="gray"
-          onClick={toggleSidebar}
-          aria-label="Open sidebar"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-          </svg>
-        </ActionIcon>
-      </div>
-    );
+    return null;
   }
 
   return (
-    <div className="flex h-screen w-64 flex-shrink-0 flex-col border-r border-zinc-700 bg-zinc-900">
+    <>
+      {/* Mobile overlay */}
+      <div 
+        className="fixed inset-0 z-30 bg-black/50 md:hidden"
+        onClick={toggleSidebar}
+      />
+      {/* Sidebar */}
+      <div className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-shrink-0 flex-col border-r border-zinc-700 bg-zinc-900 md:static md:z-0">
       <div className="flex items-center justify-between border-b border-zinc-700 px-3 py-2">
         <Text fw={600} size="sm">Notes</Text>
         <ActionIcon
@@ -85,7 +87,7 @@ export function Sidebar() {
                   ? 'bg-zinc-700 text-white'
                   : 'text-zinc-300 hover:bg-zinc-800'
               }`}
-              onClick={() => setCurrentPage(page.id)}
+              onClick={() => handlePageClick(page.id)}
             >
               <div className="flex items-center gap-2 overflow-hidden">
                 <span className="flex-shrink-0">{page.icon || '📄'}</span>
@@ -119,6 +121,7 @@ export function Sidebar() {
           <span>New Page</span>
         </button>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

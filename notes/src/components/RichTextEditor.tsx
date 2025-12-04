@@ -10,7 +10,15 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
-import { updateBlock, openCommandPalette, currentPage } from '../store';
+import { 
+  updateBlock, 
+  openCommandPalette, 
+  currentPage, 
+  createBlock, 
+  deleteBlock, 
+  setFocusedBlock, 
+  getPreviousBlock 
+} from '../store';
 import type { Block } from '../types';
 
 interface RichTextEditorProps {
@@ -60,8 +68,50 @@ export function RichTextEditor({ block, pageId, onFocus, autoFocus }: RichTextEd
       attributes: {
         class: getEditorClass(block.type),
       },
-      handleKeyDown: () => {
-        // Let Tiptap handle keyboard events
+      handleKeyDown: (view, event) => {
+        // Shift+Enter: insert a line break (new line within block)
+        if (event.key === 'Enter' && event.shiftKey) {
+          // Insert a hard break
+          const { state, dispatch } = view;
+          const { schema, tr } = state;
+          const hardBreak = schema.nodes.hardBreak;
+          if (hardBreak) {
+            dispatch(tr.replaceSelectionWith(hardBreak.create()).scrollIntoView());
+            return true;
+          }
+          return false;
+        }
+
+        // Enter without Shift: create a new block
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          const page = currentPage.value;
+          if (!page) return true;
+          
+          const blockIndex = page.blocks.findIndex((b) => b.id === block.id);
+          // If block not found, append to end (blockIndex will be -1)
+          const newBlock = createBlock(pageId, 'text', blockIndex >= 0 ? blockIndex : undefined);
+          setFocusedBlock(newBlock.id);
+          return true;
+        }
+
+        // Backspace on empty block: delete block and focus previous
+        if (event.key === 'Backspace') {
+          const { state } = view;
+          if (state.doc.textContent === '' || state.doc.content.size <= 2) {
+            const page = currentPage.value;
+            if (!page || page.blocks.length <= 1) return false;
+            
+            const prevBlock = getPreviousBlock(pageId, block.id);
+            if (prevBlock) {
+              event.preventDefault();
+              deleteBlock(pageId, block.id);
+              setFocusedBlock(prevBlock.id);
+              return true;
+            }
+          }
+        }
+
         return false;
       },
     },
