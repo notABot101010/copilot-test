@@ -89,7 +89,8 @@ export function RichTextEditor({ block, pageId, onFocus, autoFocus }: RichTextEd
           if (!page) return true;
           
           const blockIndex = page.blocks.findIndex((b) => b.id === block.id);
-          const newBlock = createBlock(pageId, 'text', blockIndex);
+          // If block not found, append to end (blockIndex will be -1)
+          const newBlock = createBlock(pageId, 'text', blockIndex >= 0 ? blockIndex : undefined);
           setFocusedBlock(newBlock.id);
           return true;
         }

@@ -1,10 +1,7 @@
 import { useEffect, useRef } from 'preact/hooks';
-import { useSignal } from '@preact/signals';
+import { useSignal, computed } from '@preact/signals';
 import { Paper, Text } from '@mantine/core';
 import { pages, setCurrentPage, isSidebarOpen, toggleSidebar } from '../store';
-
-// Spotlight search state
-export const isSpotlightOpen = { value: false };
 
 export function SpotlightSearch() {
   const searchQuery = useSignal('');
@@ -12,12 +9,15 @@ export function SpotlightSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const isOpen = useSignal(false);
 
-  const filteredPages = pages.value.filter(
-    (page) =>
-      page.title.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      page.blocks.some((block) =>
-        block.content?.toLowerCase().includes(searchQuery.value.toLowerCase())
-      )
+  // Memoize filtered pages using computed
+  const filteredPages = computed(() => 
+    pages.value.filter(
+      (page) =>
+        page.title.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+        page.blocks.some((block) =>
+          block.content?.toLowerCase().includes(searchQuery.value.toLowerCase())
+        )
+    )
   );
 
   useEffect(() => {
@@ -67,13 +67,13 @@ export function SpotlightSearch() {
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      selectedIndex.value = Math.min(selectedIndex.value + 1, filteredPages.length - 1);
+      selectedIndex.value = Math.min(selectedIndex.value + 1, filteredPages.value.length - 1);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
-    } else if (e.key === 'Enter' && filteredPages[selectedIndex.value]) {
+    } else if (e.key === 'Enter' && filteredPages.value[selectedIndex.value]) {
       e.preventDefault();
-      handleSelectPage(filteredPages[selectedIndex.value].id);
+      handleSelectPage(filteredPages.value[selectedIndex.value].id);
     }
   };
 
@@ -122,8 +122,8 @@ export function SpotlightSearch() {
         </div>
 
         <div className="max-h-80 overflow-y-auto p-2">
-          {filteredPages.length > 0 ? (
-            filteredPages.map((page, index) => (
+          {filteredPages.value.length > 0 ? (
+            filteredPages.value.map((page, index) => (
               <button
                 key={page.id}
                 className={`flex w-full items-center gap-3 rounded px-3 py-2 text-left transition-colors ${
