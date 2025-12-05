@@ -659,7 +659,7 @@ mod tests {
         state[15] = u32::from_le_bytes(nonce[4..8].try_into().unwrap());
 
         // Generate keystream using AVX2
-        let mut avx2_output = [0u8; 256];
+        let mut avx2_output =  AlignedU8([0u8; 256]);
         unsafe {
             chacha_blocks_avx2::<20>(&state, &mut avx2_output);
         }
