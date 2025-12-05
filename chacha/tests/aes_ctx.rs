@@ -58,10 +58,10 @@ fn aes256_gcm_ctx_roundtrip() {
     assert_eq!(opened, plaintext);
 
     let mut ctx = Context::new(&SHA256);
-    ctx.update(&key);
     ctx.update(&nonce);
     ctx.update(associated_data);
     ctx.update(tag.as_ref());
+    ctx.update(&key);
     let recomputed = ctx.finish().as_ref().to_vec();
 
     assert_eq!(secondary_tag, recomputed);
