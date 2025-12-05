@@ -182,7 +182,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
     }
 
     /// Returns the current counter value.
-    #[inline]
+    #[inline(always)]
     pub fn counter(&self) -> u64 {
         ((self.state[13] as u64) << 32) | (self.state[12] as u64)
     }
@@ -190,7 +190,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
     /// Increments the 64-bit counter by the given amount.
     #[inline(always)]
     fn increment_counter(&mut self, amount: u64) {
-        let counter = (self.state[12] as u64) | ((self.state[13] as u64) << 32);
+        let counter = self.counter();
         let new_counter = counter.wrapping_add(amount);
         self.state[12] = new_counter as u32;
         self.state[13] = (new_counter >> 32) as u32;
@@ -370,7 +370,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
 }
 
 #[cfg(target_arch = "x86_64")]
-#[inline]
+#[inline(always)]
 unsafe fn xor_avx2_512_bytes(data: &mut [u8], offset: usize, keystream: &AlignedU8<512>) {
     use core::arch::x86_64::*;
     for i in (0..512).step_by(32) {
