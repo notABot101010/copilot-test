@@ -177,7 +177,7 @@ export function FileEncryptor() {
                 {lastKey.value}
               </Code>
               <Text size="sm">
-                <strong>Nonce (8 bytes):</strong>
+                <strong>Nonce (8 bytes, DJB variant):</strong>
               </Text>
               <Code block className="break-all text-xs">
                 {lastNonce.value}

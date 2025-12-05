@@ -3,16 +3,27 @@
 //! This module provides WASM-compatible wrappers around the ChaCha cipher
 //! for encrypting files in the browser. Supports streaming encryption for
 //! handling large files without loading them entirely into memory.
+//!
+//! This implements the original DJB ChaCha variant with a 64-bit counter and
+//! 64-bit (8-byte) nonce, as opposed to the IETF variant (RFC 8439) which uses
+//! a 32-bit counter and 96-bit (12-byte) nonce.
 
 use wasm_bindgen::prelude::*;
+
+/// ChaCha block size in bytes (512 bits = 64 bytes)
+const BLOCK_SIZE: usize = 64;
 
 /// Constants for ChaCha: "expand 32-byte k" in little-endian
 const CONSTANTS: [u32; 4] = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
 
 /// ChaCha stream cipher with 20 rounds (the standard variant).
+///
+/// The `remaining_keystream` field stores unused keystream bytes from the previous block.
+/// Index 0 contains the count of remaining bytes (0-63), and the actual remaining bytes
+/// are stored at the end of the array (positions 64 - remaining_count to 63).
 struct ChaCha20Inner {
     state: [u32; 16],
-    remaining_keystream: [u8; 64],
+    remaining_keystream: [u8; BLOCK_SIZE],
 }
 
 /// The ChaCha quarter round operation.
@@ -37,7 +48,7 @@ fn quarter_round(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) 
 
 /// Perform the ChaCha block function (20 rounds).
 #[inline]
-fn chacha_block(state: &[u32; 16], keystream: &mut [u8; 64]) {
+fn chacha_block(state: &[u32; 16], keystream: &mut [u8; BLOCK_SIZE]) {
     let mut working_state = *state;
 
     // 10 double rounds (20 total rounds)
@@ -85,7 +96,7 @@ impl ChaCha20Inner {
 
         ChaCha20Inner {
             state,
-            remaining_keystream: [0u8; 64],
+            remaining_keystream: [0u8; BLOCK_SIZE],
         }
     }
 
@@ -106,8 +117,8 @@ impl ChaCha20Inner {
 
     /// Generates the next keystream block and returns it.
     #[inline]
-    fn next_keystream_block(&mut self) -> [u8; 64] {
-        let mut keystream = [0u8; 64];
+    fn next_keystream_block(&mut self) -> [u8; BLOCK_SIZE] {
+        let mut keystream = [0u8; BLOCK_SIZE];
         chacha_block(&self.state, &mut keystream);
         self.increment_counter(1);
         keystream
@@ -126,7 +137,7 @@ impl ChaCha20Inner {
         let remaining = self.remaining_keystream[0] as usize;
         if remaining > 0 {
             let use_bytes = remaining.min(data_len);
-            let start_idx = 64 - remaining;
+            let start_idx = BLOCK_SIZE - remaining;
             data[..use_bytes]
                 .iter_mut()
                 .zip(&self.remaining_keystream[start_idx..start_idx + use_bytes])
@@ -141,13 +152,13 @@ impl ChaCha20Inner {
         }
 
         // Process full blocks
-        while offset + 64 <= data_len {
+        while offset + BLOCK_SIZE <= data_len {
             let keystream = self.next_keystream_block();
-            data[offset..offset + 64]
+            data[offset..offset + BLOCK_SIZE]
                 .iter_mut()
                 .zip(&keystream)
                 .for_each(|(d, k)| *d ^= k);
-            offset += 64;
+            offset += BLOCK_SIZE;
         }
 
         // Handle remaining bytes (partial block)
@@ -160,9 +171,9 @@ impl ChaCha20Inner {
                 .for_each(|(d, k)| *d ^= k);
 
             // Store the remaining keystream bytes for later use
-            let remaining_keystream_length = 64 - remaining_data;
+            let remaining_keystream_length = BLOCK_SIZE - remaining_data;
             self.remaining_keystream[0] = remaining_keystream_length as u8;
-            self.remaining_keystream[64 - remaining_keystream_length..64]
+            self.remaining_keystream[BLOCK_SIZE - remaining_keystream_length..BLOCK_SIZE]
                 .copy_from_slice(&keystream[remaining_data..]);
         }
     }
