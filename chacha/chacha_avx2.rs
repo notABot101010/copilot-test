@@ -671,10 +671,10 @@ mod tests {
 
         // First block should match
         assert_eq!(
-            &avx2_output[0..64],
+            &avx2_output.0[0..64],
             &scalar_output[..],
             "First block mismatch:\nAVX2:   {:02x?}\nScalar: {:02x?}",
-            &avx2_output[0..64],
+            &avx2_output.0[0..64],
             &scalar_output[..]
         );
 
@@ -684,10 +684,10 @@ mod tests {
         let block = scalar_chacha_block::<20>(&state_c1);
         scalar_serialize_state(&block, &mut scalar_output);
         assert_eq!(
-            &avx2_output[64..128],
+            &avx2_output.0[64..128],
             &scalar_output[..],
             "Second block mismatch:\nAVX2:   {:02x?}\nScalar: {:02x?}",
-            &avx2_output[64..128],
+            &avx2_output.0[64..128],
             &scalar_output[..]
         );
 
@@ -697,7 +697,7 @@ mod tests {
         let block = scalar_chacha_block::<20>(&state_c2);
         scalar_serialize_state(&block, &mut scalar_output);
         assert_eq!(
-            &avx2_output[128..192],
+            &avx2_output.0[128..192],
             &scalar_output[..],
             "Third block mismatch"
         );
@@ -708,7 +708,7 @@ mod tests {
         let block = scalar_chacha_block::<20>(&state_c3);
         scalar_serialize_state(&block, &mut scalar_output);
         assert_eq!(
-            &avx2_output[192..256],
+            &avx2_output.0[192..256],
             &scalar_output[..],
             "Fourth block mismatch"
         );
@@ -736,7 +736,7 @@ mod tests {
         state[14] = u32::from_le_bytes([nonce[0], nonce[1], nonce[2], nonce[3]]);
         state[15] = u32::from_le_bytes([nonce[4], nonce[5], nonce[6], nonce[7]]);
 
-        let mut avx2_output = AlignedU8x512([0u8; 512]);
+        let mut avx2_output = AlignedU8([0u8; 512]);
         unsafe {
             chacha_blocks_avx2_x8::<20>(&state, &mut avx2_output);
         }
