@@ -63,10 +63,15 @@ async function benchmarkAES256GCM(dataSize, iterations) {
   }
   const end = performance.now();
 
+  const totalMs = end - start;
+  const totalBytes = dataSize * iterations;
+  const throughputMBps = (totalBytes / (totalMs / 1000)) / (1024 * 1024);
+
   return {
-    totalMs: end - start,
-    avgMs: (end - start) / iterations,
-    opsPerSec: iterations / ((end - start) / 1000)
+    totalMs,
+    avgMs: totalMs / iterations,
+    opsPerSec: iterations / (totalMs / 1000),
+    throughputMBps
   };
 }
 
@@ -81,10 +86,15 @@ async function benchmarkChaCha8(dataSize, iterations) {
   }
   const end = performance.now();
 
+  const totalMs = end - start;
+  const totalBytes = dataSize * iterations;
+  const throughputMBps = (totalBytes / (totalMs / 1000)) / (1024 * 1024);
+
   return {
-    totalMs: end - start,
-    avgMs: (end - start) / iterations,
-    opsPerSec: iterations / ((end - start) / 1000)
+    totalMs,
+    avgMs: totalMs / iterations,
+    opsPerSec: iterations / (totalMs / 1000),
+    throughputMBps
   };
 }
 
@@ -99,10 +109,15 @@ async function benchmarkChaCha12(dataSize, iterations) {
   }
   const end = performance.now();
 
+  const totalMs = end - start;
+  const totalBytes = dataSize * iterations;
+  const throughputMBps = (totalBytes / (totalMs / 1000)) / (1024 * 1024);
+
   return {
-    totalMs: end - start,
-    avgMs: (end - start) / iterations,
-    opsPerSec: iterations / ((end - start) / 1000)
+    totalMs,
+    avgMs: totalMs / iterations,
+    opsPerSec: iterations / (totalMs / 1000),
+    throughputMBps
   };
 }
 
@@ -117,15 +132,20 @@ async function benchmarkChaCha20(dataSize, iterations) {
   }
   const end = performance.now();
 
+  const totalMs = end - start;
+  const totalBytes = dataSize * iterations;
+  const throughputMBps = (totalBytes / (totalMs / 1000)) / (1024 * 1024);
+
   return {
-    totalMs: end - start,
-    avgMs: (end - start) / iterations,
-    opsPerSec: iterations / ((end - start) / 1000)
+    totalMs,
+    avgMs: totalMs / iterations,
+    opsPerSec: iterations / (totalMs / 1000),
+    throughputMBps
   };
 }
 
 function formatResult(name, result) {
-  return `${name}: ${result.avgMs.toFixed(4)}ms avg, ${result.opsPerSec.toFixed(0)} ops/sec`;
+  return `${name}: ${result.avgMs.toFixed(4)}ms avg, ${result.opsPerSec.toFixed(0)} ops/sec, ${result.throughputMBps.toFixed(2)} MB/s`;
 }
 
 async function runBenchmarks() {
