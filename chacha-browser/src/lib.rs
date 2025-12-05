@@ -16,12 +16,12 @@ const BLOCK_SIZE: usize = 64;
 /// Constants for ChaCha: "expand 32-byte k" in little-endian
 const CONSTANTS: [u32; 4] = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
 
-/// ChaCha stream cipher with 20 rounds (the standard variant).
+/// ChaCha stream cipher with parametrized rounds.
 ///
 /// The `remaining_keystream` field stores unused keystream bytes from the previous block.
 /// Index 0 contains the count of remaining bytes (0-63), and the actual remaining bytes
 /// are stored at the end of the array (positions 64 - remaining_count to 63).
-struct ChaCha20Inner {
+struct ChaChaInner<const ROUNDS: usize> {
     state: [u32; 16],
     remaining_keystream: [u8; BLOCK_SIZE],
 }
@@ -46,13 +46,13 @@ fn quarter_round(state: &mut [u32; 16], a: usize, b: usize, c: usize, d: usize) 
     state[b] = state[b].rotate_left(7);
 }
 
-/// Perform the ChaCha block function (20 rounds).
+/// Perform the ChaCha block function with parametrized rounds.
 #[inline]
-fn chacha_block(state: &[u32; 16], keystream: &mut [u8; BLOCK_SIZE]) {
+fn chacha_block<const ROUNDS: usize>(state: &[u32; 16], keystream: &mut [u8; BLOCK_SIZE]) {
     let mut working_state = *state;
 
-    // 10 double rounds (20 total rounds)
-    for _ in 0..10 {
+    // ROUNDS / 2 double rounds
+    for _ in 0..(ROUNDS / 2) {
         // Column rounds
         quarter_round(&mut working_state, 0, 4, 8, 12);
         quarter_round(&mut working_state, 1, 5, 9, 13);
@@ -73,9 +73,9 @@ fn chacha_block(state: &[u32; 16], keystream: &mut [u8; BLOCK_SIZE]) {
     }
 }
 
-impl ChaCha20Inner {
-    /// Creates a new ChaCha20 cipher instance with the given key and nonce.
-    fn new(key: &[u8; 32], nonce: &[u8; 8]) -> ChaCha20Inner {
+impl<const ROUNDS: usize> ChaChaInner<ROUNDS> {
+    /// Creates a new ChaCha cipher instance with the given key and nonce.
+    fn new(key: &[u8; 32], nonce: &[u8; 8]) -> ChaChaInner<ROUNDS> {
         let mut state = [0u32; 16];
 
         // Set constants
@@ -94,7 +94,7 @@ impl ChaCha20Inner {
         state[14] = u32::from_le_bytes([nonce[0], nonce[1], nonce[2], nonce[3]]);
         state[15] = u32::from_le_bytes([nonce[4], nonce[5], nonce[6], nonce[7]]);
 
-        ChaCha20Inner {
+        ChaChaInner {
             state,
             remaining_keystream: [0u8; BLOCK_SIZE],
         }
@@ -119,7 +119,7 @@ impl ChaCha20Inner {
     #[inline]
     fn next_keystream_block(&mut self) -> [u8; BLOCK_SIZE] {
         let mut keystream = [0u8; BLOCK_SIZE];
-        chacha_block(&self.state, &mut keystream);
+        chacha_block::<ROUNDS>(&self.state, &mut keystream);
         self.increment_counter(1);
         keystream
     }
@@ -179,6 +179,83 @@ impl ChaCha20Inner {
     }
 }
 
+/// Type aliases for common round counts
+type ChaCha8Inner = ChaChaInner<8>;
+type ChaCha12Inner = ChaChaInner<12>;
+type ChaCha20Inner = ChaChaInner<20>;
+
+/// A ChaCha8 cipher instance for streaming encryption/decryption.
+#[wasm_bindgen]
+pub struct ChaCha8Cipher {
+    inner: ChaCha8Inner,
+}
+
+#[wasm_bindgen]
+impl ChaCha8Cipher {
+    /// Creates a new ChaCha8 cipher for streaming encryption/decryption.
+    #[wasm_bindgen(constructor)]
+    pub fn new(key: &[u8], nonce: &[u8]) -> Result<ChaCha8Cipher, JsError> {
+        console_error_panic_hook::set_once();
+
+        if key.len() != 32 {
+            return Err(JsError::new("Key must be exactly 32 bytes"));
+        }
+        if nonce.len() != 8 {
+            return Err(JsError::new("Nonce must be exactly 8 bytes"));
+        }
+
+        let key_array: [u8; 32] = key.try_into().map_err(|_| JsError::new("Invalid key"))?;
+        let nonce_array: [u8; 8] = nonce.try_into().map_err(|_| JsError::new("Invalid nonce"))?;
+
+        Ok(ChaCha8Cipher {
+            inner: ChaCha8Inner::new(&key_array, &nonce_array),
+        })
+    }
+
+    /// Process a chunk of data for streaming encryption/decryption.
+    pub fn process_chunk(&mut self, chunk: &[u8]) -> Vec<u8> {
+        let mut result = chunk.to_vec();
+        self.inner.xor_keystream(&mut result);
+        result
+    }
+}
+
+/// A ChaCha12 cipher instance for streaming encryption/decryption.
+#[wasm_bindgen]
+pub struct ChaCha12Cipher {
+    inner: ChaCha12Inner,
+}
+
+#[wasm_bindgen]
+impl ChaCha12Cipher {
+    /// Creates a new ChaCha12 cipher for streaming encryption/decryption.
+    #[wasm_bindgen(constructor)]
+    pub fn new(key: &[u8], nonce: &[u8]) -> Result<ChaCha12Cipher, JsError> {
+        console_error_panic_hook::set_once();
+
+        if key.len() != 32 {
+            return Err(JsError::new("Key must be exactly 32 bytes"));
+        }
+        if nonce.len() != 8 {
+            return Err(JsError::new("Nonce must be exactly 8 bytes"));
+        }
+
+        let key_array: [u8; 32] = key.try_into().map_err(|_| JsError::new("Invalid key"))?;
+        let nonce_array: [u8; 8] = nonce.try_into().map_err(|_| JsError::new("Invalid nonce"))?;
+
+        Ok(ChaCha12Cipher {
+            inner: ChaCha12Inner::new(&key_array, &nonce_array),
+        })
+    }
+
+    /// Process a chunk of data for streaming encryption/decryption.
+    pub fn process_chunk(&mut self, chunk: &[u8]) -> Vec<u8> {
+        let mut result = chunk.to_vec();
+        self.inner.xor_keystream(&mut result);
+        result
+    }
+}
+
 /// A ChaCha20 cipher instance for streaming encryption/decryption.
 /// 
 /// This allows encrypting data in chunks without loading the entire file
@@ -232,6 +309,50 @@ impl ChaCha20Cipher {
         self.inner.xor_keystream(&mut result);
         result
     }
+}
+
+/// Encrypts data using ChaCha8 with the provided key and nonce.
+#[wasm_bindgen]
+pub fn encrypt_chacha8(data: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, JsError> {
+    console_error_panic_hook::set_once();
+
+    if key.len() != 32 {
+        return Err(JsError::new("Key must be exactly 32 bytes"));
+    }
+    if nonce.len() != 8 {
+        return Err(JsError::new("Nonce must be exactly 8 bytes"));
+    }
+
+    let key_array: [u8; 32] = key.try_into().map_err(|_| JsError::new("Invalid key"))?;
+    let nonce_array: [u8; 8] = nonce.try_into().map_err(|_| JsError::new("Invalid nonce"))?;
+
+    let mut cipher = ChaCha8Inner::new(&key_array, &nonce_array);
+    let mut result = data.to_vec();
+    cipher.xor_keystream(&mut result);
+
+    Ok(result)
+}
+
+/// Encrypts data using ChaCha12 with the provided key and nonce.
+#[wasm_bindgen]
+pub fn encrypt_chacha12(data: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, JsError> {
+    console_error_panic_hook::set_once();
+
+    if key.len() != 32 {
+        return Err(JsError::new("Key must be exactly 32 bytes"));
+    }
+    if nonce.len() != 8 {
+        return Err(JsError::new("Nonce must be exactly 8 bytes"));
+    }
+
+    let key_array: [u8; 32] = key.try_into().map_err(|_| JsError::new("Invalid key"))?;
+    let nonce_array: [u8; 8] = nonce.try_into().map_err(|_| JsError::new("Invalid nonce"))?;
+
+    let mut cipher = ChaCha12Inner::new(&key_array, &nonce_array);
+    let mut result = data.to_vec();
+    cipher.xor_keystream(&mut result);
+
+    Ok(result)
 }
 
 /// Encrypts data using ChaCha20 with the provided key and nonce.
