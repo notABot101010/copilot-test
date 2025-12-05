@@ -1,13 +1,18 @@
 //! Benchmarks for ChaCha stream cipher
 
+use aws_lc_rs::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
+use aws_lc_rs::digest::{Context, SHA256};
 use chacha::{ChaCha12, ChaCha20, ChaCha8};
 use chacha20::cipher::{KeyIvInit, StreamCipher};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::hint::black_box;
 
+
 fn bench_chacha_encrypt(c: &mut Criterion) {
     let key = [0u8; 32];
     let nonce = [0u8; 8];
+    let aes_nonce = [0u8; 12];
+    let associated_data: [u8; 0] = [];
 
     let mut group = c.benchmark_group("chacha_encrypt");
 
@@ -37,6 +42,23 @@ fn bench_chacha_encrypt(c: &mut Criterion) {
                 cipher.xor_keystream(black_box(&mut data));
             });
         });
+
+        group.bench_with_input(
+            BenchmarkId::new("AES256GCM_CTX", size),
+            size,
+            |b, &size| {
+                let mut data = vec![0u8; size];
+                b.iter(|| {
+                    data.fill(0);
+                    aes256_gcm_ctx_encrypt(
+                        black_box(&key),
+                        black_box(&aes_nonce),
+                        black_box(&associated_data),
+                        black_box(&mut data),
+                    );
+                });
+            },
+        );
     }
 
     group.finish();
@@ -79,6 +101,35 @@ fn bench_chacha_vs_crate(c: &mut Criterion) {
 
     group.finish();
 }
+
+fn aes256_gcm_ctx_encrypt(
+    key: &[u8; 32],
+    nonce: &[u8; 12],
+    ad: &[u8],
+    buffer: &mut [u8],
+) {
+    let unbound_key = match UnboundKey::new(&AES_256_GCM, key) {
+        Ok(key_material) => key_material,
+        Err(err) => panic!("failed to initialize AES-256-GCM key: {err:?}"),
+    };
+
+    let sealing_key = LessSafeKey::new(unbound_key);
+    let nonce_value = Nonce::assume_unique_for_key(*nonce);
+    let tag = match sealing_key.seal_in_place_separate_tag(nonce_value, Aad::from(ad), buffer) {
+        Ok(tag) => tag,
+        Err(err) => panic!("AES-256-GCM seal failed: {err:?}"),
+    };
+
+    let mut ctx = Context::new(&SHA256);
+    ctx.update(nonce);
+    ctx.update(ad);
+    ctx.update(tag.as_ref());
+    ctx.update(key);
+
+    let secondary_tag = ctx.finish();
+    black_box((tag, secondary_tag));
+}
+
 
 // fn bench_chacha_partial_blocks(c: &mut Criterion) {
 //     let key = [0u8; 32];

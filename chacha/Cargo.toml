@@ -12,6 +12,7 @@ path = "lib.rs"
 criterion = { workspace = true }
 hex = "0.4"
 chacha20 = { version = "0.10.0-rc.5", features = ["legacy"] }
+aws-lc-rs = "1"
 
 [[bench]]
 name = "chacha"

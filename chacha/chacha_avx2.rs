@@ -3,6 +3,8 @@
 //! This module provides an AVX2-accelerated implementation of the ChaCha stream cipher
 //! that processes 4 blocks in parallel using 256-bit SIMD registers.
 
+use crate::AlignedU8;
+
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
 
@@ -12,7 +14,10 @@ use core::arch::x86_64::*;
 /// base, base+1, base+2, base+3
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
-pub unsafe fn chacha_blocks_avx2<const ROUNDS: usize>(state: &[u32; 16], output: &mut [u8; 256]) {
+pub unsafe fn chacha_blocks_avx2<const ROUNDS: usize>(
+    state: &[u32; 16],
+    output: &mut AlignedU8<256>,
+) {
     let counter_base = (state[12] as u64) | ((state[13] as u64) << 32);
 
     // Load state into 16 __m128i registers for 4-way parallel processing
@@ -257,32 +262,29 @@ pub unsafe fn chacha_blocks_avx2<const ROUNDS: usize>(state: &[u32; 16], output:
     let r3_1215 = _mm_unpackhi_epi64(t13, t15);
 
     // Store block 0
-    _mm_store_si128(output.as_mut_ptr().add(0) as *mut __m128i, r0_03);
-    _mm_store_si128(output.as_mut_ptr().add(16) as *mut __m128i, r0_47);
-    _mm_store_si128(output.as_mut_ptr().add(32) as *mut __m128i, r0_811);
-    _mm_store_si128(output.as_mut_ptr().add(48) as *mut __m128i, r0_1215);
+    _mm_store_si128(output.0.as_mut_ptr().add(0) as *mut __m128i, r0_03);
+    _mm_store_si128(output.0.as_mut_ptr().add(16) as *mut __m128i, r0_47);
+    _mm_store_si128(output.0.as_mut_ptr().add(32) as *mut __m128i, r0_811);
+    _mm_store_si128(output.0.as_mut_ptr().add(48) as *mut __m128i, r0_1215);
 
     // Store block 1
-    _mm_store_si128(output.as_mut_ptr().add(64) as *mut __m128i, r1_03);
-    _mm_store_si128(output.as_mut_ptr().add(80) as *mut __m128i, r1_47);
-    _mm_store_si128(output.as_mut_ptr().add(96) as *mut __m128i, r1_811);
-    _mm_store_si128(output.as_mut_ptr().add(112) as *mut __m128i, r1_1215);
+    _mm_store_si128(output.0.as_mut_ptr().add(64) as *mut __m128i, r1_03);
+    _mm_store_si128(output.0.as_mut_ptr().add(80) as *mut __m128i, r1_47);
+    _mm_store_si128(output.0.as_mut_ptr().add(96) as *mut __m128i, r1_811);
+    _mm_store_si128(output.0.as_mut_ptr().add(112) as *mut __m128i, r1_1215);
 
     // Store block 2
-    _mm_store_si128(output.as_mut_ptr().add(128) as *mut __m128i, r2_03);
-    _mm_store_si128(output.as_mut_ptr().add(144) as *mut __m128i, r2_47);
-    _mm_store_si128(output.as_mut_ptr().add(160) as *mut __m128i, r2_811);
-    _mm_store_si128(output.as_mut_ptr().add(176) as *mut __m128i, r2_1215);
+    _mm_store_si128(output.0.as_mut_ptr().add(128) as *mut __m128i, r2_03);
+    _mm_store_si128(output.0.as_mut_ptr().add(144) as *mut __m128i, r2_47);
+    _mm_store_si128(output.0.as_mut_ptr().add(160) as *mut __m128i, r2_811);
+    _mm_store_si128(output.0.as_mut_ptr().add(176) as *mut __m128i, r2_1215);
 
     // Store block 3
-    _mm_store_si128(output.as_mut_ptr().add(192) as *mut __m128i, r3_03);
-    _mm_store_si128(output.as_mut_ptr().add(208) as *mut __m128i, r3_47);
-    _mm_store_si128(output.as_mut_ptr().add(224) as *mut __m128i, r3_811);
-    _mm_store_si128(output.as_mut_ptr().add(240) as *mut __m128i, r3_1215);
+    _mm_store_si128(output.0.as_mut_ptr().add(192) as *mut __m128i, r3_03);
+    _mm_store_si128(output.0.as_mut_ptr().add(208) as *mut __m128i, r3_47);
+    _mm_store_si128(output.0.as_mut_ptr().add(224) as *mut __m128i, r3_811);
+    _mm_store_si128(output.0.as_mut_ptr().add(240) as *mut __m128i, r3_1215);
 }
-
-#[repr(align(32))]
-pub struct AlignedU8x512(pub [u8; 512]);
 
 /// Process 8 ChaCha blocks in parallel using full AVX2 256-bit registers.
 /// The state array represents the initial state with base counter.
@@ -292,7 +294,7 @@ pub struct AlignedU8x512(pub [u8; 512]);
 #[target_feature(enable = "avx2")]
 pub unsafe fn chacha_blocks_avx2_x8<const ROUNDS: usize>(
     state: &[u32; 16],
-    output: &mut AlignedU8x512,
+    output: &mut AlignedU8<512>,
 ) {
     let counter_base = (state[12] as u64) | ((state[13] as u64) << 32);
 
