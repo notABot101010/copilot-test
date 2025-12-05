@@ -1,0 +1,10 @@
+# Build artifacts
+/target
+pkg/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
