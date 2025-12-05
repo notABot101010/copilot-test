@@ -311,11 +311,8 @@ impl ChaCha20Cipher {
     }
 }
 
-/// Encrypts data using ChaCha8 with the provided key and nonce.
-#[wasm_bindgen]
-pub fn encrypt_chacha8(data: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, JsError> {
-    console_error_panic_hook::set_once();
-
+/// Helper function to validate and convert key/nonce inputs
+fn validate_inputs(key: &[u8], nonce: &[u8]) -> Result<([u8; 32], [u8; 8]), JsError> {
     if key.len() != 32 {
         return Err(JsError::new("Key must be exactly 32 bytes"));
     }
@@ -325,6 +322,23 @@ pub fn encrypt_chacha8(data: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>,
 
     let key_array: [u8; 32] = key.try_into().map_err(|_| JsError::new("Invalid key"))?;
     let nonce_array: [u8; 8] = nonce.try_into().map_err(|_| JsError::new("Invalid nonce"))?;
+
+    Ok((key_array, nonce_array))
+}
+
+/// Encrypts data using ChaCha8 (8 rounds) with the provided key and nonce.
+///
+/// # Arguments
+/// * `data` - The data to encrypt
+/// * `key` - A 32-byte encryption key
+/// * `nonce` - An 8-byte nonce
+///
+/// # Returns
+/// The encrypted data
+#[wasm_bindgen]
+pub fn encrypt_chacha8(data: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, JsError> {
+    console_error_panic_hook::set_once();
+    let (key_array, nonce_array) = validate_inputs(key, nonce)?;
 
     let mut cipher = ChaCha8Inner::new(&key_array, &nonce_array);
     let mut result = data.to_vec();
@@ -333,20 +347,19 @@ pub fn encrypt_chacha8(data: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>,
     Ok(result)
 }
 
-/// Encrypts data using ChaCha12 with the provided key and nonce.
+/// Encrypts data using ChaCha12 (12 rounds) with the provided key and nonce.
+///
+/// # Arguments
+/// * `data` - The data to encrypt
+/// * `key` - A 32-byte encryption key
+/// * `nonce` - An 8-byte nonce
+///
+/// # Returns
+/// The encrypted data
 #[wasm_bindgen]
 pub fn encrypt_chacha12(data: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, JsError> {
     console_error_panic_hook::set_once();
-
-    if key.len() != 32 {
-        return Err(JsError::new("Key must be exactly 32 bytes"));
-    }
-    if nonce.len() != 8 {
-        return Err(JsError::new("Nonce must be exactly 8 bytes"));
-    }
-
-    let key_array: [u8; 32] = key.try_into().map_err(|_| JsError::new("Invalid key"))?;
-    let nonce_array: [u8; 8] = nonce.try_into().map_err(|_| JsError::new("Invalid nonce"))?;
+    let (key_array, nonce_array) = validate_inputs(key, nonce)?;
 
     let mut cipher = ChaCha12Inner::new(&key_array, &nonce_array);
     let mut result = data.to_vec();
@@ -355,10 +368,10 @@ pub fn encrypt_chacha12(data: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>
     Ok(result)
 }
 
-/// Encrypts data using ChaCha20 with the provided key and nonce.
+/// Encrypts data using ChaCha20 (20 rounds) with the provided key and nonce.
 ///
 /// # Arguments
-/// * `data` - The data to encrypt (modified in place)
+/// * `data` - The data to encrypt
 /// * `key` - A 32-byte encryption key
 /// * `nonce` - An 8-byte nonce
 ///
@@ -367,16 +380,7 @@ pub fn encrypt_chacha12(data: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>
 #[wasm_bindgen]
 pub fn encrypt(data: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, JsError> {
     console_error_panic_hook::set_once();
-
-    if key.len() != 32 {
-        return Err(JsError::new("Key must be exactly 32 bytes"));
-    }
-    if nonce.len() != 8 {
-        return Err(JsError::new("Nonce must be exactly 8 bytes"));
-    }
-
-    let key_array: [u8; 32] = key.try_into().map_err(|_| JsError::new("Invalid key"))?;
-    let nonce_array: [u8; 8] = nonce.try_into().map_err(|_| JsError::new("Invalid nonce"))?;
+    let (key_array, nonce_array) = validate_inputs(key, nonce)?;
 
     let mut cipher = ChaCha20Inner::new(&key_array, &nonce_array);
     let mut result = data.to_vec();

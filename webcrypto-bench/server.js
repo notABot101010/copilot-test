@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { join, extname } from 'node:path';
+import { join, extname, resolve, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -39,7 +39,16 @@ const server = createServer(async (req, res) => {
   // Remove query string
   path = path.split('?')[0];
   
-  const filePath = join(__dirname, path);
+  // Resolve and normalize the path to prevent path traversal attacks
+  const filePath = resolve(__dirname, '.' + normalize(path));
+  
+  // Ensure the resolved path is within the allowed directory
+  if (!filePath.startsWith(__dirname)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
+    res.end('Forbidden');
+    return;
+  }
+  
   await serveFile(res, filePath);
 });
 
