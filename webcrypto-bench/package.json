@@ -1,0 +1,10 @@
+{
+  "name": "webcrypto-bench",
+  "version": "1.0.0",
+  "description": "Benchmark WebCrypto AES-256-GCM vs ChaCha WASM",
+  "type": "module",
+  "scripts": {
+    "bench": "node benchmark.js",
+    "serve": "node server.js"
+  }
+}
