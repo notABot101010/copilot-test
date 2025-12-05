@@ -277,7 +277,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
                         use core::arch::x86_64::*;
                         for i in (0..256).step_by(32) {
                             let data_ptr = data.as_mut_ptr().add(offset + i);
-                            let key_ptr = keystream.as_ptr().add(i);
+                            let key_ptr = keystream.0.as_ptr().add(i);
                             let data_vec = _mm256_loadu_si256(data_ptr as *const __m256i);
                             let key_vec = _mm256_loadu_si256(key_ptr as *const __m256i);
                             let result = _mm256_xor_si256(data_vec, key_vec);
