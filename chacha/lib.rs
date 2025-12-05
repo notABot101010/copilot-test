@@ -267,7 +267,7 @@ impl<const ROUNDS: usize> ChaCha<ROUNDS> {
             // Process remaining 256-byte chunks (4 blocks) using SSE
             if is_x86_feature_detected!("avx2") && (data_len - offset) >= 256 {
                 while offset + 256 <= data_len {
-                    let mut keystream = [0u8; 256];
+                    let mut keystream = AlignedU8([0u8; 256]);
                     unsafe {
                         chacha_avx2::chacha_blocks_avx2::<ROUNDS>(&self.state, &mut keystream);
                     }
