@@ -2,7 +2,7 @@
 name = "chacha-browser"
 version = "0.1.0"
 edition = "2021"
-description = "WebAssembly bindings for the ChaCha stream cipher"
+description = "WebAssembly bindings for the ChaCha stream cipher with WASM SIMD acceleration"
 license = "MIT"
 
 [lib]
@@ -13,6 +13,7 @@ wasm-bindgen = "0.2"
 js-sys = "0.3"
 getrandom = { version = "0.2", features = ["js"] }
 console_error_panic_hook = "0.1"
+chacha12 = { git = "https://github.com/bloom42/chacha12-blake3", package = "chacha12" }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

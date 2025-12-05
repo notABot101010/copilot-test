@@ -1,7 +1,17 @@
 // WebCrypto vs ChaCha WASM Benchmark
 // Benchmarks AES-256-GCM (WebCrypto) against ChaCha8/12/20 (WASM)
 
-const DATA_SIZES = [64, 256, 1024, 4096, 16384, 65536];
+const DATA_SIZES = [
+  64,
+  256,
+  1024,
+  4096,
+  16384,
+  65536,
+  1024 * 1024,      // 1 MiB
+  5 * 1024 * 1024,  // 5 MiB
+  10 * 1024 * 1024  // 10 MiB
+];
 const ITERATIONS = 1000;
 
 // Detect environment
@@ -40,7 +50,12 @@ async function initChacha() {
 
 function generateRandomBytes(length) {
   const buffer = new Uint8Array(length);
-  crypto.getRandomValues(buffer);
+  // getRandomValues has a 65536 byte limit, so fill in chunks
+  const chunkSize = 65536;
+  for (let offset = 0; offset < length; offset += chunkSize) {
+    const chunk = buffer.subarray(offset, Math.min(offset + chunkSize, length));
+    crypto.getRandomValues(chunk);
+  }
   return buffer;
 }
 
@@ -148,6 +163,23 @@ function formatResult(name, result) {
   return `${name}: ${result.avgMs.toFixed(4)}ms avg, ${result.opsPerSec.toFixed(0)} ops/sec, ${result.throughputMBps.toFixed(2)} MB/s`;
 }
 
+function formatDataSize(bytes) {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(0)} MiB`;
+  } else if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(0)} KiB`;
+  }
+  return `${bytes} bytes`;
+}
+
+function getIterationsForSize(size) {
+  // Reduce iterations for large data sizes to keep benchmark time reasonable
+  if (size >= 10 * 1024 * 1024) return 10;   // 10 MiB
+  if (size >= 5 * 1024 * 1024) return 20;    // 5 MiB
+  if (size >= 1024 * 1024) return 100;       // 1 MiB
+  return ITERATIONS;
+}
+
 async function runBenchmarks() {
   console.log('Initializing...');
   await initCrypto();
@@ -155,22 +187,22 @@ async function runBenchmarks() {
 
   console.log('\n===== WebCrypto vs ChaCha WASM Benchmark =====');
   console.log(`Environment: ${isBrowser ? 'Browser' : 'Node.js'}`);
-  console.log(`Iterations per test: ${ITERATIONS}`);
   console.log('');
 
   for (const size of DATA_SIZES) {
-    console.log(`\n--- Data Size: ${size} bytes ---`);
+    const iterations = getIterationsForSize(size);
+    console.log(`\n--- Data Size: ${formatDataSize(size)} (${iterations} iterations) ---`);
 
-    const aesResult = await benchmarkAES256GCM(size, ITERATIONS);
+    const aesResult = await benchmarkAES256GCM(size, iterations);
     console.log(formatResult('AES-256-GCM', aesResult));
 
-    const chacha8Result = await benchmarkChaCha8(size, ITERATIONS);
+    const chacha8Result = await benchmarkChaCha8(size, iterations);
     console.log(formatResult('ChaCha8', chacha8Result));
 
-    const chacha12Result = await benchmarkChaCha12(size, ITERATIONS);
+    const chacha12Result = await benchmarkChaCha12(size, iterations);
     console.log(formatResult('ChaCha12', chacha12Result));
 
-    const chacha20Result = await benchmarkChaCha20(size, ITERATIONS);
+    const chacha20Result = await benchmarkChaCha20(size, iterations);
     console.log(formatResult('ChaCha20', chacha20Result));
   }
 
