@@ -47,6 +47,6 @@ function Editor() {
 const router = createRouter({
   routes: [
     { path: '/', component: Editor },
-    { path: '/:pathMatch(.*)*', component: NotFound },
+    { path: '/*', component: NotFound },
   ],
 });
