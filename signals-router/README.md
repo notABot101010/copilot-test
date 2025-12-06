@@ -1,11 +1,11 @@
-# @copilot-test/preact-router
+# @copilot-test/signals-router
 
-A Vue Router-inspired router for Preact with signals support. This router provides a familiar API similar to Vue Router, including navigation guards, reactive route signals, and programmatic navigation.
+A Vue Router-inspired router for React with signals support. This router provides a familiar API similar to Vue Router, including navigation guards, reactive route signals, and programmatic navigation.
 
 ## Features
 
 - 🚀 **Vue Router-like API** - Familiar API for Vue developers
-- 📡 **Preact Signals** - Reactive route state using `@preact/signals`
+- 📡 **React Signals** - Reactive route state using `@preact/signals-react`
 - 🔒 **Navigation Guards** - `beforeEach`, `beforeResolve`, `afterEach` hooks
 - 🎯 **Route Params & Query** - Easy access via signals (`route.value.params.website_id`)
 - 🔄 **Programmatic Navigation** - `router.push()`, `router.replace()`, `router.back()`
@@ -15,7 +15,7 @@ A Vue Router-inspired router for Preact with signals support. This router provid
 ## Installation
 
 ```bash
-npm install @copilot-test/preact-router preact @preact/signals
+npm install @copilot-test/signals-router react @preact/signals-react
 ```
 
 ## Quick Start
@@ -23,7 +23,7 @@ npm install @copilot-test/preact-router preact @preact/signals
 ### 1. Define Routes
 
 ```typescript
-import { createRouter } from '@copilot-test/preact-router';
+import { createRouter } from '@copilot-test/signals-router';
 
 const router = createRouter({
   routes: [
@@ -44,8 +44,8 @@ const router = createRouter({
 ### 2. Add Router Provider
 
 ```tsx
-import { render } from 'preact';
-import { RouterProvider, RouterView } from '@copilot-test/preact-router';
+import { createRoot } from 'react-dom/client';
+import { RouterProvider, RouterView } from '@copilot-test/signals-router';
 
 function App() {
   return (
@@ -61,7 +61,8 @@ function App() {
   );
 }
 
-render(<App />, document.getElementById('app')!);
+const root = createRoot(document.getElementById('app')!);
+root.render(<App />);
 ```
 
 ## Using Regular Links
@@ -134,7 +135,7 @@ const routes = [
 Access all route data using the `useRoute()` hook which returns a signal:
 
 ```tsx
-import { useRoute } from '@copilot-test/preact-router';
+import { useRoute } from '@copilot-test/signals-router';
 
 function UserProfile() {
   const route = useRoute();
@@ -167,7 +168,7 @@ function UserProfile() {
 ## Programmatic Navigation
 
 ```typescript
-import { useRouter } from '@copilot-test/preact-router';
+import { useRouter } from '@copilot-test/signals-router';
 
 function MyComponent() {
   const router = useRouter();
@@ -321,7 +322,7 @@ import type {
   RouteLocation,
   NavigationGuard,
   ReactiveRoute
-} from '@copilot-test/preact-router';
+} from '@copilot-test/signals-router';
 ```
 
 ## License
