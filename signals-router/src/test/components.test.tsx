@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Import from /pure to avoid automatic cleanup which conflicts with React 18 + signals
-import { render, fireEvent } from '@testing-library/react/pure';
+import { render, fireEvent, waitFor } from '@testing-library/react/pure';
 import { RouterProvider, RouterView, RouterLink } from '../components';
 import { createRouter } from '../router';
 import type { RouteComponentProps } from '../types';
@@ -39,10 +39,10 @@ beforeEach(() => {
     }
   });
   
-  window.addEventListener = mockAddEventListener as any;
-  window.removeEventListener = mockRemoveEventListener as any;
-  document.addEventListener = vi.fn() as any;
-  document.removeEventListener = vi.fn() as any;
+  window.addEventListener = mockAddEventListener as typeof window.addEventListener;
+  window.removeEventListener = mockRemoveEventListener as typeof window.removeEventListener;
+  document.addEventListener = vi.fn() as typeof document.addEventListener;
+  document.removeEventListener = vi.fn() as typeof document.removeEventListener;
 });
 
 // Test components
@@ -141,10 +141,11 @@ describe('RouterView', () => {
     // Navigate to the route after rendering
     await router.push('/users/123');
     
-    // Wait for React to update
-    await new Promise(resolve => setTimeout(resolve, 10));
+    // Wait for the component to appear
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="user"]')).not.toBeNull();
+    });
 
-    expect(container.querySelector('[data-testid="user"]')).not.toBeNull();
     expect(container.textContent).toContain('User: 123');
   });
 
@@ -164,10 +165,11 @@ describe('RouterView', () => {
     // Navigate to non-existent path after rendering
     await router.push('/nonexistent');
     
-    // Wait for React to update
-    await new Promise(resolve => setTimeout(resolve, 10));
+    // Wait for the notFound component to appear
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="not-found"]')).not.toBeNull();
+    });
 
-    expect(container.querySelector('[data-testid="not-found"]')).not.toBeNull();
     expect(container.textContent).toContain('404 Not Found');
   });
 });
