@@ -1,5 +1,5 @@
-import type { Signal } from '@preact/signals';
-import type { ComponentType, ComponentChildren } from 'preact';
+import type { Signal } from '@preact/signals-react';
+import type { ComponentType, ReactNode } from 'react';
 
 /**
  * Route parameters extracted from the URL path
@@ -217,5 +217,5 @@ export interface RouterLinkProps {
   /** Additional class names */
   class?: string;
   /** Children to render */
-  children?: ComponentChildren;
+  children?: ReactNode;
 }
