@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-import { render } from '@testing-library/react';
+// Import from /pure to avoid automatic cleanup which conflicts with React 18 + signals
+import { render } from '@testing-library/react/pure';
 import { signal } from '@preact/signals-react';
 import { RouterContextProvider, useRouter, useRoute, useNavigation } from '../hooks';
 import type { Router, ReactiveRoute, RouterContext, RouteLocation } from '../types';

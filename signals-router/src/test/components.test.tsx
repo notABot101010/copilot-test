@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, fireEvent, cleanup } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+// Import from /pure to avoid automatic cleanup which conflicts with React 18 + signals
+import { render, fireEvent } from '@testing-library/react/pure';
 import { RouterProvider, RouterView, RouterLink } from '../components';
 import { createRouter } from '../router';
 import type { RouteComponentProps } from '../types';
@@ -11,30 +12,37 @@ const mockAddEventListener = vi.fn();
 const mockRemoveEventListener = vi.fn();
 
 beforeEach(() => {
-  vi.stubGlobal('window', {
-    history: {
+  // Clear any previous mocks
+  vi.clearAllMocks();
+  
+  // Mock window methods without replacing the entire window object
+  // This preserves DOM constructors that React needs
+  Object.defineProperty(window, 'history', {
+    writable: true,
+    value: {
       pushState: mockPushState,
       replaceState: mockReplaceState,
       back: vi.fn(),
       forward: vi.fn(),
       go: vi.fn()
-    },
-    location: {
+    }
+  });
+  
+  Object.defineProperty(window, 'location', {
+    writable: true,
+    value: {
       pathname: '/',
       search: '',
       hash: '',
-      origin: 'http://localhost'
-    },
-    addEventListener: mockAddEventListener,
-    removeEventListener: mockRemoveEventListener,
+      origin: 'http://localhost',
+      href: 'http://localhost/'
+    }
   });
-  document.addEventListener = vi.fn();
-  document.removeEventListener = vi.fn();
-});
-
-afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
+  
+  window.addEventListener = mockAddEventListener as any;
+  window.removeEventListener = mockRemoveEventListener as any;
+  document.addEventListener = vi.fn() as any;
+  document.removeEventListener = vi.fn() as any;
 });
 
 // Test components
@@ -119,22 +127,10 @@ describe('RouterView', () => {
     // Note: In a real app, the view would update automatically via signals
   });
 
-  it('should render user component with params', () => {
+  it('should render user component with params', async () => {
     const router = createRouter({
       routes: [{ path: '/users/:id', name: 'user', component: UserComponent }]
     });
-
-    // Manually set route to test params
-    router.currentRoute.value = {
-      fullPath: '/users/123',
-      path: '/users/123',
-      params: { id: '123' },
-      query: {},
-      hash: '',
-      meta: {},
-      name: 'user',
-      matched: [{ path: '/users/:id', name: 'user', component: UserComponent }]
-    };
 
     const { container } = render(
       <RouterProvider router={router}>
@@ -142,33 +138,34 @@ describe('RouterView', () => {
       </RouterProvider>
     );
 
+    // Navigate to the route after rendering
+    await router.push('/users/123');
+    
+    // Wait for React to update
+    await new Promise(resolve => setTimeout(resolve, 10));
+
     expect(container.querySelector('[data-testid="user"]')).not.toBeNull();
     expect(container.textContent).toContain('User: 123');
   });
 
-  it('should render notFound component when no route matches', () => {
+  it('should render notFound component when no route matches', async () => {
     const NotFoundComponent = () => <div data-testid="not-found">404 Not Found</div>;
     
     const router = createRouter({
       routes: [{ path: '/', name: 'home', component: HomeComponent }]
     });
 
-    // Set route to non-existent path
-    router.currentRoute.value = {
-      fullPath: '/nonexistent',
-      path: '/nonexistent',
-      params: {},
-      query: {},
-      hash: '',
-      meta: {},
-      matched: []
-    };
-
     const { container } = render(
       <RouterProvider router={router}>
         <RouterView notFound={NotFoundComponent} />
       </RouterProvider>
     );
+
+    // Navigate to non-existent path after rendering
+    await router.push('/nonexistent');
+    
+    // Wait for React to update
+    await new Promise(resolve => setTimeout(resolve, 10));
 
     expect(container.querySelector('[data-testid="not-found"]')).not.toBeNull();
     expect(container.textContent).toContain('404 Not Found');
