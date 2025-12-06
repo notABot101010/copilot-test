@@ -6,10 +6,16 @@
 export function signalsRouterPlugin() {
   return {
     name: 'signals-router-dedupe',
-    config() {
+    config(config: any) {
+      const existingDedupe = config?.resolve?.dedupe || [];
+      const requiredDedupe = ['react', 'react-dom', '@preact/signals-react'];
+      
+      // Merge existing dedupe with required dedupe, avoiding duplicates
+      const mergedDedupe = [...new Set([...existingDedupe, ...requiredDedupe])];
+      
       return {
         resolve: {
-          dedupe: ['react', 'react-dom', '@preact/signals-react']
+          dedupe: mergedDedupe
         }
       };
     }
