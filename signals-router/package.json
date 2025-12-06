@@ -1,0 +1,48 @@
+{
+  "name": "@copilot-test/preact-router",
+  "version": "1.0.0",
+  "description": "A Vue Router-inspired router for Preact with signals support",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node build.mjs && tsc --emitDeclarationOnly",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "preact",
+    "router",
+    "signals",
+    "spa",
+    "navigation"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@preact/signals": ">=1.0.0",
+    "preact": ">=10.0.0"
+  },
+  "devDependencies": {
+    "@preact/signals": "^2.5.1",
+    "@testing-library/preact": "^3.2.4",
+    "@types/node": "^20.10.0",
+    "esbuild": "^0.27.0",
+    "eslint": "^8.55.0",
+    "jsdom": "^23.0.1",
+    "preact": "^10.19.3",
+    "typescript": "^5.3.2",
+    "vitest": "^1.0.4"
+  }
+}
