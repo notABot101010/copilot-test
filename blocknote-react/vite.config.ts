@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { signalsRouterPlugin } from '@copilot-test/signals-router'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -9,8 +10,6 @@ export default defineConfig({
         plugins: [["module:@preact/signals-react-transform"]],
       },
     }),
+    signalsRouterPlugin(),
   ],
-  resolve: {
-    dedupe: ['react', 'react-dom', '@preact/signals-react']
-  }
 })
