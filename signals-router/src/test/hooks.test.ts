@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { h } from 'preact';
-import { render } from '@testing-library/preact';
-import { signal } from '@preact/signals';
+
+import { render } from '@testing-library/react';
+import { signal } from '@preact/signals-react';
 import { RouterContextProvider, useRouter, useRoute, useNavigation } from '../hooks';
 import type { Router, ReactiveRoute, RouterContext, RouteLocation } from '../types';
 
@@ -47,13 +47,13 @@ describe('useRouter', () => {
     const TestComponent = () => {
       try {
         useRouter();
-        return h('div', null, 'should not reach');
+        return <div>should not reach</div>;
       } catch (err) {
-        return h('div', null, (err as Error).message);
+        return <div>{(err as Error).message}</div>;
       }
     };
 
-    const { container } = render(h(TestComponent, null));
+    const { container } = render(<TestComponent />);
     expect(container.textContent).toContain('useRouter must be used within a RouterProvider');
   });
 
@@ -64,7 +64,7 @@ describe('useRouter', () => {
 
     const TestComponent = () => {
       routerInstance = useRouter();
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -73,9 +73,9 @@ describe('useRouter', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(routerInstance).toBe(mockRouter);
@@ -88,7 +88,7 @@ describe('useRouter', () => {
     const TestComponent = () => {
       const router = useRouter();
       pushFn = router.push;
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -97,9 +97,9 @@ describe('useRouter', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(pushFn).toBe(mockRouter.push);
@@ -112,7 +112,7 @@ describe('useRouter', () => {
     const TestComponent = () => {
       const router = useRouter();
       replaceFn = router.replace;
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -121,9 +121,9 @@ describe('useRouter', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(replaceFn).toBe(mockRouter.replace);
@@ -138,7 +138,7 @@ describe('useRouter', () => {
     const TestComponent = () => {
       const router = useRouter();
       options = router.options;
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -147,9 +147,9 @@ describe('useRouter', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(options).toEqual({ routes: [], mode: 'hash', base: '/app' });
@@ -164,13 +164,13 @@ describe('useRoute', () => {
     const TestComponent = () => {
       try {
         useRoute();
-        return h('div', null, 'should not reach');
+        return <div>should not reach</div>;
       } catch (err) {
-        return h('div', null, (err as Error).message);
+        return <div>{(err as Error).message}</div>;
       }
     };
 
-    const { container } = render(h(TestComponent, null));
+    const { container } = render(<TestComponent />);
     expect(container.textContent).toContain('useRoute must be used within a RouterProvider');
   });
 
@@ -180,7 +180,7 @@ describe('useRoute', () => {
 
     const TestComponent = () => {
       routeSignal = useRoute();
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -189,9 +189,9 @@ describe('useRoute', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(routeSignal).toBe(mockRouter.currentRoute);
@@ -214,7 +214,7 @@ describe('useRoute', () => {
     const TestComponent = () => {
       const route = useRoute();
       path = route.value.path;
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -223,9 +223,9 @@ describe('useRoute', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(path).toBe('/users/123');
@@ -248,7 +248,7 @@ describe('useRoute', () => {
     const TestComponent = () => {
       const route = useRoute();
       params = route.value.params;
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -257,9 +257,9 @@ describe('useRoute', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(params).toEqual({ id: '456' });
@@ -282,7 +282,7 @@ describe('useRoute', () => {
     const TestComponent = () => {
       const route = useRoute();
       query = route.value.query;
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -291,9 +291,9 @@ describe('useRoute', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(query).toEqual({ q: 'test', page: '1' });
@@ -316,7 +316,7 @@ describe('useRoute', () => {
     const TestComponent = () => {
       const route = useRoute();
       hash = route.value.hash;
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -325,9 +325,9 @@ describe('useRoute', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(hash).toBe('#section');
@@ -350,7 +350,7 @@ describe('useRoute', () => {
     const TestComponent = () => {
       const route = useRoute();
       meta = route.value.meta;
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -359,9 +359,9 @@ describe('useRoute', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(meta).toEqual({ requiresAuth: true, title: 'Dashboard' });
@@ -385,7 +385,7 @@ describe('useRoute', () => {
     const TestComponent = () => {
       const route = useRoute();
       name = route.value.name;
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -394,9 +394,9 @@ describe('useRoute', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(name).toBe('home');
@@ -419,7 +419,7 @@ describe('useRoute', () => {
     const TestComponent = () => {
       const route = useRoute();
       fullPath = route.value.fullPath;
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -428,9 +428,9 @@ describe('useRoute', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(fullPath).toBe('/search?q=hello#results');
@@ -447,7 +447,7 @@ describe('useNavigation', () => {
 
     const TestComponent = () => {
       navigation = useNavigation();
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -456,9 +456,9 @@ describe('useNavigation', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(navigation).not.toBeNull();
@@ -475,7 +475,7 @@ describe('useNavigation', () => {
 
     const TestComponent = () => {
       navigation = useNavigation();
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -484,9 +484,9 @@ describe('useNavigation', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     navigation!.push('/test');
@@ -499,7 +499,7 @@ describe('useNavigation', () => {
 
     const TestComponent = () => {
       navigation = useNavigation();
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -508,9 +508,9 @@ describe('useNavigation', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     navigation!.replace('/test');
@@ -523,7 +523,7 @@ describe('useNavigation', () => {
 
     const TestComponent = () => {
       navigation = useNavigation();
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -532,9 +532,9 @@ describe('useNavigation', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     navigation!.back();
@@ -547,7 +547,7 @@ describe('useNavigation', () => {
 
     const TestComponent = () => {
       navigation = useNavigation();
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -556,9 +556,9 @@ describe('useNavigation', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     navigation!.forward();
@@ -571,7 +571,7 @@ describe('useNavigation', () => {
 
     const TestComponent = () => {
       navigation = useNavigation();
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -580,9 +580,9 @@ describe('useNavigation', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     navigation!.go(-2);
@@ -595,7 +595,7 @@ describe('useNavigation', () => {
 
     const TestComponent = () => {
       navigation = useNavigation();
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -604,9 +604,9 @@ describe('useNavigation', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     navigation!.push({ name: 'user', params: { id: '123' } });
@@ -619,7 +619,7 @@ describe('useNavigation', () => {
 
     const TestComponent = () => {
       navigation = useNavigation();
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -628,9 +628,9 @@ describe('useNavigation', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     navigation!.replace({ path: '/search', query: { q: 'test' } });
@@ -656,10 +656,10 @@ describe('RouterContextProvider', () => {
       } catch {
         contextValue = null;
       }
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
-    render(h(TestComponent, null));
+    render(<TestComponent />);
     expect(contextValue).toBeNull();
   });
 
@@ -669,7 +669,7 @@ describe('RouterContextProvider', () => {
 
     const TestComponent = () => {
       receivedRouter = useRouter();
-      return h('div', null, 'test');
+      return <div>test</div>;
     };
 
     const context: RouterContext = {
@@ -678,9 +678,9 @@ describe('RouterContextProvider', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(TestComponent, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <TestComponent />
+      </RouterContextProvider.Provider>
     );
 
     expect(receivedRouter).toBe(mockRouter);
@@ -692,11 +692,11 @@ describe('RouterContextProvider', () => {
 
     const DeepChild = () => {
       receivedRouter = useRouter();
-      return h('span', null, 'deep');
+      return <span>deep</span>;
     };
 
     const MiddleChild = () => {
-      return h('div', null, h(DeepChild, null));
+      return <div><DeepChild /></div>;
     };
 
     const context: RouterContext = {
@@ -705,9 +705,9 @@ describe('RouterContextProvider', () => {
     };
 
     render(
-      h(RouterContextProvider.Provider, { value: context },
-        h(MiddleChild, null)
-      )
+      <RouterContextProvider.Provider value={context}>
+        <MiddleChild />
+      </RouterContextProvider.Provider>
     );
 
     expect(receivedRouter).toBe(mockRouter);

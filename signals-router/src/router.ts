@@ -1,4 +1,4 @@
-import { signal, Signal } from '@preact/signals';
+import { signal, Signal } from '@preact/signals-react';
 import type {
   Router,
   RouterOptions,

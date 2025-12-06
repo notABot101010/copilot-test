@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { h, ComponentType } from 'preact';
-import { render, fireEvent, cleanup } from '@testing-library/preact';
+import { ComponentType } from 'react';
+import { render, fireEvent, cleanup } from '@testing-library/react';
 import { RouterProvider, RouterView, RouterLink } from '../components';
 import { createRouter } from '../router';
 import type { RouteComponentProps } from '../types';
@@ -104,7 +104,7 @@ describe('RouterProvider', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 
@@ -123,7 +123,7 @@ describe('RouterView', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 
@@ -144,7 +144,7 @@ describe('RouterView', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 
@@ -185,7 +185,7 @@ describe('RouterView', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 
@@ -204,14 +204,14 @@ describe('RouterLink', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterLink, { to: '/about' }, 'About')
+        <RouterLink to={'/about' }} 'About')
       )
     );
 
     const link = container.querySelector('a');
     expect(link).not.toBeNull();
     expect(link?.textContent).toBe('About');
-  });
+   />;
 
   it('should have correct href attribute', () => {
     const router = createRouter({
@@ -223,13 +223,13 @@ describe('RouterLink', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterLink, { to: '/about' }, 'About')
+        <RouterLink to={'/about' }} 'About')
       )
     );
 
     const link = container.querySelector('a');
     expect(link?.getAttribute('href')).toBe('/about');
-  });
+   />;
 
   it('should navigate on click', () => {
     const router = createRouter({
@@ -242,7 +242,7 @@ describe('RouterLink', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterLink, { to: '/about' }, 'About')
+        <RouterLink to={'/about' }} 'About')
       )
     );
 
@@ -250,7 +250,7 @@ describe('RouterLink', () => {
     fireEvent.click(link!);
 
     expect(pushSpy).toHaveBeenCalledWith('/about');
-  });
+   />;
 
   it('should replace when replace prop is true', () => {
     const router = createRouter({
@@ -369,12 +369,12 @@ describe('RouterLink', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterLink, { to: '/about' }, 'About')
+        <RouterLink to={'/about' }} 'About')
       )
     );
 
     const link = container.querySelector('a');
-    fireEvent.click(link!, { ctrlKey: true });
+    fireEvent.click(link!, { ctrlKey= true  />;
 
     expect(pushSpy).not.toHaveBeenCalled();
   });
@@ -387,12 +387,12 @@ describe('RouterLink', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterLink, { to: '/about' }, 'About')
+        <RouterLink to={'/about' }} 'About')
       )
     );
 
     const link = container.querySelector('a');
-    fireEvent.click(link!, { metaKey: true });
+    fireEvent.click(link!, { metaKey= true  />;
 
     expect(pushSpy).not.toHaveBeenCalled();
   });
@@ -405,12 +405,12 @@ describe('RouterLink', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterLink, { to: '/about' }, 'About')
+        <RouterLink to={'/about' }} 'About')
       )
     );
 
     const link = container.querySelector('a');
-    fireEvent.click(link!, { shiftKey: true });
+    fireEvent.click(link!, { shiftKey= true  />;
 
     expect(pushSpy).not.toHaveBeenCalled();
   });
@@ -423,12 +423,12 @@ describe('RouterLink', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterLink, { to: '/about' }, 'About')
+        <RouterLink to={'/about' }} 'About')
       )
     );
 
     const link = container.querySelector('a');
-    fireEvent.click(link!, { button: 2 });
+    fireEvent.click(link!, { button= 2  />;
 
     expect(pushSpy).not.toHaveBeenCalled();
   });
@@ -440,16 +440,15 @@ describe('RouterLink', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterLink, { to: '/' },
-          h('span', null, 'Home'),
-          h('span', null, 'Icon')
+        <RouterLink to={'/' }} <span>Home</span>,
+          <span>Icon</span>
         )
       )
     );
 
     expect(container.textContent).toContain('Home');
     expect(container.textContent).toContain('Icon');
-  });
+   />;
 });
 
 // ============================================================================
@@ -631,7 +630,7 @@ describe('Edge cases', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 
@@ -646,13 +645,13 @@ describe('Edge cases', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterLink, { to: '/some-path' }, 'Link')
+        <RouterLink to={'/some-path' }} 'Link')
       )
     );
 
     const link = container.querySelector('a');
     expect(link?.getAttribute('href')).toBe('/some-path');
-  });
+   />;
 
   it('should use route key to differentiate components on route change', () => {
     const router = createRouter({
@@ -664,7 +663,7 @@ describe('Edge cases', () => {
 
     const { container, rerender } = render(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 
@@ -686,7 +685,7 @@ describe('Edge cases', () => {
     // Force re-render to pick up the signal change
     rerender(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 
@@ -705,7 +704,7 @@ describe('Edge cases', () => {
 
     const { container, rerender } = render(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 
@@ -725,7 +724,7 @@ describe('Edge cases', () => {
 
     rerender(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 
@@ -748,7 +747,7 @@ describe('Edge cases', () => {
 
     rerender(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 
@@ -769,7 +768,7 @@ describe('Edge cases', () => {
 
     rerender(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 
@@ -790,7 +789,7 @@ describe('Edge cases', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 
@@ -828,7 +827,7 @@ describe('Edge cases', () => {
 
     const { container } = render(
       h(RouterProvider, { router },
-        h(RouterView, null)
+        <RouterView />
       )
     );
 

@@ -1,6 +1,5 @@
-import { h, Fragment, ComponentType, VNode, ComponentChildren } from 'preact';
-import { useEffect, useState, useMemo, useCallback } from 'preact/hooks';
-import { effect, useSignalEffect } from '@preact/signals';
+import { useEffect, useState, useMemo, useCallback, ReactNode, ComponentType, MouseEvent as ReactMouseEvent } from 'react';
+import { useSignalEffect } from '@preact/signals-react';
 import type { Router, RouterViewProps, RouterLinkProps, RouteComponentProps, RouteRecord, RouterContext } from './types';
 import { RouterContextProvider, useRouter, useRoute } from './hooks';
 import { createReactiveRoute } from './router';
@@ -47,14 +46,14 @@ function isInternalUrl(href: string, base: string): boolean {
  */
 export interface RouterProviderProps {
   router: Router;
-  children?: ComponentChildren;
+  children?: ReactNode;
 }
 
-export function RouterProvider({ router, children }: RouterProviderProps): VNode<unknown> {
+export function RouterProvider({ router, children }: RouterProviderProps) {
   const base = router.options.base || '';
 
   // Handle clicks on anchor tags for SPA navigation
-  const handleClick = useCallback((event: MouseEvent) => {
+  const handleClick = useCallback((event: ReactMouseEvent<HTMLElement> | globalThis.MouseEvent) => {
     // Find the closest anchor tag
     const target = event.target as HTMLElement;
     const anchor = target.closest('a');
@@ -136,14 +135,14 @@ export function RouterProvider({ router, children }: RouterProviderProps): VNode
     route
   }), [router, route]);
 
-  return h(RouterContextProvider.Provider, { value: contextValue }, children) as VNode<unknown>;
+  return <RouterContextProvider.Provider value={contextValue}>{children}</RouterContextProvider.Provider>;
 }
 
 /**
  * RouterView component
  * Renders the component for the current matched route
  */
-export function RouterView({ name, props: additionalProps, notFound: NotFoundComponent }: RouterViewProps = {}): VNode<unknown> | null {
+export function RouterView({ name, props: additionalProps, notFound: NotFoundComponent }: RouterViewProps = {}) {
   const router = useRouter();
   const route = useRoute();
 
@@ -209,7 +208,7 @@ export function RouterView({ name, props: additionalProps, notFound: NotFoundCom
     : matchedRoute?.component || null;
 
   if (loading || (matchedRoute?.lazyComponent && !lazyComponent)) {
-    return h(Fragment, null) as VNode<unknown>;
+    return null;
   }
 
   // If no route matches and a notFound component is provided, render it
@@ -218,7 +217,7 @@ export function RouterView({ name, props: additionalProps, notFound: NotFoundCom
       params: route.value.params,
       query: route.value.query
     };
-    return h(NotFoundComponent, { key: routeKey, ...notFoundProps, ...additionalProps }) as VNode<unknown>;
+    return <NotFoundComponent key={routeKey} {...notFoundProps} {...additionalProps} />;
   }
 
   if (!Component) {
@@ -242,7 +241,7 @@ export function RouterView({ name, props: additionalProps, notFound: NotFoundCom
 
   // Use routeKey to force component remount when route changes
   // This ensures the previous component is properly unmounted before the new one is mounted
-  return h(Component, { key: routeKey, ...componentProps, ...additionalProps }) as VNode<unknown>;
+  return <Component key={routeKey} {...componentProps} {...additionalProps} />;
 }
 
 /**
@@ -256,7 +255,7 @@ export function RouterLink({
   exactActiveClass = 'router-link-exact-active',
   class: className,
   children
-}: RouterLinkProps): VNode<unknown> {
+}: RouterLinkProps) {
   const router = useRouter();
   const route = useRoute();
 
@@ -287,7 +286,7 @@ export function RouterLink({
     setIsActive(currentPath.startsWith(targetPath));
   });
 
-  const handleClick = (event: MouseEvent) => {
+  const handleClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
     // Don't handle if modifier keys are pressed
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
       return;
@@ -315,9 +314,9 @@ export function RouterLink({
     isExactActive ? exactActiveClass : ''
   ].filter(Boolean).join(' ');
 
-  return h('a', {
-    href,
-    onClick: handleClick,
-    class: classes || undefined
-  }, children) as VNode<unknown>;
+  return (
+    <a href={href} onClick={handleClick} className={classes || undefined}>
+      {children}
+    </a>
+  );
 }
