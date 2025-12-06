@@ -53,7 +53,7 @@ export function RouterProvider({ router, children }: RouterProviderProps) {
   const base = router.options.base || '';
 
   // Handle clicks on anchor tags for SPA navigation
-  const handleClick = useCallback((event: ReactMouseEvent<HTMLElement> | globalThis.MouseEvent) => {
+  const handleClick = useCallback((event: globalThis.MouseEvent) => {
     // Find the closest anchor tag
     const target = event.target as HTMLElement;
     const anchor = target.closest('a');
