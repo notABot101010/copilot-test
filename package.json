@@ -7,6 +7,7 @@
     "preact-router-test",
     "router-test",
     "spreadsheet",
+    "sqlitewam",
     "team-chat",
     "git-server/webapp",
     "s3ui",
