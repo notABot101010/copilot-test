@@ -5,6 +5,14 @@ edition = "2021"
 description = "WebAssembly bindings for the ChaCha stream cipher with WASM SIMD acceleration"
 license = "MIT"
 
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
+opt-level = 3
+
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -17,7 +25,3 @@ chacha12 = { git = "https://github.com/bloom42/chacha12-blake3", package = "chac
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
-
-[profile.release]
-opt-level = "s"
-lto = true

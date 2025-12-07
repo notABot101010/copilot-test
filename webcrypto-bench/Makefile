@@ -2,7 +2,7 @@
 
 # Build the ChaCha WebAssembly bindings with SIMD128 support
 build:
-	cd ../chacha-browser && RUSTFLAGS="-C target-feature=+simd128" wasm-pack build --target web --out-dir ../webcrypto-bench/pkg
+	cd ../chacha-browser && RUSTFLAGS="-C target-feature=+simd128" wasm-pack build --release --target web --out-dir ../webcrypto-bench/pkg
 
 # Run the benchmark with Node.js
 bench: build

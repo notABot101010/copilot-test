@@ -1,40 +1,21 @@
-import { useEffect } from 'react';
-import { MantineProvider, createTheme } from '@mantine/core';
+import { BlockNoteView } from "@blocknote/mantine";
+import { useCreateBlockNote } from "@blocknote/react";
+import { MantineProvider } from "@mantine/core";
+
+import './index.css';
 import '@mantine/core/styles.css';
-import { Sidebar, PageEditor, SpotlightSearch } from './components';
-import { initializeStore } from './store';
+import "@blocknote/mantine/blocknoteStyles.css";
+import './blocknote_overrides.css';
+// import { useSignal, useSignalEffect } from "@preact/signals-react";
+// import "@blocknote/core/fonts/inter.css";
 
-const theme = createTheme({
-  primaryColor: 'blue',
-  fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  colors: {
-    dark: [
-      '#C1C2C5',
-      '#A6A7AB',
-      '#909296',
-      '#5c5f66',
-      '#373A40',
-      '#2C2E33',
-      '#25262b',
-      '#1A1B1E',
-      '#141517',
-      '#101113',
-    ],
-  },
-});
 
-export function App() {
-  useEffect(() => {
-    initializeStore();
-  }, []);
+export default function App() {
+  // Creates a new editor instance.
+  const editor = useCreateBlockNote();
 
-  return (
-    <MantineProvider theme={theme} defaultColorScheme="dark">
-      <div className="flex h-screen bg-zinc-900 text-white">
-        <Sidebar />
-        <PageEditor />
-        <SpotlightSearch />
-      </div>
+  // Renders the editor instance using a React component.
+  return <MantineProvider>
+      <BlockNoteView editor={editor} className="h-full"/>
     </MantineProvider>
-  );
 }

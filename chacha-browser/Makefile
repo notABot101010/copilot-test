@@ -2,7 +2,7 @@
 
 # Build WASM library using wasm-pack and output to pkg/
 build:
-	wasm-pack build --target web --out-dir pkg
+	RUSTFLAGS="-C target-feature=+simd128" wasm-pack build --release --target web --out-dir pkg
 
 # Install webapp dependencies and start Vite dev server
 dev: build
