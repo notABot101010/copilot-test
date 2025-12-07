@@ -33,6 +33,12 @@ export function TablesList() {
         const schema = getTableSchema(tableName);
         tableSchema.value = schema;
         
+        // Validate table name is in the list of valid tables before querying
+        const validTables = listTables();
+        if (!validTables.includes(tableName)) {
+          throw new Error(`Invalid table name: ${tableName}`);
+        }
+        
         const data = executeQuery(`SELECT * FROM ${tableName} LIMIT 5`);
         tableData.value = data;
       } catch (err) {

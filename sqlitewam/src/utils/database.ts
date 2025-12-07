@@ -1,5 +1,17 @@
-let db: any = null;
-let sqlite3: any = null;
+// Type definitions for SQLite WASM
+interface SQLite3DB {
+  exec(sql: string | { sql: string; callback?: (row: any) => void; columnNames?: string[] }): void;
+  close(): void;
+}
+
+interface SQLite3 {
+  oo1: {
+    DB: new (filename: string, flags: string) => SQLite3DB;
+  };
+}
+
+let db: SQLite3DB | null = null;
+let sqlite3: SQLite3 | null = null;
 
 export async function initDatabase() {
   if (db) return db;
@@ -110,6 +122,12 @@ export function listTables(): string[] {
 export function getTableSchema(tableName: string): { columns: string[], rows: any[][] } {
   if (!db) {
     throw new Error('Database not initialized. Call initDatabase() first.');
+  }
+
+  // Validate table name to prevent SQL injection
+  const validTables = listTables();
+  if (!validTables.includes(tableName)) {
+    throw new Error(`Invalid table name: ${tableName}`);
   }
 
   return executeQuery(`PRAGMA table_info(${tableName})`);
