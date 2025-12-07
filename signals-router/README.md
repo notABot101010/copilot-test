@@ -18,25 +18,6 @@ A Vue Router-inspired router for React with signals support. This router provide
 npm install @copilot-test/signals-router react @preact/signals-react
 ```
 
-### Vite Configuration
-
-When using this library with Vite, import and use the `signalsRouterPlugin` in your `vite.config.ts`:
-
-```typescript
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import { signalsRouterPlugin } from '@copilot-test/signals-router'
-
-export default defineConfig({
-  plugins: [
-    react(),
-    signalsRouterPlugin(), // Automatically configures dedupe for React and signals
-  ],
-})
-```
-
-The plugin automatically configures Vite to dedupe `react`, `react-dom`, and `@preact/signals-react`, preventing multiple instances of these libraries which can cause issues with React hooks and signal subscriptions.
-
 ## Quick Start
 
 ### 1. Define Routes

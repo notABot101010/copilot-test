@@ -1,7 +1,6 @@
 {
   "name": "@copilot-test/signals-router",
   "version": "1.0.0",
-  "type": "module",
   "description": "A Vue Router-inspired router for React with signals support",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -33,13 +32,7 @@
   "license": "MIT",
   "peerDependencies": {
     "@preact/signals-react": ">=3.0.0",
-    "react": ">=18.0.0",
-    "vite": ">=5.0.0"
-  },
-  "peerDependenciesMeta": {
-    "vite": {
-      "optional": true
-    }
+    "react": ">=18.0.0"
   },
   "devDependencies": {
     "@preact/signals-react": "^3.6.1",

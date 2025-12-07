@@ -45,6 +45,3 @@ export {
   extractParams,
   matchRoutes
 } from './utils';
-
-// Vite plugin
-export { signalsRouterPlugin } from './vite-plugin';
