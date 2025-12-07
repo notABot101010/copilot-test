@@ -59,6 +59,21 @@ module.exports = {
 };
 ```
 
+**TypeScript Configuration (tsconfig.json):**
+```json
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "paths": {
+      "react": ["./node_modules/preact/compat/"],
+      "react-dom": ["./node_modules/preact/compat/"],
+      "@preact/signals-react": ["./node_modules/@preact/signals"]
+    }
+  }
+}
+```
+
 ## Quick Start
 
 > **Note for Preact users:** The examples below use React syntax. For Preact, simply use `preact` imports and set up the aliases as shown in the Installation section. The API is identical for both frameworks.
