@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "preact-router",
+    "signals-router",
     "preact-router-test",
     "router-test",
     "spreadsheet",
@@ -16,6 +17,7 @@
     "markdown-editor",
     "telegraf",
     "notes",
-    "blocknotes"
+    "blocknotes",
+    "blocknote-react"
   ]
 }

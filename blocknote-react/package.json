@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@copilot-test/signals-router": "file:../signals-router",
+    "@copilot-test/signals-router": "*",
     "@blocknote/core": "latest",
     "@blocknote/mantine": "latest",
     "@blocknote/react": "latest",

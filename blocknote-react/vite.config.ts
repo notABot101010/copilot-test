@@ -9,8 +9,5 @@ export default defineConfig({
         plugins: [["module:@preact/signals-react-transform"]],
       },
     }),
-  ],
-  resolve: {
-    dedupe: ['react', 'react-dom', '@preact/signals-react']
-  }
+  ]
 })
