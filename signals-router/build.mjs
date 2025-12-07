@@ -1,6 +1,6 @@
 import * as esbuild from 'esbuild';
 
-// Build ESM version
+// Build main library - ESM version
 await esbuild.build({
   entryPoints: ['src/index.ts'],
   bundle: true,
@@ -12,7 +12,7 @@ await esbuild.build({
   sourcemap: true,
 });
 
-// Build CJS version
+// Build main library - CJS version
 await esbuild.build({
   entryPoints: ['src/index.ts'],
   bundle: true,
@@ -21,6 +21,30 @@ await esbuild.build({
   external: ['react', 'react-dom', 'react/*', '@preact/signals-react', '@preact/signals-core'],
   platform: 'browser',
   target: 'es2020',
+  sourcemap: true,
+});
+
+// Build Vite plugin - ESM version
+await esbuild.build({
+  entryPoints: ['src/vite.ts'],
+  bundle: true,
+  format: 'esm',
+  outfile: 'dist/vite.js',
+  external: ['vite'],
+  platform: 'node',
+  target: 'node14',
+  sourcemap: true,
+});
+
+// Build Vite plugin - CJS version
+await esbuild.build({
+  entryPoints: ['src/vite.ts'],
+  bundle: true,
+  format: 'cjs',
+  outfile: 'dist/vite.cjs',
+  external: ['vite'],
+  platform: 'node',
+  target: 'node14',
   sourcemap: true,
 });
 
