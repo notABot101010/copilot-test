@@ -20,8 +20,13 @@
 export default function signalsRouter() {
   return {
     name: 'signals-router-preset',
+    // Note: Using 'any' for config parameter to avoid Vite version conflicts
+    // between library and consumer project (similar to @preact/preset-vite approach)
     config(config: any) {
-      const existingDedupe = config?.resolve?.dedupe || [];
+      // Safely get existing dedupe array, defaulting to empty array
+      const existingDedupe = Array.isArray(config?.resolve?.dedupe) 
+        ? config.resolve.dedupe 
+        : [];
       const requiredDedupe = ['react', 'react-dom', '@preact/signals-react'];
       
       // Merge existing dedupe with required dedupe, avoiding duplicates
