@@ -1,24 +1,82 @@
 # @copilot-test/signals-router
 
-A Vue Router-inspired router for React with signals support. This router provides a familiar API similar to Vue Router, including navigation guards, reactive route signals, and programmatic navigation.
+A Vue Router-inspired router for React and Preact with signals support. This router provides a familiar API similar to Vue Router, including navigation guards, reactive route signals, and programmatic navigation.
 
 ## Features
 
 - 🚀 **Vue Router-like API** - Familiar API for Vue developers
-- 📡 **React Signals** - Reactive route state using `@preact/signals-react`
+- 📡 **Signals Support** - Reactive route state using signals
 - 🔒 **Navigation Guards** - `beforeEach`, `beforeResolve`, `afterEach` hooks
 - 🎯 **Route Params & Query** - Easy access via signals (`route.value.params.website_id`)
 - 🔄 **Programmatic Navigation** - `router.push()`, `router.replace()`, `router.back()`
 - 📦 **Lazy Loading** - Support for lazy-loaded route components
 - 🔗 **Native Links** - Works with regular `<a>` tags, no special component needed
+- ⚛️ **React & Preact** - Works with both React and Preact
 
 ## Installation
+
+### For React
 
 ```bash
 npm install @copilot-test/signals-router react @preact/signals-react
 ```
 
+### For Preact
+
+```bash
+npm install @copilot-test/signals-router preact @preact/signals
+```
+
+Then configure your bundler (Vite, Webpack, etc.) to alias the React imports to Preact:
+
+**Vite Configuration (vite.config.ts):**
+```typescript
+import { defineConfig } from 'vite';
+import preact from '@preact/preset-vite';
+
+export default defineConfig({
+  plugins: [preact()],
+  resolve: {
+    alias: {
+      'react': 'preact/compat',
+      'react-dom': 'preact/compat',
+      '@preact/signals-react': '@preact/signals'
+    }
+  }
+});
+```
+
+**Webpack Configuration:**
+```javascript
+module.exports = {
+  resolve: {
+    alias: {
+      'react': 'preact/compat',
+      'react-dom': 'preact/compat',
+      '@preact/signals-react': '@preact/signals'
+    }
+  }
+};
+```
+
+**TypeScript Configuration (tsconfig.json):**
+```json
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "paths": {
+      "react": ["./node_modules/preact/compat/"],
+      "react-dom": ["./node_modules/preact/compat/"],
+      "@preact/signals-react": ["./node_modules/@preact/signals"]
+    }
+  }
+}
+```
+
 ## Quick Start
+
+> **Note for Preact users:** The examples below use React syntax. For Preact, simply use `preact` imports and set up the aliases as shown in the Installation section. The API is identical for both frameworks.
 
 ### 1. Define Routes
 
