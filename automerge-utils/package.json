@@ -1,0 +1,37 @@
+{
+  "name": "@copilot-test/automerge-utils",
+  "version": "0.1.0",
+  "description": "Transform editor changes into minimal Automerge document updates",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "demo": "tsx demo/index.ts"
+  },
+  "keywords": [
+    "automerge",
+    "editor",
+    "crdt",
+    "collaborative"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@automerge/automerge": "^3.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "~5.9.3",
+    "vitest": "^4.0.14"
+  }
+}
