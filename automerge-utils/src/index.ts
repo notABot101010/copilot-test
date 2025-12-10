@@ -1,13 +1,13 @@
 export {
-  applyEditorChanges,
-  createTextDocument,
+  applyBlockNoteChanges,
+  createBlockNoteDocument,
   getDocumentSize,
   compareDocumentSizes,
 } from './transformer.js';
 
 export type {
-  EditorChange,
-  EditorChanges,
-  TextDocument,
+  BlockNoteChange,
+  BlockNoteChanges,
+  BlockNoteDocument,
   TransformOptions,
 } from './types.js';

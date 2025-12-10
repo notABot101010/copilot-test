@@ -1,7 +1,7 @@
 {
   "name": "@copilot-test/automerge-utils",
   "version": "0.1.0",
-  "description": "Transform editor changes into minimal Automerge document updates",
+  "description": "Transform BlockNote editor changes into minimal Automerge document updates",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,10 +15,11 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "demo": "tsx demo/index.ts"
+    "demo": "tsx demo/blocknote-demo.ts"
   },
   "keywords": [
     "automerge",
+    "blocknote",
     "editor",
     "crdt",
     "collaborative"
@@ -29,6 +30,7 @@
     "@automerge/automerge": "^3.2.0"
   },
   "devDependencies": {
+    "@blocknote/core": "^0.44.2",
     "@types/node": "^24.10.1",
     "tsx": "^4.19.2",
     "typescript": "~5.9.3",
