@@ -19,7 +19,7 @@ async function serveFile(res, filePath) {
     const content = await readFile(filePath);
     const ext = extname(filePath);
     const mimeType = MIME_TYPES[ext] || 'application/octet-stream';
-    
+
     res.writeHead(200, { 'Content-Type': mimeType });
     res.end(content);
   } catch (err) {
@@ -35,20 +35,21 @@ async function serveFile(res, filePath) {
 
 const server = createServer(async (req, res) => {
   let path = req.url === '/' ? '/index.html' : req.url;
-  
+
   // Remove query string
   path = path.split('?')[0];
-  
-  // Resolve and normalize the path to prevent path traversal attacks
-  const filePath = resolve(__dirname, '.' + normalize(path));
-  
+
+  // Normalize first, then resolve to prevent path traversal attacks
+  const normalizedPath = normalize('.' + path);
+  const filePath = resolve(__dirname, normalizedPath);
+
   // Ensure the resolved path is within the allowed directory
   if (!filePath.startsWith(__dirname)) {
     res.writeHead(403, { 'Content-Type': 'text/plain' });
     res.end('Forbidden');
     return;
   }
-  
+
   await serveFile(res, filePath);
 });
 

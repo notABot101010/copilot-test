@@ -37,11 +37,11 @@ async function initHashModule() {
     const { readFile } = await import('node:fs/promises');
     const { fileURLToPath } = await import('node:url');
     const { dirname, join } = await import('node:path');
-    
+
     const currentDir = dirname(fileURLToPath(import.meta.url));
     const wasmPath = join(currentDir, 'pkg', 'wasm_hash_bench_bg.wasm');
     const wasmBuffer = await readFile(wasmPath);
-    
+
     const wasmModule = await import('./pkg/wasm_hash_bench.js');
     await wasmModule.default({ module_or_path: wasmBuffer });
     hashModule = wasmModule;
@@ -166,8 +166,14 @@ async function runBenchmarks() {
     console.log(formatResult('SHA-512', sha512Result));
 
     // Calculate relative performance
-    const fastestThroughput = Math.max(blake3Result.throughputMBps, sha256Result.throughputMBps, sha512Result.throughputMBps);
-    console.log(`Fastest: ${fastestThroughput === blake3Result.throughputMBps ? 'BLAKE3' : (fastestThroughput === sha256Result.throughputMBps ? 'SHA-256' : 'SHA-512')}`);
+
+    const results = [
+      { name: 'BLAKE3', throughput: blake3Result.throughputMBps },
+      { name: 'SHA-256', throughput: sha256Result.throughputMBps },
+      { name: 'SHA-512', throughput: sha512Result.throughputMBps }
+    ];
+    const fastest = results.reduce((max, curr) => curr.throughput > max.throughput ? curr : max);
+    console.log(`Fastest: ${fastest.name}`);
   }
 
   console.log('\n===== Benchmark Complete =====');

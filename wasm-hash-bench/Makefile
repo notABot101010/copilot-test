@@ -6,7 +6,7 @@ install-wasm-pack:
 
 # Build the hash benchmark WebAssembly bindings
 build: install-wasm-pack
-	wasm-pack build --release --target web --out-dir pkg
+	RUSTFLAGS="-C target-feature=+simd128" wasm-pack build --release --target web --out-dir pkg
 
 # Run the benchmark with Node.js
 bench: build
