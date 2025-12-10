@@ -73,6 +73,9 @@ function applyChange<
 
 /**
  * Handles block insertion
+ * Note: Currently appends to the end. For production use with collaborative editing,
+ * you would need to determine the correct insertion position based on block relationships
+ * or use BlockNote's internal ordering system.
  */
 function handleInsert<
   BSchema extends BlockSchema = any,
@@ -82,9 +85,6 @@ function handleInsert<
   doc: BlockNoteDocument<BSchema, ISchema, SSchema>,
   block: Block<BSchema, ISchema, SSchema>
 ): void {
-  // Find the correct position to insert based on block ID
-  // For now, append to the end - in a real implementation,
-  // you'd want to maintain the correct order
   doc.blocks.push(block);
 }
 
@@ -126,6 +126,8 @@ function handleUpdate<
 
 /**
  * Handles block move
+ * Note: Currently removes and appends. For production use with collaborative editing,
+ * you would need to determine the correct new position based on block relationships.
  */
 function handleMove<
   BSchema extends BlockSchema = any,
@@ -147,6 +149,16 @@ function handleMove<
 }
 
 /**
+ * Simple deep equality check for blocks
+ * For production, consider using a library like fast-deep-equal
+ */
+function blocksEqual<T>(a: T, b: T): boolean {
+  // For simple comparison, use JSON.stringify
+  // This is acceptable for the current use case but could be optimized
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
  * Optimizes changes by filtering out redundant operations
  */
 function optimizeChanges<
@@ -160,7 +172,7 @@ function optimizeChanges<
   return changes.filter((change) => {
     if (change.type === 'update' && change.prevBlock) {
       // Check if the block actually changed
-      return JSON.stringify(change.block) !== JSON.stringify(change.prevBlock);
+      return !blocksEqual(change.block, change.prevBlock);
     }
     return true;
   });
