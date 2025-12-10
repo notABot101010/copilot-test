@@ -1,24 +1,41 @@
+import type { Block, BlockSchema, InlineContentSchema, StyleSchema } from '@blocknote/core';
+
 /**
- * Represents a change in the editor
+ * A change from BlockNote's onChange callback
  */
-export interface EditorChange {
-  from: number;
-  to: number;
-  text: string;
+export interface BlockNoteChange<
+  BSchema extends BlockSchema = any,
+  ISchema extends InlineContentSchema = any,
+  SSchema extends StyleSchema = any
+> {
+  type: 'insert' | 'delete' | 'update' | 'move';
+  block: Block<BSchema, ISchema, SSchema>;
+  prevBlock?: Block<BSchema, ISchema, SSchema>;
+  source: {
+    type: 'local' | 'paste' | 'drop' | 'undo' | 'redo' | 'undo-redo' | 'yjs-remote';
+  };
+  prevParent?: Block<BSchema, ISchema, SSchema>;
+  currentParent?: Block<BSchema, ISchema, SSchema>;
 }
 
 /**
- * Result from editor's getChanges() function
+ * Result from BlockNote editor's getChanges() function
  */
-export interface EditorChanges {
-  changes: EditorChange[];
-}
+export type BlockNoteChanges<
+  BSchema extends BlockSchema = any,
+  ISchema extends InlineContentSchema = any,
+  SSchema extends StyleSchema = any
+> = Array<BlockNoteChange<BSchema, ISchema, SSchema>>;
 
 /**
- * Type for text content in Automerge document
+ * Type for document content in Automerge document
  */
-export interface TextDocument extends Record<string, unknown> {
-  text: string;
+export interface BlockNoteDocument<
+  BSchema extends BlockSchema = any,
+  ISchema extends InlineContentSchema = any,
+  SSchema extends StyleSchema = any
+> extends Record<string, unknown> {
+  blocks: Block<BSchema, ISchema, SSchema>[];
 }
 
 /**
@@ -26,14 +43,14 @@ export interface TextDocument extends Record<string, unknown> {
  */
 export interface TransformOptions {
   /**
-   * Whether to merge adjacent changes
-   * @default true
-   */
-  mergeAdjacent?: boolean;
-  
-  /**
    * Whether to apply optimizations to reduce document size
    * @default true
    */
   optimize?: boolean;
+
+  /**
+   * Whether to include metadata about the change source
+   * @default false
+   */
+  includeMetadata?: boolean;
 }

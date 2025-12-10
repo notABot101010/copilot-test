@@ -1,15 +1,16 @@
 # @copilot-test/automerge-utils
 
-A TypeScript package for transforming editor changes into minimal Automerge document updates. This package helps keep Automerge document size small by applying precise, optimized changes instead of replacing entire documents.
+A TypeScript package for transforming BlockNote editor changes into minimal Automerge document updates. This package helps keep Automerge document size small by applying precise, optimized block-level changes instead of replacing entire document arrays.
 
 ## Features
 
-- 🎯 **Minimal Updates**: Transform editor changes into precise Automerge operations
+- 🎯 **Minimal Updates**: Transform BlockNote block changes into precise Automerge operations
 - 📦 **Small Document Size**: Optimizations to prevent document bloat
-- 🔄 **Merge Adjacent Changes**: Automatically merge overlapping or adjacent edits
-- ⚡ **Efficient**: Filters out no-op changes
+- 🔄 **Block-Level Operations**: Handle insert, update, delete, and move operations efficiently
+- ⚡ **Efficient**: Filters out no-op changes automatically
 - 🧪 **Well Tested**: Comprehensive unit and integration tests
 - 📊 **Size Tracking**: Built-in utilities to monitor document growth
+- 🎨 **BlockNote Native**: Designed specifically for BlockNote's change API
 
 ## Installation
 
@@ -19,64 +20,75 @@ npm install @copilot-test/automerge-utils
 
 ## Usage
 
-### Basic Example
+### Basic Example with BlockNote
 
 ```typescript
+import { useCreateBlockNote } from '@blocknote/react';
+import { applyBlockNoteChanges, createBlockNoteDocument } from '@copilot-test/automerge-utils';
 import * as Automerge from '@automerge/automerge';
-import { applyEditorChanges, createTextDocument } from '@copilot-test/automerge-utils';
 
-// Create a new text document
-let doc = createTextDocument('Hello');
+function MyEditor() {
+  // Create Automerge document
+  let doc = createBlockNoteDocument();
 
-// Apply editor changes
-const changes = {
-  changes: [
-    { from: 5, to: 5, text: ' World' }
-  ]
-};
+  // Create BlockNote editor
+  const editor = useCreateBlockNote({
+    // ... your BlockNote config
+  });
 
-doc = applyEditorChanges(doc, changes);
-console.log(doc.text); // "Hello World"
+  // Listen for changes
+  editor.onChange((editor, { getChanges }) => {
+    const changes = getChanges();
+    
+    // Apply changes to Automerge document
+    doc = applyBlockNoteChanges(doc, changes);
+    
+    // Now sync doc to your backend, other clients, etc.
+    syncDocument(doc);
+  });
+
+  return <BlockNoteView editor={editor} />;
+}
 ```
 
-### With Text Editor
-
-This package is designed to work with text editors that provide change tracking, such as TipTap, ProseMirror, or CodeMirror:
+### Creating a Document
 
 ```typescript
-import { useEditor } from '@tiptap/react';
-import { applyEditorChanges } from '@copilot-test/automerge-utils';
+import { createBlockNoteDocument } from '@copilot-test/automerge-utils';
 
-const editor = useEditor({
-  onUpdate: ({ editor, getChanges }) => {
-    // Get changes from editor
-    const editorChanges = getChanges();
-    
-    // Transform to EditorChanges format
-    const changes = {
-      changes: editorChanges.map(change => ({
-        from: change.from,
-        to: change.to,
-        text: change.insert || ''
-      }))
-    };
-    
-    // Apply to Automerge document
-    doc = applyEditorChanges(doc, changes);
-  }
+// Create empty document
+const doc = createBlockNoteDocument();
+
+// Or with initial blocks
+const docWithBlocks = createBlockNoteDocument([
+  {
+    id: '1',
+    type: 'paragraph',
+    content: [{ type: 'text', text: 'Hello World' }],
+    children: [],
+  },
+]);
+```
+
+### Applying Changes
+
+```typescript
+import { applyBlockNoteChanges } from '@copilot-test/automerge-utils';
+
+// Inside your onChange callback
+editor.onChange((editor, { getChanges }) => {
+  const changes = getChanges(); // Returns BlocksChanged from BlockNote
+  
+  // Apply to Automerge document
+  doc = applyBlockNoteChanges(doc, changes);
 });
 ```
 
 ### Options
 
 ```typescript
-// Disable change merging
-doc = applyEditorChanges(doc, changes, { 
-  mergeAdjacent: false 
-});
-
-// Disable optimization
-doc = applyEditorChanges(doc, changes, { 
+// Disable optimization (keeps all changes, even no-ops)
+doc = applyBlockNoteChanges(doc, changes, { 
   optimize: false 
 });
 ```
@@ -97,25 +109,24 @@ console.log(`Growth: ${comparison.growth} bytes (${comparison.growthPercent}%)`)
 
 ## API Reference
 
-### `applyEditorChanges(doc, changes, options?)`
+### `applyBlockNoteChanges(doc, changes, options?)`
 
-Applies editor changes to an Automerge document in a minimal way.
+Applies BlockNote editor changes to an Automerge document in a minimal way.
 
 **Parameters:**
 - `doc`: The current Automerge document
-- `changes`: Object containing an array of changes
+- `changes`: Array of block changes from BlockNote's `getChanges()`
 - `options`: Optional configuration
-  - `mergeAdjacent` (default: `true`): Merge adjacent or overlapping changes
   - `optimize` (default: `true`): Filter out no-op changes
 
 **Returns:** Updated Automerge document
 
-### `createTextDocument(initialText?)`
+### `createBlockNoteDocument(initialBlocks?)`
 
-Creates a new Automerge text document.
+Creates a new Automerge document for BlockNote blocks.
 
 **Parameters:**
-- `initialText`: Optional initial text content
+- `initialBlocks`: Optional array of initial blocks
 
 **Returns:** New Automerge document
 
@@ -140,29 +151,30 @@ Compares sizes of two Automerge documents.
 
 ## Types
 
-### `EditorChange`
+### `BlockNoteChange`
 
 ```typescript
-interface EditorChange {
-  from: number;    // Start position
-  to: number;      // End position
-  text: string;    // Text to insert
+interface BlockNoteChange {
+  type: 'insert' | 'delete' | 'update' | 'move';
+  block: Block;  // BlockNote block
+  prevBlock?: Block;  // Previous state for updates
+  source: {
+    type: 'local' | 'paste' | 'drop' | 'undo' | 'redo' | 'undo-redo' | 'yjs-remote';
+  };
 }
 ```
 
-### `EditorChanges`
+### `BlockNoteChanges`
 
 ```typescript
-interface EditorChanges {
-  changes: EditorChange[];
-}
+type BlockNoteChanges = Array<BlockNoteChange>;
 ```
 
-### `TextDocument`
+### `BlockNoteDocument`
 
 ```typescript
-interface TextDocument {
-  text: string;
+interface BlockNoteDocument {
+  blocks: Block[];  // Array of BlockNote blocks
 }
 ```
 
@@ -183,26 +195,40 @@ npm run demo
 ```
 
 The demo shows:
-- Character-by-character typing simulation
-- Batch insertions (paste operations)
-- Deletions and replacements
-- Concurrent edits and merging
-- Comparison with naive full-document replacement approach
+- Creating a BlockNote document
+- Inserting paragraph and heading blocks
+- Updating block content
+- Batch operations (paste simulation)
+- Block deletion
+- Comparison with naive full-array replacement approach
 
 ## Why Use This Package?
 
-When building collaborative text editors with Automerge, a common pitfall is replacing the entire document content on every change. This causes the Automerge document to grow rapidly because it stores the full operation history.
+When building collaborative BlockNote editors with Automerge, a common pitfall is replacing the entire blocks array on every change. This causes the Automerge document to grow rapidly because it stores the full operation history.
 
 This package solves that by:
 
-1. **Applying only the actual changes** rather than replacing entire content
-2. **Merging adjacent changes** to reduce the number of operations
-3. **Filtering out no-op changes** that don't actually modify content
-4. **Using precise position-based updates** for minimal overhead
+1. **Applying only actual block-level changes** (insert, update, delete, move)
+2. **Filtering out no-op changes** that don't actually modify content
+3. **Using precise block operations** for minimal overhead
+4. **Leveraging BlockNote's native change tracking**
 
 ## Performance
 
-In benchmarks, using precise editor changes instead of full document replacement can reduce document size growth by 30-50% or more, especially for documents with frequent edits.
+Using precise block changes instead of full array replacement can reduce document size growth, especially for documents with frequent edits. The savings depend on the editing patterns and document size.
+
+## BlockNote Integration
+
+This package is specifically designed to work with BlockNote's `onChange` callback:
+
+```typescript
+editor.onChange((editor, { getChanges }) => {
+  const changes = getChanges(); // BlocksChanged array
+  doc = applyBlockNoteChanges(doc, changes);
+});
+```
+
+The `getChanges()` function returns an array of block-level changes that describe what happened in the editor. This package transforms these changes into efficient Automerge operations.
 
 ## License
 

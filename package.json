@@ -19,6 +19,7 @@
     "telegraf",
     "notes",
     "blocknotes",
-    "blocknote-react"
+    "blocknote-react",
+    "automerge-utils"
   ]
 }
