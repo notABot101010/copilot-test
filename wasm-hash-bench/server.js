@@ -39,8 +39,9 @@ const server = createServer(async (req, res) => {
   // Remove query string
   path = path.split('?')[0];
   
-  // Resolve and normalize the path to prevent path traversal attacks
-  const filePath = resolve(__dirname, '.' + normalize(path));
+  // Normalize first, then resolve to prevent path traversal attacks
+  const normalizedPath = normalize('.' + path);
+  const filePath = resolve(__dirname, normalizedPath);
   
   // Ensure the resolved path is within the allowed directory
   if (!filePath.startsWith(__dirname)) {

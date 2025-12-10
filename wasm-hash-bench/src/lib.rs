@@ -7,6 +7,13 @@ use wasm_bindgen::prelude::*;
 use blake3::Hasher as Blake3Hasher;
 use sha2::{Sha256, Sha512, Digest};
 
+/// Initialize the panic hook for better error messages in WASM.
+/// This should be called once when the module is loaded.
+#[wasm_bindgen(start)]
+pub fn init() {
+    console_error_panic_hook::set_once();
+}
+
 /// Computes the BLAKE3 hash of the input data.
 ///
 /// # Arguments
@@ -16,7 +23,6 @@ use sha2::{Sha256, Sha512, Digest};
 /// The 32-byte BLAKE3 hash as a Vec<u8>
 #[wasm_bindgen]
 pub fn hash_blake3(data: &[u8]) -> Vec<u8> {
-    console_error_panic_hook::set_once();
     let hash = blake3::hash(data);
     hash.as_bytes().to_vec()
 }
@@ -30,7 +36,6 @@ pub fn hash_blake3(data: &[u8]) -> Vec<u8> {
 /// The 32-byte SHA-256 hash as a Vec<u8>
 #[wasm_bindgen]
 pub fn hash_sha256(data: &[u8]) -> Vec<u8> {
-    console_error_panic_hook::set_once();
     let mut hasher = Sha256::new();
     hasher.update(data);
     hasher.finalize().to_vec()
@@ -45,7 +50,6 @@ pub fn hash_sha256(data: &[u8]) -> Vec<u8> {
 /// The 64-byte SHA-512 hash as a Vec<u8>
 #[wasm_bindgen]
 pub fn hash_sha512(data: &[u8]) -> Vec<u8> {
-    console_error_panic_hook::set_once();
     let mut hasher = Sha512::new();
     hasher.update(data);
     hasher.finalize().to_vec()
@@ -62,7 +66,6 @@ impl Blake3StreamHasher {
     /// Creates a new BLAKE3 hasher for streaming hashing.
     #[wasm_bindgen(constructor)]
     pub fn new() -> Blake3StreamHasher {
-        console_error_panic_hook::set_once();
         Blake3StreamHasher {
             inner: Blake3Hasher::new(),
         }
