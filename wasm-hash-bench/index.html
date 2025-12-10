@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hash Function WASM Benchmark</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 20px;
+      margin: 0;
+    }
+    h1 {
+      color: #569cd6;
+    }
+    #output {
+      background: #252526;
+      padding: 15px;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+    .running {
+      color: #dcdcaa;
+    }
+    .complete {
+      color: #4ec9b0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Hash Function WASM Benchmark</h1>
+  <div id="output" class="running">Loading benchmark...</div>
+
+  <script type="module">
+    const output = document.getElementById('output');
+    const originalLog = console.log;
+    let logs = [];
+
+    console.log = (...args) => {
+      originalLog.apply(console, args);
+      logs.push(args.join(' '));
+      output.textContent = logs.join('\n');
+    };
+
+    console.error = (...args) => {
+      originalLog.apply(console, args);
+      logs.push('ERROR: ' + args.join(' '));
+      output.textContent = logs.join('\n');
+    };
+
+    import('./benchmark.js')
+      .then(() => {
+        output.className = 'complete';
+      })
+      .catch(err => {
+        console.error(err);
+        output.className = 'complete';
+      });
+  </script>
+</body>
+</html>

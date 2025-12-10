@@ -1,0 +1,10 @@
+{
+  "name": "wasm-hash-bench",
+  "version": "1.0.0",
+  "description": "Benchmark BLAKE3, SHA-256 and SHA-512 compiled to WebAssembly",
+  "type": "module",
+  "scripts": {
+    "bench": "node benchmark.js",
+    "serve": "node server.js"
+  }
+}
