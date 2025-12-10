@@ -166,8 +166,13 @@ async function runBenchmarks() {
     console.log(formatResult('SHA-512', sha512Result));
 
     // Calculate relative performance
-    const fastestThroughput = Math.max(blake3Result.throughputMBps, sha256Result.throughputMBps, sha512Result.throughputMBps);
-    console.log(`Fastest: ${fastestThroughput === blake3Result.throughputMBps ? 'BLAKE3' : (fastestThroughput === sha256Result.throughputMBps ? 'SHA-256' : 'SHA-512')}`);
+    const results = [
+      { name: 'BLAKE3', throughput: blake3Result.throughputMBps },
+      { name: 'SHA-256', throughput: sha256Result.throughputMBps },
+      { name: 'SHA-512', throughput: sha512Result.throughputMBps }
+    ];
+    const fastest = results.reduce((max, curr) => curr.throughput > max.throughput ? curr : max);
+    console.log(`Fastest: ${fastest.name}`);
   }
 
   console.log('\n===== Benchmark Complete =====');
