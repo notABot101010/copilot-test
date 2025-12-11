@@ -181,8 +181,8 @@ function updateContentArray(current: any[], newContent: any[], oldContent: any[]
           newContent[i].type === oldItem.type &&
           deepEqual(newContent[i].styles, oldItem.styles)
         ) {
-          // Only text changed, update just that field
-          current[i].text = newContent[i].text;
+          // Only text changed, use surgical string update
+          updateTextFieldSurgically(current[i], 'text', oldItem.text, newContent[i].text);
         } else {
           // Replace entire item
           current[i] = newContent[i];
@@ -198,6 +198,64 @@ function updateContentArray(current: any[], newContent: any[], oldContent: any[]
   if (current.length > newContent.length) {
     current.splice(newContent.length);
   }
+}
+
+/**
+ * Updates a text field using minimal splice operations
+ * Only modifies the parts of the string that have changed
+ */
+function updateTextFieldSurgically(obj: any, fieldName: string, oldText: string, newText: string): void {
+  if (oldText === newText) {
+    return; // No change needed
+  }
+
+  // If the field doesn't exist or is not a string, just set it
+  if (typeof obj[fieldName] !== 'string') {
+    obj[fieldName] = newText;
+    return;
+  }
+
+  // Find common prefix
+  let prefixLen = 0;
+  const minLen = Math.min(oldText.length, newText.length);
+  while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) {
+    prefixLen++;
+  }
+
+  // Find common suffix (after the prefix)
+  let suffixLen = 0;
+  while (
+    suffixLen < minLen - prefixLen &&
+    oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
+  ) {
+    suffixLen++;
+  }
+
+  // Calculate the changed region
+  const deleteStart = prefixLen;
+  const deleteCount = oldText.length - prefixLen - suffixLen;
+  const insertText = newText.substring(prefixLen, newText.length - suffixLen);
+
+  // Apply the minimal change
+  if (deleteCount > 0 && insertText.length > 0) {
+    // Replace: delete and insert
+    obj[fieldName] = 
+      obj[fieldName].substring(0, deleteStart) + 
+      insertText + 
+      obj[fieldName].substring(deleteStart + deleteCount);
+  } else if (deleteCount > 0) {
+    // Only deletion
+    obj[fieldName] = 
+      obj[fieldName].substring(0, deleteStart) + 
+      obj[fieldName].substring(deleteStart + deleteCount);
+  } else if (insertText.length > 0) {
+    // Only insertion
+    obj[fieldName] = 
+      obj[fieldName].substring(0, deleteStart) + 
+      insertText + 
+      obj[fieldName].substring(deleteStart);
+  }
+  // else: no change needed (shouldn't happen due to early return)
 }
 
 /**

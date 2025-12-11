@@ -87,35 +87,86 @@ comparison = compareDocumentSizes(beforeUpdate, doc);
 console.log(`   Updated text: "${(doc.blocks[0] as any).content[0].text}"`);
 console.log(`   Size: ${Automerge.save(doc).byteLength} bytes (growth: ${comparison.growth} bytes)`);
 
-// Demonstrate surgical text updates
-console.log('\n4.5. Demonstrating surgical text updates (character by character)...');
-const textSteps = ['Hello World! T', 'Hello World! Th', 'Hello World! Thi', 'Hello World! This'];
-let totalTextGrowth = 0;
+// Demonstrate surgical text updates with string splice optimization
+console.log('\n4.5. Demonstrating surgical string splice optimization...');
+console.log('   (Only changed parts of the string are updated, not the entire field)');
 
-for (const text of textSteps) {
-  const prevBlock = doc.blocks[0];
-  const beforeTextUpdate = doc;
+// Start with a block
+const textBlock = doc.blocks[0];
+let currentText = (textBlock as any).content[0].text;
+
+// Step 1: Append characters
+console.log(`\n   Step 1: Appending characters "${currentText}" -> "${currentText} text"`);
+const step1Before = doc;
+changes = [
+  {
+    type: 'update',
+    block: {
+      ...textBlock,
+      content: [{ type: 'text', text: currentText + ' text' }],
+    } as any,
+    prevBlock: textBlock as any,
+    source: { type: 'local' },
+  },
+];
+doc = applyBlockNoteChanges(doc, changes);
+const step1Growth = compareDocumentSizes(step1Before, doc).growth;
+console.log(`   Growth: ${step1Growth} bytes (only " text" was added)`);
+currentText = (doc.blocks[0] as any).content[0].text;
+
+// Step 2: Insert in middle
+console.log(`\n   Step 2: Fixing typo in middle "${currentText}" -> "Hello World! This text"`);
+const step2Before = doc;
+const fixedText = 'Hello World! This text';
+changes = [
+  {
+    type: 'update',
+    block: {
+      ...doc.blocks[0],
+      content: [{ type: 'text', text: fixedText }],
+    } as any,
+    prevBlock: doc.blocks[0] as any,
+    source: { type: 'local' },
+  },
+];
+doc = applyBlockNoteChanges(doc, changes);
+const step2Growth = compareDocumentSizes(step2Before, doc).growth;
+console.log(`   Growth: ${step2Growth} bytes (minimal change in middle)`);
+
+// Step 3: Simulate character-by-character typing
+console.log(`\n   Step 3: Typing " was" character by character...`);
+const typingSteps = [' was', ' was ', ' was u', ' was up', ' was upd', ' was upda', ' was updat', ' was update', ' was updated'];
+let typingGrowth = 0;
+let prevTypingText = fixedText;
+
+for (const suffix of typingSteps) {
+  const beforeTyping = doc;
+  const newText = fixedText + suffix;
   
   changes = [
     {
       type: 'update',
       block: {
-        ...prevBlock,
-        content: [{ type: 'text', text }],
+        ...doc.blocks[0],
+        content: [{ type: 'text', text: newText }],
       } as any,
-      prevBlock: prevBlock as any,
+      prevBlock: {
+        ...doc.blocks[0],
+        content: [{ type: 'text', text: prevTypingText }],
+      } as any,
       source: { type: 'local' },
     },
   ];
   
   doc = applyBlockNoteChanges(doc, changes);
-  const textComparison = compareDocumentSizes(beforeTextUpdate, doc);
-  totalTextGrowth += textComparison.growth;
+  const charGrowth = compareDocumentSizes(beforeTyping, doc).growth;
+  typingGrowth += charGrowth;
+  prevTypingText = newText;
 }
 
+console.log(`   Total growth for ${typingSteps.length} incremental edits: ${typingGrowth} bytes`);
+console.log(`   Average: ${(typingGrowth / typingSteps.length).toFixed(1)} bytes per edit`);
 console.log(`   Final text: "${(doc.blocks[0] as any).content[0].text}"`);
-console.log(`   Total growth for 4 character additions: ${totalTextGrowth} bytes`);
-console.log(`   Average growth per character: ${(totalTextGrowth / 4).toFixed(1)} bytes`);
 
 // Simulate batch paste operation
 console.log('\n5. Simulating paste operation (batch insert)...');
