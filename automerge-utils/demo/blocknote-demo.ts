@@ -87,6 +87,36 @@ comparison = compareDocumentSizes(beforeUpdate, doc);
 console.log(`   Updated text: "${(doc.blocks[0] as any).content[0].text}"`);
 console.log(`   Size: ${Automerge.save(doc).byteLength} bytes (growth: ${comparison.growth} bytes)`);
 
+// Demonstrate surgical text updates
+console.log('\n4.5. Demonstrating surgical text updates (character by character)...');
+const textSteps = ['Hello World! T', 'Hello World! Th', 'Hello World! Thi', 'Hello World! This'];
+let totalTextGrowth = 0;
+
+for (const text of textSteps) {
+  const prevBlock = doc.blocks[0];
+  const beforeTextUpdate = doc;
+  
+  changes = [
+    {
+      type: 'update',
+      block: {
+        ...prevBlock,
+        content: [{ type: 'text', text }],
+      } as any,
+      prevBlock: prevBlock as any,
+      source: { type: 'local' },
+    },
+  ];
+  
+  doc = applyBlockNoteChanges(doc, changes);
+  const textComparison = compareDocumentSizes(beforeTextUpdate, doc);
+  totalTextGrowth += textComparison.growth;
+}
+
+console.log(`   Final text: "${(doc.blocks[0] as any).content[0].text}"`);
+console.log(`   Total growth for 4 character additions: ${totalTextGrowth} bytes`);
+console.log(`   Average growth per character: ${(totalTextGrowth / 4).toFixed(1)} bytes`);
+
 // Simulate batch paste operation
 console.log('\n5. Simulating paste operation (batch insert)...');
 const pasteBlocks = [
