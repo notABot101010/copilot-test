@@ -212,20 +212,26 @@ function updateContentArray(current: any[], newContent: any[], oldContent: any[]
  * Only modifies the parts of the string that have changed using minimal splice operations
  */
 function updateTextFieldSurgically(obj: any, fieldName: string, oldText: string, newText: string): void {
-  if (oldText === newText) {
-    return; // No change needed
-  }
+  // Get the CURRENT text from the document, not oldText parameter
+  // The oldText parameter is what BlockNote thinks was the previous state,
+  // but the actual document might have different content (e.g., after save/load)
+  const currentText = obj[fieldName];
 
   // If the field doesn't exist or is not a string, just set it
-  if (typeof obj[fieldName] !== 'string') {
+  if (typeof currentText !== 'string') {
     obj[fieldName] = newText;
     return;
   }
 
-  // Find common prefix
+  // If current text already matches new text, no change needed
+  if (currentText === newText) {
+    return;
+  }
+
+  // Find common prefix between CURRENT document text and new text
   let prefixLen = 0;
-  const minLen = Math.min(oldText.length, newText.length);
-  while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) {
+  const minLen = Math.min(currentText.length, newText.length);
+  while (prefixLen < minLen && currentText[prefixLen] === newText[prefixLen]) {
     prefixLen++;
   }
 
@@ -233,14 +239,14 @@ function updateTextFieldSurgically(obj: any, fieldName: string, oldText: string,
   let suffixLen = 0;
   while (
     suffixLen < minLen - prefixLen &&
-    oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
+    currentText[currentText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
   ) {
     suffixLen++;
   }
 
   // Calculate the changed region
   const deleteStart = prefixLen;
-  const deleteCount = oldText.length - prefixLen - suffixLen;
+  const deleteCount = currentText.length - prefixLen - suffixLen;
   const insertText = newText.substring(prefixLen, newText.length - suffixLen);
 
   // Apply the minimal change using Automerge.splice
