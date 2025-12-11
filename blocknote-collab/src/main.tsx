@@ -8,42 +8,13 @@ import * as Automerge from "@automerge/automerge";
 import './index.css';
 import '@mantine/core/styles.css';
 import "@blocknote/mantine/blocknoteStyles.css";
-import { MantineProvider } from "@mantine/core";
 import { WebrtcProvider } from "y-webrtc";
-import { IndexeddbPersistence } from "y-indexeddb";
-import { applyBlockNoteChanges, createBlockNoteDocument, type BlockNoteDocument } from "@copilot-test/automerge-utils";
+import { applyBlockNoteChanges, type BlockNoteDocument } from "@copilot-test/automerge-utils";
 
 const ydoc = new Y.Doc();
 
-class YProvider {
-  private doc: Y.Doc;
-  private name: string;
-
-  constructor(doc: Y.Doc, name = "YProvider") {
-    this.doc = doc;
-    this.name = name;
-
-    this.doc.on("update", this.onLocalUpdate);
-
-    console.log(`[${this.name}] provider started`);
-  }
-
-  private onLocalUpdate = (update: Uint8Array, origin: any) => {
-    Y.applyUpdate(this.doc, update);
-  };
-
-  public receiveUpdate(update: Uint8Array): void {
-    Y.applyUpdate(this.doc, update, `${this.name}-external`);
-  }
-
-  public destroy(): void {
-    this.doc.off("update", this.onLocalUpdate);
-  }
-}
-
-// const yProvider = new YProvider(ydoc);
-const yProvider = new WebrtcProvider("my-document-id", ydoc);
-// const yProvider = new IndexeddbPersistence('BLOCKNOTE_INDEXED', ydoc)
+// Initialize WebRTC provider for collaborative editing
+new WebrtcProvider("my-document-id", ydoc);
 
 const DOCUMENT_LOCAL_STORAGE_KEY = 'BLOCKNOTE_COLLAB_AUTOMERGE_DOC';
 
@@ -78,7 +49,7 @@ function App() {
     // },
   });
 
-  editor.onChange((editor, { getChanges }) => {
+  editor.onChange((_editor, { getChanges }) => {
       const changes = getChanges();
       automergeDoc = applyBlockNoteChanges(automergeDoc, changes);
       console.log(`Automerge Doc size: ${Automerge.save(automergeDoc).length}`);
