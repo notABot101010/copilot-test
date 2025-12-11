@@ -120,6 +120,10 @@ function handleUpdate<
 ): void {
   const index = doc.blocks.findIndex((b) => b.id === block.id);
   if (index === -1) {
+    // Block not found - this can happen when BlockNote sends an update
+    // for a block that was removed or never properly inserted.
+    // Treat this as an insert operation instead.
+    handleInsert(doc, block);
     return;
   }
 

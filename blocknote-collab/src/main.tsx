@@ -64,20 +64,10 @@ function loadOrCreateAutomergeDoc(): Automerge.Doc<BlockNoteDocument<any, any, a
 
 let automergeDoc = loadOrCreateAutomergeDoc();
 
-console.log('=== Initial automergeDoc state ===');
-console.log('Blocks count:', automergeDoc.blocks.length);
-if (automergeDoc.blocks.length > 0) {
-  console.log('Blocks:', JSON.stringify(automergeDoc.blocks, null, 2));
-}
-
 
 function App() {
-  const initialContent = automergeDoc.blocks.length === 0 ? undefined : automergeDoc.blocks;
-  console.log('=== Initializing editor ===');
-  console.log('initialContent:', initialContent);
-  
   const editor = useCreateBlockNote({
-    initialContent,
+    initialContent: automergeDoc.blocks.length === 0 ? undefined : automergeDoc.blocks,
     // collaboration: {
     //   provider: yProvider,
     //   fragment: ydoc.getXmlFragment("blocks"),
@@ -90,13 +80,7 @@ function App() {
 
   editor.onChange((editor, { getChanges }) => {
       const changes = getChanges();
-      console.log('=== Editor changed ===');
-      console.log('Changes:', JSON.stringify(changes, null, 2));
       automergeDoc = applyBlockNoteChanges(automergeDoc, changes);
-      console.log('After applying changes, blocks:', automergeDoc.blocks.length);
-      for (let i = 0; i < automergeDoc.blocks.length; i++) {
-        console.log(`Block ${i}:`, JSON.stringify(automergeDoc.blocks[i], null, 2));
-      }
       console.log(`Automerge Doc size: ${Automerge.save(automergeDoc).length}`);
       console.log(`Yjs Doc size: ${Y.encodeStateAsUpdateV2(ydoc).length}`)
       localStorage.setItem(DOCUMENT_LOCAL_STORAGE_KEY, uint8ArrayToBase64(Automerge.save(automergeDoc)));
