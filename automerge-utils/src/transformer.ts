@@ -201,8 +201,8 @@ function updateContentArray(current: any[], newContent: any[], oldContent: any[]
 }
 
 /**
- * Updates a text field using minimal splice operations
- * Only modifies the parts of the string that have changed
+ * Updates a text field using Automerge.splice operations
+ * Only modifies the parts of the string that have changed using minimal splice operations
  */
 function updateTextFieldSurgically(obj: any, fieldName: string, oldText: string, newText: string): void {
   if (oldText === newText) {
@@ -236,24 +236,16 @@ function updateTextFieldSurgically(obj: any, fieldName: string, oldText: string,
   const deleteCount = oldText.length - prefixLen - suffixLen;
   const insertText = newText.substring(prefixLen, newText.length - suffixLen);
 
-  // Apply the minimal change
+  // Apply the minimal change using Automerge.splice
   if (deleteCount > 0 && insertText.length > 0) {
     // Replace: delete and insert
-    obj[fieldName] = 
-      obj[fieldName].substring(0, deleteStart) + 
-      insertText + 
-      obj[fieldName].substring(deleteStart + deleteCount);
+    Automerge.splice(obj, [fieldName], deleteStart, deleteCount, insertText);
   } else if (deleteCount > 0) {
     // Only deletion
-    obj[fieldName] = 
-      obj[fieldName].substring(0, deleteStart) + 
-      obj[fieldName].substring(deleteStart + deleteCount);
+    Automerge.splice(obj, [fieldName], deleteStart, deleteCount);
   } else if (insertText.length > 0) {
     // Only insertion
-    obj[fieldName] = 
-      obj[fieldName].substring(0, deleteStart) + 
-      insertText + 
-      obj[fieldName].substring(deleteStart);
+    Automerge.splice(obj, [fieldName], deleteStart, 0, insertText);
   }
   // else: no change needed (shouldn't happen due to early return)
 }
