@@ -20,6 +20,7 @@
     "notes",
     "blocknotes",
     "blocknote-react",
-    "automerge-utils"
+    "automerge-utils",
+    "blocknote-collab"
   ]
 }
