@@ -106,7 +106,8 @@ function handleDelete<
 }
 
 /**
- * Handles block update
+ * Handles block update with surgical precision
+ * Only updates fields that have actually changed to minimize document growth
  */
 function handleUpdate<
   BSchema extends BlockSchema = any,
@@ -118,9 +119,84 @@ function handleUpdate<
   prevBlock?: Block<BSchema, ISchema, SSchema>
 ): void {
   const index = doc.blocks.findIndex((b) => b.id === block.id);
-  if (index !== -1) {
-    // Replace the block at the found index
+  if (index === -1) {
+    return;
+  }
+
+  const currentBlock = doc.blocks[index] as any;
+  const newBlock = block as any;
+  const oldBlock = prevBlock as any;
+
+  // If no previous block for comparison, replace entire block
+  if (!oldBlock) {
     doc.blocks[index] = block;
+    return;
+  }
+
+  // Surgically update only changed fields
+  for (const key in newBlock) {
+    if (key === 'id') continue; // Never update ID
+
+    // Check if this field has changed
+    if (!deepEqual(newBlock[key], oldBlock[key])) {
+      // Special handling for content array (most common case for text edits)
+      if (key === 'content' && Array.isArray(newBlock[key]) && Array.isArray(oldBlock[key])) {
+        updateContentArray(currentBlock[key], newBlock[key], oldBlock[key]);
+      } else {
+        // Update the field
+        currentBlock[key] = newBlock[key];
+      }
+    }
+  }
+
+  // Handle removed fields
+  for (const key in oldBlock) {
+    if (!(key in newBlock) && key !== 'id') {
+      delete currentBlock[key];
+    }
+  }
+}
+
+/**
+ * Surgically updates a content array, only changing items that differ
+ */
+function updateContentArray(current: any[], newContent: any[], oldContent: any[]): void {
+  // If lengths differ significantly, just replace the whole array
+  if (Math.abs(newContent.length - oldContent.length) > 3) {
+    current.length = 0;
+    current.push(...newContent);
+    return;
+  }
+
+  // Update existing items and add new ones
+  for (let i = 0; i < newContent.length; i++) {
+    if (i < current.length) {
+      // Update existing item only if changed
+      const oldItem = i < oldContent.length ? oldContent[i] : null;
+      if (!oldItem || !deepEqual(newContent[i], oldItem)) {
+        // For text content items, update only the text field if that's what changed
+        if (
+          newContent[i]?.type === 'text' &&
+          oldItem?.type === 'text' &&
+          newContent[i].type === oldItem.type &&
+          deepEqual(newContent[i].styles, oldItem.styles)
+        ) {
+          // Only text changed, update just that field
+          current[i].text = newContent[i].text;
+        } else {
+          // Replace entire item
+          current[i] = newContent[i];
+        }
+      }
+    } else {
+      // Add new item
+      current.push(newContent[i]);
+    }
+  }
+
+  // Remove extra items
+  if (current.length > newContent.length) {
+    current.splice(newContent.length);
   }
 }
 
@@ -149,13 +225,55 @@ function handleMove<
 }
 
 /**
- * Simple deep equality check for blocks
- * For production, consider using a library like fast-deep-equal
+ * Deep equality check without JSON.stringify
+ * Handles objects, arrays, and primitive values
+ */
+function deepEqual(a: any, b: any): boolean {
+  // Same reference or both null/undefined
+  if (a === b) return true;
+
+  // One is null/undefined, the other isn't
+  if (a == null || b == null) return false;
+
+  // Different types
+  if (typeof a !== typeof b) return false;
+
+  // Primitive types (already checked equality above)
+  if (typeof a !== 'object') return false;
+
+  // Arrays
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  // One is array, other is not
+  if (Array.isArray(b)) return false;
+
+  // Objects
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+
+  if (keysA.length !== keysB.length) return false;
+
+  for (const key of keysA) {
+    if (!keysB.includes(key)) return false;
+    if (!deepEqual(a[key], b[key])) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Checks if two blocks are equal (alias for deepEqual for backward compatibility)
  */
 function blocksEqual<T>(a: T, b: T): boolean {
-  // For simple comparison, use JSON.stringify
-  // This is acceptable for the current use case but could be optimized
-  return JSON.stringify(a) === JSON.stringify(b);
+  return deepEqual(a, b);
 }
 
 /**
