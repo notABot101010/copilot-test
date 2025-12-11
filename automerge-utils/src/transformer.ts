@@ -122,6 +122,9 @@ function handleUpdate<
   if (index === -1) {
     // Block not found - this can happen when BlockNote sends an update
     // for a block that was removed or never properly inserted.
+    // This is expected behavior with BlockNote's change tracking pattern:
+    // it often sends INSERT for a new block + UPDATE for an old placeholder block
+    // that doesn't exist in the document yet.
     // Treat this as an insert operation instead.
     handleInsert(doc, block);
     return;
