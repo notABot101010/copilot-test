@@ -1,7 +1,7 @@
 {
   "name": "@copilot-test/signals-router",
   "version": "1.0.0",
-  "description": "A Vue Router-inspired router for React with signals support",
+  "description": "A Vue Router-inspired router for React and Preact with signals support",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -24,6 +24,7 @@
   },
   "keywords": [
     "react",
+    "preact",
     "router",
     "signals",
     "spa",
@@ -31,8 +32,24 @@
   ],
   "license": "MIT",
   "peerDependencies": {
+    "@preact/signals": ">=1.0.0",
     "@preact/signals-react": ">=3.0.0",
+    "preact": ">=10.0.0",
     "react": ">=18.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@preact/signals": {
+      "optional": true
+    },
+    "@preact/signals-react": {
+      "optional": true
+    },
+    "preact": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@preact/signals-react": "^3.6.1",
