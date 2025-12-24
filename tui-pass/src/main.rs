@@ -487,6 +487,8 @@ fn display_credential_for_copying(app: &App) -> Result<()> {
         if let Some(cred) = app.vault.credentials.get(idx) {
             println!("\n╔══════════════════════════════════════════════════════════════╗");
             println!("║           COPY MODE - Select text with your mouse           ║");
+            println!("║                                                              ║");
+            println!("║  ⚠️  WARNING: Password is visible in plain text!           ║");
             println!("╚══════════════════════════════════════════════════════════════╝\n");
             
             println!("Title:    {}", cred.title);
