@@ -82,26 +82,14 @@ The 12-byte nonce is sufficient for the birthday bound given the expected number
 
 ## Vault File Format
 
-The vault file uses a simplified binary format with Protocol Buffers:
+The vault file uses a fully protobuf-based format:
 
 ```
-+------------------+------------------+------------------+---------------------+
-| Magic Number     | Version          | Random Salt      | Reserved            |
-| (8 bytes)        | (4 bytes)        | (16 bytes)       | (36 bytes)          |
-+------------------+------------------+------------------+---------------------+
-| Protobuf Serialized Vault Data (variable length)                           |
-| - Contains array of EncryptedEntry messages                                 |
-| - Each EncryptedEntry has its own nonce and ciphertext                      |
++-----------------------------------------------------------------------------+
+| Protobuf-serialized Vault message (variable length)                        |
+| - Contains magic, version, salt, and encrypted entries                     |
 +-----------------------------------------------------------------------------+
 ```
-
-### Field Descriptions
-
-1. **Magic Number** (8 bytes): `TUIPASS2` - Identifies the file as a tui-pass vault (version 2)
-2. **Version** (4 bytes): Format version number (currently 2) for future compatibility
-3. **Random Salt** (16 bytes): Unique random salt for Argon2id key derivation
-4. **Reserved** (36 bytes): Reserved for future use (set to 0)
-5. **Protobuf Data**: Variable-length protobuf-encoded vault containing encrypted entries
 
 ### Protobuf Schema
 
@@ -120,9 +108,19 @@ message EncryptedEntry {
 }
 
 message Vault {
-    repeated EncryptedEntry entries = 1;
+    string magic = 1;                      // "TUIPASS2" identifier
+    uint32 version = 2;                    // Format version (currently 2)
+    bytes salt = 3;                        // 16-byte random salt for key derivation
+    repeated EncryptedEntry entries = 4;   // Encrypted credential entries
 }
 ```
+
+### Field Descriptions
+
+1. **Magic** (string): `TUIPASS2` - Identifies the file as a tui-pass vault (version 2)
+2. **Version** (uint32): Format version number (currently 2) for future compatibility
+3. **Salt** (bytes): 16-byte unique random salt for Argon2id key derivation
+4. **Entries** (repeated EncryptedEntry): Array of encrypted credential entries
 
 ## Key Derivation Process
 
@@ -161,19 +159,21 @@ When creating or updating a vault:
    b. Generate a random 12-byte nonce
    c. Encrypt protobuf data using ChaCha20-Poly1305 with master key and nonce
    d. Store nonce and ciphertext in an EncryptedEntry message
-4. Create Vault protobuf message containing all EncryptedEntry messages
-5. Serialize Vault to protobuf format
-6. Write vault header (including salt) and protobuf data to file
+4. Create Vault protobuf message containing magic, version, salt, and all EncryptedEntry messages
+5. Serialize Vault message to protobuf format
+6. Write the serialized protobuf data to file
 
 ## Decryption Process
 
 When opening a vault:
 
-1. Read vault header (64 bytes) to verify magic number, version, and extract salt
-2. Prompt user for master password
-3. Derive master key from password using Argon2id with salt from header
-4. Read and deserialize protobuf Vault data
-5. Store encrypted entries without decrypting them
+1. Read and deserialize protobuf Vault message from file
+2. Verify magic number matches "TUIPASS2"
+3. Verify version is supported (currently version 2)
+4. Extract salt from Vault message
+5. Prompt user for master password
+6. Derive master key from password using Argon2id with salt
+7. Store encrypted entries without decrypting them
 
 **On-Demand Entry Decryption**:
 When a specific credential is accessed:

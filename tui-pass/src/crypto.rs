@@ -309,109 +309,58 @@ fn decrypt_entry(entry: &proto::EncryptedEntry, master_key: &MasterKey) -> Resul
     Ok(Credential::from_proto(proto_cred))
 }
 
-/// Vault header containing metadata (simplified for new format)
-#[derive(Debug)]
-struct VaultHeader {
-    magic: [u8; 8],
-    version: u32,
-    salt: [u8; SALT_SIZE],  // Random salt for key derivation
-    reserved: [u8; 36],      // Reserved for future use (64 - 8 - 4 - 16 = 36)
-}
-
-impl VaultHeader {
-    fn new(salt: [u8; SALT_SIZE]) -> Self {
-        Self {
-            magic: *MAGIC_NUMBER,
-            version: VERSION,
-            salt,
-            reserved: [0u8; 36],
-        }
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(64);
-        bytes.extend_from_slice(&self.magic);
-        bytes.extend_from_slice(&self.version.to_le_bytes());
-        bytes.extend_from_slice(&self.salt);
-        bytes.extend_from_slice(&self.reserved);
-        bytes
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        if bytes.len() < 64 {
-            return Err(anyhow!("Invalid vault header: too short"));
-        }
-
-        let mut magic = [0u8; 8];
-        magic.copy_from_slice(&bytes[0..8]);
-
-        if &magic != MAGIC_NUMBER {
-            return Err(anyhow!("Invalid vault file: magic number mismatch"));
-        }
-
-        let version = u32::from_le_bytes(bytes[8..12].try_into()?);
-        if version != VERSION {
-            return Err(anyhow!(
-                "Unsupported vault version: {} (expected {})",
-                version,
-                VERSION
-            ));
-        }
-
-        let mut salt = [0u8; SALT_SIZE];
-        salt.copy_from_slice(&bytes[12..28]);
-
-        let mut reserved = [0u8; 36];
-        reserved.copy_from_slice(&bytes[28..64]);
-
-        Ok(Self {
-            magic,
-            version,
-            salt,
-            reserved,
-        })
-    }
-}
-
 /// Encrypt a vault (password parameter unused but kept for API backward compatibility)
 /// 
 /// Note: The password is not needed here since each entry is already encrypted
 /// with the master key derived from the password. The vault structure stores
 /// the salt needed for key derivation. This function simply serializes the 
-/// encrypted entries to protobuf format.
+/// vault to protobuf format.
 pub fn encrypt_vault(vault: &Vault, _password: &str) -> Result<Vec<u8>> {
-    // Create protobuf vault message
+    // Create protobuf vault message with all metadata
     let proto_vault = proto::Vault {
+        magic: String::from_utf8(MAGIC_NUMBER.to_vec())?,
+        version: VERSION,
+        salt: vault.salt().to_vec(),
         entries: vault.get_encrypted_entries().to_vec(),
     };
 
     // Serialize vault to protobuf
-    let plaintext = proto_vault.encode_to_vec();
-
-    // Create header with vault's salt
-    let header = VaultHeader::new(vault.salt());
-
-    // Combine header and protobuf data
-    let mut output = header.to_bytes();
-    output.extend_from_slice(&plaintext);
+    let output = proto_vault.encode_to_vec();
 
     Ok(output)
 }
 
 /// Decrypt a vault with the given password
 pub fn decrypt_vault(data: &[u8], password: &str) -> Result<Vault> {
-    // Parse header
-    let header = VaultHeader::from_bytes(data).context("Failed to parse vault header")?;
-
-    // Extract protobuf data
-    let proto_data = &data[64..];
-
     // Deserialize vault from protobuf
-    let proto_vault = proto::Vault::decode(proto_data)
+    let proto_vault = proto::Vault::decode(data)
         .context("Failed to deserialize vault")?;
 
-    // Create vault with password and salt from header
-    let mut vault = Vault::with_password_and_salt(password.to_string(), header.salt);
+    // Verify magic number
+    if proto_vault.magic != String::from_utf8(MAGIC_NUMBER.to_vec())? {
+        return Err(anyhow!("Invalid vault file: magic number mismatch"));
+    }
+
+    // Verify version
+    if proto_vault.version != VERSION {
+        return Err(anyhow!(
+            "Unsupported vault version: {} (expected {})",
+            proto_vault.version,
+            VERSION
+        ));
+    }
+
+    // Verify salt size
+    if proto_vault.salt.len() != SALT_SIZE {
+        return Err(anyhow!("Invalid salt size in vault"));
+    }
+
+    // Extract salt
+    let mut salt = [0u8; SALT_SIZE];
+    salt.copy_from_slice(&proto_vault.salt);
+
+    // Create vault with password and salt from protobuf
+    let mut vault = Vault::with_password_and_salt(password.to_string(), salt);
     vault.set_encrypted_entries(proto_vault.entries);
 
     Ok(vault)
