@@ -128,10 +128,9 @@ impl InputState {
     fn set_cursor_position(&mut self, field_idx: usize, cursor_pos: usize) {
         self.set_active_field(field_idx);
         let input = self.get_active_field_mut();
-        // Reset input to set cursor position by value manipulation
-        let value = input.value().to_string();
-        let new_pos = cursor_pos.min(value.len());
-        *input = Input::new(value).with_cursor(new_pos);
+        // Use handle with SetCursor request for efficient cursor positioning
+        use tui_input::InputRequest;
+        input.handle(InputRequest::SetCursor(cursor_pos));
     }
 }
 
@@ -357,9 +356,10 @@ impl App {
 
     fn handle_input_dialog_mouse(&mut self, mouse: event::MouseEvent, area: ratatui::layout::Rect) {
         if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-            // Create a temporary dialog to check mouse click
+            // Create a temporary dialog to use its mouse click detection logic
+            // The title field is not used for click detection, so we use an empty string
             let dialog = InputDialog {
-                title: "", // Title doesn't matter for click detection
+                title: "",
                 title_input: &self.input_state.title,
                 username_input: &self.input_state.username,
                 password_input: &self.input_state.password,
