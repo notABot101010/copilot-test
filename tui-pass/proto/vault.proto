@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package vault;
+
+// A single credential entry (stored in plaintext form before encryption)
+message Credential {
+    string title = 1;
+    string username = 2;
+    string password = 3;
+    string url = 4;
+    string notes = 5;
+}
+
+// An encrypted credential entry with its own encryption metadata
+message EncryptedEntry {
+    // Random nonce used for this entry's encryption (12 bytes)
+    bytes nonce = 1;
+    // Encrypted credential data (ciphertext + auth tag)
+    bytes ciphertext = 2;
+}
+
+// The vault containing all encrypted entries
+message Vault {
+    repeated EncryptedEntry entries = 1;
+}
