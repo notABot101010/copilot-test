@@ -156,8 +156,6 @@ Vault Opening:
                                             ↓
     Master Key + Nonce → ChaCha20-Poly1305 → Decrypt Entry (on-demand)
 ```
-    Master Key + Nonce → ChaCha20-Poly1305 → Decrypt Entry (on-demand)
-```
 
 ## Encryption Process
 

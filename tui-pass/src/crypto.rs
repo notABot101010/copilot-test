@@ -71,6 +71,14 @@ pub struct Vault {
     credential_cache: Vec<Option<Credential>>,
 }
 
+impl Drop for Vault {
+    fn drop(&mut self) {
+        // Clear the credential cache on drop
+        self.credential_cache.clear();
+        // MasterKey will be automatically zeroized via its ZeroizeOnDrop implementation
+    }
+}
+
 impl Vault {
     /// Initialize with master password
     pub fn with_password(mut password: String) -> Result<Self> {
@@ -355,7 +363,7 @@ pub fn decrypt_vault(data: &[u8], password: &str) -> Result<Vault> {
     salt.copy_from_slice(&proto_vault.salt);
 
     // Create vault with password and salt from protobuf
-    // Note: password is passed by reference and will be zeroized by caller
+    // Password is copied to owned String, then zeroized inside with_password_and_salt
     let mut vault = Vault::with_password_and_salt(password.to_string(), salt)?;
     vault.set_encrypted_entries(proto_vault.entries);
 
