@@ -199,7 +199,7 @@ impl<'a> InputDialog<'a> {
             self.notes_input,
         ];
 
-        // Calculate dialog size (centered) - same as in render
+        // Calculate dialog size (centered) - matches Widget::render implementation below
         let width = area.width.min(60);
         let height = (fields.len() * 3 + 4).min(area.height as usize) as u16;
         let x = (area.width.saturating_sub(width)) / 2;
@@ -212,7 +212,7 @@ impl<'a> InputDialog<'a> {
             height,
         };
 
-        // Calculate inner area (same as in render)
+        // Calculate inner area - matches Widget::render block.inner() calculation
         let block = Block::default().borders(Borders::ALL);
         let inner = block.inner(dialog_area);
 
