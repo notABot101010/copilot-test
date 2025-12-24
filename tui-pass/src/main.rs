@@ -446,7 +446,10 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
 
                             // Wait for user to press a key
                             println!("\nPress any key to return to the application...");
+                            // Temporarily enable raw mode to read a single key press
+                            enable_raw_mode()?;
                             event::read()?;
+                            disable_raw_mode()?;
 
                             // Re-enter terminal
                             enable_raw_mode()?;
