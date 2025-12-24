@@ -6,6 +6,8 @@ This document describes the cryptographic architecture used in the TUI Password 
 
 **Major Update (v2)**: The vault now encrypts each credential entry individually, ensuring that not all entries are decrypted in memory at the same time. Data serialization uses Protocol Buffers (protobuf) instead of JSON for better efficiency and structure.
 
+**Security Enhancement**: The application no longer stores the master password in memory. Instead, it derives a master key from the password once and immediately zeroizes the password. Only the master key remains in memory for the duration of the session, reducing the attack surface.
+
 ## Security Goals
 
 1. **Confidentiality**: Vault contents must remain encrypted and unreadable without the master password
@@ -13,6 +15,7 @@ This document describes the cryptographic architecture used in the TUI Password 
 3. **Authentication**: Only users with the correct master password can decrypt the vault
 4. **Key Derivation**: Master password must be transformed into cryptographic keys using a memory-hard function
 5. **Memory Safety**: Individual entries are decrypted on-demand to minimize plaintext exposure in memory
+6. **Password Protection**: Master password is never stored in memory - only the derived key is kept
 
 ## Cryptographic Components
 
@@ -130,13 +133,17 @@ message Vault {
    - Master password as input
    - Random salt
    - Fixed memory, time, and parallelism parameters
-4. The 32-byte master key is used as the ChaCha20-Poly1305 encryption key for all entries
+4. **Master password is immediately zeroized from memory**
+5. The 32-byte master key is stored in the Vault struct and used for all subsequent encryption/decryption operations
+6. The master key is automatically zeroized when the Vault is dropped
 
 ```
 Vault Creation:
     Master Password → Random Salt (16 bytes)
                               ↓
     Master Password + Salt → Argon2id → Master Key (32 bytes)
+                                            ↓
+                                  [Password Zeroized]
                                             ↓
     Master Key + Nonce → ChaCha20-Poly1305 → Encrypted Entry
 
@@ -145,6 +152,10 @@ Vault Opening:
                        ↓
     Master Password + Salt → Argon2id → Master Key (32 bytes)
                                             ↓
+                                  [Password Zeroized]
+                                            ↓
+    Master Key + Nonce → ChaCha20-Poly1305 → Decrypt Entry (on-demand)
+```
     Master Key + Nonce → ChaCha20-Poly1305 → Decrypt Entry (on-demand)
 ```
 
@@ -190,7 +201,10 @@ If the password is incorrect or an entry has been tampered with, the authenticat
 
 ### Memory Security
 
-- Master keys and passwords are stored in memory using the `zeroize` crate
+- **Password Handling**: Master password is only kept in memory temporarily during vault opening/creation
+- **Password Zeroization**: Password is immediately zeroized after deriving the master key
+- **Master Key Storage**: Only the derived master key is stored in memory, not the password
+- Master keys are stored using the `zeroize` crate and automatically cleared on drop
 - All sensitive data structures implement `Zeroize` to clear memory on drop
 - Keys are cleared from memory as soon as they're no longer needed
 - **Individual Entry Decryption**: Only accessed credentials are decrypted into memory, minimizing plaintext exposure
@@ -220,6 +234,7 @@ While the cryptographic scheme is robust, users should still follow password bes
 - **Individual Entry Encryption**: Each credential is independently encrypted, limiting the impact of any single decryption failure
 - **On-Demand Decryption**: Credentials are only decrypted when accessed, reducing the window of vulnerability
 - **Granular Authentication**: Each entry has its own authentication tag, enabling per-entry integrity verification
+- **Master Password Not Stored**: Password is never stored in memory, only the derived master key, reducing password exposure risk
 
 ## Threat Model
 
@@ -229,9 +244,10 @@ While the cryptographic scheme is robust, users should still follow password bes
 2. **Rainbow tables**: Unique random salts prevent precomputed attacks
 3. **Tampering**: Poly1305 authentication tag on each entry detects any modifications
 4. **Known-plaintext attacks**: Modern AEAD cipher resistant to such attacks
-5. **Memory dumps**: Minimized exposure through on-demand decryption and zeroization
+5. **Memory dumps**: Minimized exposure through on-demand decryption and zeroization; password is never in memory after initial key derivation
 6. **Selective decryption attacks**: Individual entry encryption prevents full vault exposure
 7. **Parallel attacks**: Unique salts prevent attackers from amortizing brute-force costs across multiple vaults
+8. **Password extraction from memory**: Master password is immediately zeroized after key derivation
 
 ### Not Protected Against
 
