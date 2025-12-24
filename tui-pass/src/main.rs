@@ -322,6 +322,11 @@ impl App {
             _ => {}
         }
     }
+
+    fn enter_copy_mode(&mut self) -> bool {
+        // Only allow copy mode if a credential is selected
+        self.selected_idx.is_some()
+    }
 }
 
 fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<()> {
@@ -425,6 +430,34 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                     KeyCode::Char('s') => {
                         app.save_vault()?;
                     }
+                    KeyCode::Char('c') => {
+                        if app.enter_copy_mode() {
+                            // Exit terminal temporarily for text selection
+                            disable_raw_mode()?;
+                            let mut stdout = io::stdout();
+                            execute!(
+                                stdout,
+                                LeaveAlternateScreen,
+                                DisableMouseCapture
+                            )?;
+
+                            // Display credential details for copying
+                            display_credential_for_copying(&app)?;
+
+                            // Wait for user to press a key
+                            println!("\nPress any key to return to the application...");
+                            event::read()?;
+
+                            // Re-enter terminal
+                            enable_raw_mode()?;
+                            execute!(
+                                stdout,
+                                EnterAlternateScreen,
+                                EnableMouseCapture
+                            )?;
+                            terminal.clear()?;
+                        }
+                    }
                     _ => {}
                 },
                 AppMode::AddingCredential | AppMode::EditingCredential(_) => {
@@ -446,8 +479,28 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
     Ok(())
 }
 
+fn display_credential_for_copying(app: &App) -> Result<()> {
+    if let Some(idx) = app.selected_idx {
+        if let Some(cred) = app.vault.credentials.get(idx) {
+            println!("\n╔══════════════════════════════════════════════════════════════╗");
+            println!("║           COPY MODE - Select text with your mouse           ║");
+            println!("╚══════════════════════════════════════════════════════════════╝\n");
+            
+            println!("Title:    {}", cred.title);
+            println!("Username: {}", cred.username);
+            println!("Password: {}", cred.password);
+            println!("URL:      {}", cred.url);
+            if !cred.notes.is_empty() {
+                println!("Notes:    {}", cred.notes);
+            }
+        }
+    }
+    Ok(())
+}
+
 fn prompt_password(prompt: &str) -> Result<String> {
     print!("{}", prompt);
+    io::Write::flush(&mut io::stdout()).context("Failed to flush stdout")?;
     let password = rpassword::read_password().context("Failed to read password")?;
     Ok(password)
 }

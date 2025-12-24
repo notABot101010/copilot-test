@@ -169,7 +169,7 @@ pub struct HelpBar;
 
 impl Widget for HelpBar {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let help_text = " ↑/↓: Navigate | Enter: Select | Space: Toggle Password | a: Add | e: Edit | d: Delete | s: Save | q: Quit ";
+        let help_text = " ↑/↓: Navigate | Space: Toggle Password | c: Copy Mode | a: Add | e: Edit | d: Delete | s: Save | q: Quit ";
         let style = Style::default().bg(Color::DarkGray).fg(Color::White);
         let help = Paragraph::new(help_text).style(style);
         help.render(area, buf);
