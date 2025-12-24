@@ -235,6 +235,14 @@ impl App {
                         (self.input_state.active_field + 1).min(4);
                 }
             }
+            KeyCode::Up => {
+                self.input_state.active_field = 
+                    self.input_state.active_field.saturating_sub(1);
+            }
+            KeyCode::Down => {
+                self.input_state.active_field = 
+                    (self.input_state.active_field + 1).min(4);
+            }
             KeyCode::Enter => {
                 let credential = self.input_state.to_credential();
                 
