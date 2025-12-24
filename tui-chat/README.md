@@ -20,9 +20,13 @@ A terminal-based chat application built with Ratatui, inspired by Telegram's int
 
 ### Editing Mode (When typing)
 - `Enter`: Send message
-- `Shift+Enter`: Add new line
+- `Shift+Enter`: Add new line (Note: may not work in all terminals)
 - `Backspace`: Delete character
 - `Esc`: Cancel and return to navigation mode
+
+## Terminal Compatibility
+
+The application has been tested with modern terminal emulators. Note that `Shift+Enter` for multi-line input may not work in all terminals due to terminal-specific key binding limitations. If `Shift+Enter` doesn't work in your terminal, you can compose multi-line messages by editing external text.
 
 ## Building and Running
 

@@ -8,6 +8,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, Widget, Wrap},
 };
 
+const MESSAGE_PREVIEW_MAX_LENGTH: usize = 30;
+
 pub struct ConversationList;
 
 impl ConversationList {
@@ -32,16 +34,16 @@ impl ConversationList {
                 let time_str = conv
                     .last_message_time
                     .map(|t| t.with_timezone(&Local).format("%H:%M").to_string())
-                    .unwrap_or_else(|| "".to_string());
+                    .unwrap_or_else(String::new);
 
                 let last_msg = conv
                     .last_message
                     .as_ref()
                     .map(|m| {
-                        if m.len() > 30 {
-                            format!("{}...", &m[..30])
+                        if m.len() > MESSAGE_PREVIEW_MAX_LENGTH {
+                            format!("{}...", &m[..MESSAGE_PREVIEW_MAX_LENGTH])
                         } else {
-                            m.clone()
+                            m.to_string()
                         }
                     })
                     .unwrap_or_else(|| "No messages".to_string());
@@ -49,7 +51,7 @@ impl ConversationList {
                 let mut lines = vec![Line::from(vec![
                     Span::raw(format!("{} ", conv.avatar)),
                     Span::styled(
-                        conv.name.clone(),
+                        &conv.name,
                         Style::default()
                             .fg(Color::White)
                             .add_modifier(Modifier::BOLD),
@@ -211,9 +213,8 @@ impl InputBox {
 
         // Show cursor when focused
         if focused && inner_area.width > 0 && inner_area.height > 0 {
-            let lines: Vec<&str> = content.lines().collect();
-            let cursor_line = lines.len().saturating_sub(1);
-            let cursor_col = lines.last().map(|l| l.len()).unwrap_or(0);
+            let cursor_line = content.lines().count().saturating_sub(1);
+            let cursor_col = content.lines().last().map(|l| l.len()).unwrap_or(0);
 
             if cursor_line < inner_area.height as usize && cursor_col < inner_area.width as usize {
                 let x = inner_area.x + cursor_col as u16;
