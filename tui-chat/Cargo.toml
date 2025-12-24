@@ -1,0 +1,18 @@
+[package]
+name = "tui-chat"
+version = "0.1.0"
+edition = "2021"
+description = "A terminal-based chat application using ratatui"
+license = "MIT"
+
+[[bin]]
+name = "tui-chat"
+path = "src/main.rs"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+serde = { version = "1.0", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+anyhow = "1.0"
