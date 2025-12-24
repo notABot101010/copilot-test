@@ -40,8 +40,8 @@ impl ConversationList {
                     .last_message
                     .as_ref()
                     .map(|m| {
-                        if m.len() > MESSAGE_PREVIEW_MAX_LENGTH {
-                            format!("{}...", &m[..MESSAGE_PREVIEW_MAX_LENGTH])
+                        if m.chars().count() > MESSAGE_PREVIEW_MAX_LENGTH {
+                            format!("{}...", m.chars().take(MESSAGE_PREVIEW_MAX_LENGTH).collect::<String>())
                         } else {
                             m.to_string()
                         }
@@ -137,11 +137,14 @@ impl MessageView {
                     // Wrap message content
                     let max_width = inner_area.width.saturating_sub(2) as usize;
                     for line in msg.content.lines() {
-                        if line.len() > max_width {
+                        let char_count = line.chars().count();
+                        if char_count > max_width {
+                            let chars: Vec<char> = line.chars().collect();
                             let mut start = 0;
-                            while start < line.len() {
-                                let end = (start + max_width).min(line.len());
-                                result.push(Line::from(Span::raw(format!("  {}", &line[start..end]))));
+                            while start < chars.len() {
+                                let end = (start + max_width).min(chars.len());
+                                let chunk: String = chars[start..end].iter().collect();
+                                result.push(Line::from(Span::raw(format!("  {}", chunk))));
                                 start = end;
                             }
                         } else {
