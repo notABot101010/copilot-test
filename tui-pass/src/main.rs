@@ -213,7 +213,7 @@ impl App {
     }
 
     fn save_vault(&mut self) -> Result<()> {
-        let encrypted = crypto::encrypt_vault(&self.vault, "")
+        let encrypted = crypto::encrypt_vault(&self.vault)
             .context("Failed to encrypt vault")?;
 
         fs::write(&self.vault_path, encrypted).context("Failed to write vault file")?;
@@ -547,7 +547,7 @@ fn create_vault(vault_path: PathBuf) -> Result<()> {
 
     // Create empty vault (password will be zeroized inside with_password)
     let vault = Vault::with_password(password)?;
-    let encrypted = crypto::encrypt_vault(&vault, "").context("Failed to encrypt vault")?;
+    let encrypted = crypto::encrypt_vault(&vault).context("Failed to encrypt vault")?;
 
     fs::write(&vault_path, encrypted).context("Failed to write vault file")?;
 
