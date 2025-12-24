@@ -254,6 +254,84 @@ impl<'a> InputDialog<'a> {
 
         None
     }
+
+    /// Determine which field was clicked based on mouse coordinates
+    /// Returns (field_index, cursor_position_in_field) or None if click was outside fields
+    pub fn handle_mouse_click(&self, area: Rect, mouse_x: u16, mouse_y: u16) -> Option<(usize, Option<usize>)> {
+        let fields = [
+            self.title_input,
+            self.username_input,
+            self.password_input,
+            self.url_input,
+            self.notes_input,
+        ];
+
+        // Calculate dialog size (centered) - matches Widget::render implementation
+        let width = area.width.min(60);
+        let height = (fields.len() * 3 + 4).min(area.height as usize) as u16;
+        let x = (area.width.saturating_sub(width)) / 2;
+        let y = (area.height.saturating_sub(height)) / 2;
+
+        let dialog_area = Rect {
+            x: area.x + x,
+            y: area.y + y,
+            width,
+            height,
+        };
+
+        // Calculate inner area
+        let block = Block::default().borders(Borders::ALL);
+        let inner = block.inner(dialog_area);
+
+        // Check if mouse is within dialog bounds
+        if mouse_x < dialog_area.x || mouse_x >= dialog_area.x + dialog_area.width
+            || mouse_y < dialog_area.y || mouse_y >= dialog_area.y + dialog_area.height {
+            return None;
+        }
+
+        // Iterate through fields to find which one was clicked
+        let mut y_offset = 0;
+        for (idx, input) in fields.iter().enumerate() {
+            if y_offset >= inner.height {
+                break;
+            }
+
+            let value_area = Rect {
+                x: inner.x,
+                y: inner.y + y_offset,
+                width: inner.width,
+                height: 3,
+            };
+
+            // Check if mouse is within this field's area
+            if mouse_y >= value_area.y && mouse_y < value_area.y + value_area.height
+                && mouse_x >= value_area.x && mouse_x < value_area.x + value_area.width {
+                
+                // Calculate cursor position within the field
+                // Account for borders (1 char on each side)
+                let text_inner_x = value_area.x + 1;
+                let text_inner_y = value_area.y + 1;
+                let text_inner_width = value_area.width.saturating_sub(2);
+
+                // Only calculate cursor position if click is inside text area
+                let cursor_pos = if mouse_y == text_inner_y && mouse_x >= text_inner_x && mouse_x < text_inner_x + text_inner_width {
+                    let scroll = input.visual_scroll(text_inner_width as usize);
+                    let relative_x = mouse_x.saturating_sub(text_inner_x) as usize;
+                    let absolute_pos = scroll + relative_x;
+                    let value_len = input.value().len();
+                    Some(absolute_pos.min(value_len))
+                } else {
+                    None
+                };
+
+                return Some((idx, cursor_pos));
+            }
+
+            y_offset += 3;
+        }
+
+        None
+    }
 }
 
 impl Widget for InputDialog<'_> {
@@ -518,5 +596,115 @@ mod tests {
             let cursor_pos = dialog.cursor_position(area);
             assert!(cursor_pos.is_some(), "Cursor should be present for field {}", active_field);
         }
+    }
+
+    #[test]
+    fn test_input_dialog_handle_mouse_click_outside() {
+        let title_input = Input::new("Test".to_string());
+        let username_input = Input::new("User".to_string());
+        let password_input = Input::new("Pass".to_string());
+        let url_input = Input::new("URL".to_string());
+        let notes_input = Input::new("Notes".to_string());
+
+        let dialog = InputDialog {
+            title: "Test Dialog",
+            title_input: &title_input,
+            username_input: &username_input,
+            password_input: &password_input,
+            url_input: &url_input,
+            notes_input: &notes_input,
+            active_field: 0,
+        };
+
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 24,
+        };
+
+        // Click outside the dialog (at top-left corner)
+        let result = dialog.handle_mouse_click(area, 0, 0);
+        assert!(result.is_none(), "Click outside dialog should return None");
+    }
+
+    #[test]
+    fn test_input_dialog_handle_mouse_click_on_field() {
+        let title_input = Input::new("Test".to_string());
+        let username_input = Input::new("User".to_string());
+        let password_input = Input::new("Pass".to_string());
+        let url_input = Input::new("URL".to_string());
+        let notes_input = Input::new("Notes".to_string());
+
+        let dialog = InputDialog {
+            title: "Test Dialog",
+            title_input: &title_input,
+            username_input: &username_input,
+            password_input: &password_input,
+            url_input: &url_input,
+            notes_input: &notes_input,
+            active_field: 0,
+        };
+
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 24,
+        };
+
+        // Dialog width is min(80, 60) = 60
+        // Dialog height is min(5*3+4, 24) = 19
+        // Dialog is centered: x = (80-60)/2 = 10, y = (24-19)/2 = 2
+        // So dialog_area is (10, 2, 60, 19)
+        // Inner area after borders: (11, 3, 58, 17)
+        // First field (title) starts at y=3, height=3, so covers y=3,4,5
+        // Text line is at y=4 (middle of the 3-line block)
+        // Text starts at x=12 (inner.x + 1 for border)
+        let result = dialog.handle_mouse_click(area, 15, 4);
+        
+        // Should return Some with field index 0
+        assert!(result.is_some(), "Click on field should return Some");
+        let (field_idx, _cursor_pos) = result.unwrap();
+        assert_eq!(field_idx, 0, "Should select first field");
+    }
+
+    #[test]
+    fn test_input_dialog_handle_mouse_click_with_cursor_position() {
+        let title_input = Input::new("Hello World".to_string());
+        let username_input = Input::new("User".to_string());
+        let password_input = Input::new("Pass".to_string());
+        let url_input = Input::new("URL".to_string());
+        let notes_input = Input::new("Notes".to_string());
+
+        let dialog = InputDialog {
+            title: "Test Dialog",
+            title_input: &title_input,
+            username_input: &username_input,
+            password_input: &password_input,
+            url_input: &url_input,
+            notes_input: &notes_input,
+            active_field: 0,
+        };
+
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 24,
+        };
+
+        // Using the same calculation as above:
+        // Text line is at y=4, text starts at x=12
+        let result = dialog.handle_mouse_click(area, 20, 4);
+        
+        assert!(result.is_some(), "Click on field should return Some");
+        let (field_idx, cursor_pos) = result.unwrap();
+        assert_eq!(field_idx, 0, "Should select first field");
+        assert!(cursor_pos.is_some(), "Should have cursor position");
+        
+        // Cursor position should be within the text length
+        let pos = cursor_pos.unwrap();
+        assert!(pos <= title_input.value().len(), "Cursor position should be within text bounds");
     }
 }

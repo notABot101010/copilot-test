@@ -120,6 +120,19 @@ impl InputState {
     fn move_to_next_field(&mut self) {
         self.active_field = (self.active_field + 1).min(Self::MAX_FIELD_INDEX);
     }
+
+    fn set_active_field(&mut self, field_idx: usize) {
+        self.active_field = field_idx.min(Self::MAX_FIELD_INDEX);
+    }
+
+    fn set_cursor_position(&mut self, field_idx: usize, cursor_pos: usize) {
+        self.set_active_field(field_idx);
+        let input = self.get_active_field_mut();
+        // Reset input to set cursor position by value manipulation
+        let value = input.value().to_string();
+        let new_pos = cursor_pos.min(value.len());
+        *input = Input::new(value).with_cursor(new_pos);
+    }
 }
 
 struct App {
@@ -132,6 +145,7 @@ struct App {
     input_state: InputState,
     modified: bool,
     credential_list_area: ratatui::layout::Rect,
+    terminal_area: ratatui::layout::Rect,
 }
 
 impl App {
@@ -146,6 +160,7 @@ impl App {
             input_state: InputState::new(),
             modified: false,
             credential_list_area: ratatui::layout::Rect::default(),
+            terminal_area: ratatui::layout::Rect::default(),
         }
     }
 
@@ -340,6 +355,32 @@ impl App {
         }
     }
 
+    fn handle_input_dialog_mouse(&mut self, mouse: event::MouseEvent, area: ratatui::layout::Rect) {
+        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+            // Create a temporary dialog to check mouse click
+            let dialog = InputDialog {
+                title: "", // Title doesn't matter for click detection
+                title_input: &self.input_state.title,
+                username_input: &self.input_state.username,
+                password_input: &self.input_state.password,
+                url_input: &self.input_state.url,
+                notes_input: &self.input_state.notes,
+                active_field: self.input_state.active_field,
+            };
+
+            if let Some((field_idx, cursor_pos)) = dialog.handle_mouse_click(area, mouse.column, mouse.row) {
+                // Set the active field
+                if let Some(pos) = cursor_pos {
+                    // If cursor position was calculated, set both field and cursor position
+                    self.input_state.set_cursor_position(field_idx, pos);
+                } else {
+                    // Otherwise just set the field
+                    self.input_state.set_active_field(field_idx);
+                }
+            }
+        }
+    }
+
     fn enter_copy_mode(&mut self) -> bool {
         // Only allow copy mode if a credential is selected
         self.selected_idx.is_some()
@@ -356,6 +397,9 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
             .cloned();
 
         terminal.draw(|f| {
+            // Store terminal area for mouse interaction
+            app.terminal_area = f.area();
+
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -493,11 +537,15 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                     app.handle_confirm_delete_key(key.code);
                 }
             },
-            Event::Mouse(mouse) => {
-                if matches!(app.mode, AppMode::Normal) {
+            Event::Mouse(mouse) => match app.mode {
+                AppMode::Normal => {
                     app.handle_mouse(mouse);
                 }
-            }
+                AppMode::AddingCredential | AppMode::EditingCredential(_) => {
+                    app.handle_input_dialog_mouse(mouse, app.terminal_area);
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
