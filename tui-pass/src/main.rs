@@ -396,7 +396,11 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         notes_input: &app.input_state.notes,
                         active_field: app.input_state.active_field,
                     };
-                    f.render_widget(dialog, f.area());
+                    let area = f.area();
+                    if let Some((x, y)) = dialog.cursor_position(area) {
+                        f.set_cursor_position((x, y));
+                    }
+                    f.render_widget(dialog, area);
                 }
                 AppMode::EditingCredential(_) => {
                     let dialog = InputDialog {
@@ -408,7 +412,11 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         notes_input: &app.input_state.notes,
                         active_field: app.input_state.active_field,
                     };
-                    f.render_widget(dialog, f.area());
+                    let area = f.area();
+                    if let Some((x, y)) = dialog.cursor_position(area) {
+                        f.set_cursor_position((x, y));
+                    }
+                    f.render_widget(dialog, area);
                 }
                 AppMode::ConfirmDelete(_) => {
                     let dialog = ConfirmDialog {
