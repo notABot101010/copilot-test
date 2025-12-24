@@ -188,6 +188,74 @@ pub struct InputDialog<'a> {
     pub active_field: usize,
 }
 
+impl<'a> InputDialog<'a> {
+    /// Calculate cursor position for the active field
+    pub fn cursor_position(&self, area: Rect) -> Option<(u16, u16)> {
+        let fields = [
+            self.title_input,
+            self.username_input,
+            self.password_input,
+            self.url_input,
+            self.notes_input,
+        ];
+
+        // Calculate dialog size (centered) - same as in render
+        let width = area.width.min(60);
+        let height = (fields.len() * 3 + 4).min(area.height as usize) as u16;
+        let x = (area.width.saturating_sub(width)) / 2;
+        let y = (area.height.saturating_sub(height)) / 2;
+
+        let dialog_area = Rect {
+            x: area.x + x,
+            y: area.y + y,
+            width,
+            height,
+        };
+
+        // Calculate inner area (same as in render)
+        let block = Block::default().borders(Borders::ALL);
+        let inner = block.inner(dialog_area);
+
+        // Calculate position of active field
+        let mut y_offset = 0;
+        for (idx, input) in fields.iter().enumerate() {
+            if y_offset >= inner.height {
+                return None;
+            }
+
+            if idx == self.active_field {
+                // The input field is rendered with a bordered block
+                // The actual text area is inside the block borders
+                let value_area = Rect {
+                    x: inner.x,
+                    y: inner.y + y_offset,
+                    width: inner.width,
+                    height: 3,
+                };
+
+                // Account for the block borders (1 char on each side)
+                let text_inner_x = value_area.x + 1;
+                let text_inner_y = value_area.y + 1;
+                let text_inner_width = value_area.width.saturating_sub(2);
+
+                // Get cursor position within the input
+                let cursor_offset = input.visual_cursor();
+                let scroll = input.visual_scroll(text_inner_width as usize);
+
+                // Calculate actual cursor position accounting for scroll
+                let cursor_x = text_inner_x + (cursor_offset.saturating_sub(scroll)) as u16;
+                let cursor_y = text_inner_y;
+
+                return Some((cursor_x, cursor_y));
+            }
+
+            y_offset += 3;
+        }
+
+        None
+    }
+}
+
 impl Widget for InputDialog<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // Field definitions with labels
@@ -366,5 +434,87 @@ impl Widget for ConfirmDialog<'_> {
         let options = Paragraph::new("Y: Yes | N: No")
             .style(Style::default().fg(Color::Yellow));
         options.render(options_area, buf);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tui_input::Input;
+
+    #[test]
+    fn test_input_dialog_cursor_position() {
+        // Create test inputs
+        let title_input = Input::new("Test Title".to_string());
+        let username_input = Input::new("testuser".to_string());
+        let password_input = Input::new("password123".to_string());
+        let url_input = Input::new("https://example.com".to_string());
+        let notes_input = Input::new("Some notes".to_string());
+
+        // Create dialog with active field = 0 (title)
+        let dialog = InputDialog {
+            title: "Test Dialog",
+            title_input: &title_input,
+            username_input: &username_input,
+            password_input: &password_input,
+            url_input: &url_input,
+            notes_input: &notes_input,
+            active_field: 0,
+        };
+
+        // Create a test area
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 24,
+        };
+
+        // Get cursor position
+        let cursor_pos = dialog.cursor_position(area);
+        
+        // Cursor should be present
+        assert!(cursor_pos.is_some());
+        
+        let (x, y) = cursor_pos.unwrap();
+        
+        // Cursor should be within the area bounds
+        assert!(x < area.width);
+        assert!(y < area.height);
+        
+        // Cursor x should be at least at the start of the dialog (accounting for centering and borders)
+        assert!(x > 0);
+    }
+
+    #[test]
+    fn test_input_dialog_cursor_position_different_fields() {
+        let title_input = Input::new("".to_string());
+        let username_input = Input::new("".to_string());
+        let password_input = Input::new("".to_string());
+        let url_input = Input::new("".to_string());
+        let notes_input = Input::new("".to_string());
+
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 24,
+        };
+
+        // Test each field
+        for active_field in 0..5 {
+            let dialog = InputDialog {
+                title: "Test",
+                title_input: &title_input,
+                username_input: &username_input,
+                password_input: &password_input,
+                url_input: &url_input,
+                notes_input: &notes_input,
+                active_field,
+            };
+
+            let cursor_pos = dialog.cursor_position(area);
+            assert!(cursor_pos.is_some(), "Cursor should be present for field {}", active_field);
+        }
     }
 }
