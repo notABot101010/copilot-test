@@ -8,21 +8,21 @@ use ratatui::{
 
 use crate::crypto::Credential;
 
-/// Widget for displaying the list of credentials
+/// Widget for displaying the list of credentials (using titles only)
 pub struct CredentialList<'a> {
-    credentials: &'a [Credential],
+    titles: &'a [String],
     selected: Option<usize>,
     scroll_offset: usize,
 }
 
 impl<'a> CredentialList<'a> {
     pub fn new(
-        credentials: &'a [Credential],
+        titles: &'a [String],
         selected: Option<usize>,
         scroll_offset: usize,
     ) -> Self {
         Self {
-            credentials,
+            titles,
             selected,
             scroll_offset,
         }
@@ -39,7 +39,7 @@ impl Widget for CredentialList<'_> {
         let inner = block.inner(area);
         block.render(area, buf);
 
-        if self.credentials.is_empty() {
+        if self.titles.is_empty() {
             let empty_msg = Paragraph::new("No credentials yet.\n\nPress 'a' to add a new one.")
                 .style(Style::default().fg(Color::DarkGray))
                 .wrap(Wrap { trim: true });
@@ -49,13 +49,13 @@ impl Widget for CredentialList<'_> {
 
         // Calculate visible range
         let visible_height = inner.height as usize;
-        let end = (self.scroll_offset + visible_height).min(self.credentials.len());
+        let end = (self.scroll_offset + visible_height).min(self.titles.len());
 
         // Create list items for visible range
-        let items: Vec<ListItem> = self.credentials[self.scroll_offset..end]
+        let items: Vec<ListItem> = self.titles[self.scroll_offset..end]
             .iter()
             .enumerate()
-            .map(|(idx, cred)| {
+            .map(|(idx, title)| {
                 let actual_idx = self.scroll_offset + idx;
                 let is_selected = Some(actual_idx) == self.selected;
 
@@ -68,7 +68,7 @@ impl Widget for CredentialList<'_> {
                     Style::default()
                 };
 
-                let content = format!("  {}", cred.title);
+                let content = format!("  {}", title);
                 ListItem::new(content).style(style)
             })
             .collect();

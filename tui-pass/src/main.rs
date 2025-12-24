@@ -139,13 +139,13 @@ impl App {
     }
 
     fn select_next(&mut self) {
-        if self.vault.credentials.is_empty() {
+        if self.vault.is_empty() {
             return;
         }
 
         let new_idx = match self.selected_idx {
             Some(idx) => {
-                if idx + 1 < self.vault.credentials.len() {
+                if idx + 1 < self.vault.len() {
                     idx + 1
                 } else {
                     idx
@@ -159,7 +159,7 @@ impl App {
     }
 
     fn select_prev(&mut self) {
-        if self.vault.credentials.is_empty() {
+        if self.vault.is_empty() {
             return;
         }
 
@@ -196,16 +196,18 @@ impl App {
 
     fn start_edit_credential(&mut self) {
         if let Some(idx) = self.selected_idx {
-            if idx < self.vault.credentials.len() {
-                self.input_state = InputState::from_credential(&self.vault.credentials[idx]);
-                self.mode = AppMode::EditingCredential(idx);
+            if idx < self.vault.len() {
+                if let Ok(cred) = self.vault.get_credential(idx) {
+                    self.input_state = InputState::from_credential(cred);
+                    self.mode = AppMode::EditingCredential(idx);
+                }
             }
         }
     }
 
     fn start_delete_credential(&mut self) {
         if let Some(idx) = self.selected_idx {
-            if idx < self.vault.credentials.len() {
+            if idx < self.vault.len() {
                 self.mode = AppMode::ConfirmDelete(idx);
             }
         }
@@ -245,13 +247,17 @@ impl App {
                 
                 match self.mode {
                     AppMode::AddingCredential => {
-                        self.vault.credentials.push(credential);
-                        self.selected_idx = Some(self.vault.credentials.len() - 1);
-                        self.modified = true;
+                        if let Err(e) = self.vault.add_credential(credential) {
+                            eprintln!("Failed to add credential: {}", e);
+                        } else {
+                            self.selected_idx = Some(self.vault.len() - 1);
+                            self.modified = true;
+                        }
                     }
                     AppMode::EditingCredential(idx) => {
-                        if idx < self.vault.credentials.len() {
-                            self.vault.credentials[idx] = credential;
+                        if let Err(e) = self.vault.update_credential(idx, credential) {
+                            eprintln!("Failed to update credential: {}", e);
+                        } else {
                             self.modified = true;
                         }
                     }
@@ -271,16 +277,17 @@ impl App {
         if let AppMode::ConfirmDelete(idx) = self.mode {
             match key {
                 KeyCode::Char('y') | KeyCode::Char('Y') => {
-                    if idx < self.vault.credentials.len() {
-                        self.vault.credentials.remove(idx);
+                    if let Err(e) = self.vault.remove_credential(idx) {
+                        eprintln!("Failed to remove credential: {}", e);
+                    } else {
                         self.modified = true;
                         
                         // Adjust selection
-                        if self.vault.credentials.is_empty() {
+                        if self.vault.is_empty() {
                             self.selected_idx = None;
                         } else if let Some(selected) = self.selected_idx {
-                            if selected >= self.vault.credentials.len() {
-                                self.selected_idx = Some(self.vault.credentials.len() - 1);
+                            if selected >= self.vault.len() {
+                                self.selected_idx = Some(self.vault.len() - 1);
                             }
                         }
                     }
@@ -307,7 +314,7 @@ impl App {
                     let relative_row = mouse.row.saturating_sub(self.credential_list_area.y + 1) as usize;
                     let clicked_idx = self.scroll_offset + relative_row;
                     
-                    if clicked_idx < self.vault.credentials.len() {
+                    if clicked_idx < self.vault.len() {
                         self.selected_idx = Some(clicked_idx);
                     }
                 }
@@ -316,7 +323,7 @@ impl App {
                 self.scroll_offset = self.scroll_offset.saturating_sub(1);
             }
             MouseEventKind::ScrollDown => {
-                let max_scroll = self.vault.credentials.len().saturating_sub(1);
+                let max_scroll = self.vault.len().saturating_sub(1);
                 self.scroll_offset = (self.scroll_offset + 1).min(max_scroll);
             }
             _ => {}
@@ -331,6 +338,13 @@ impl App {
 
 fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<()> {
     loop {
+        // Prepare data for rendering (decrypt if needed)
+        let titles = app.vault.get_titles().unwrap_or_else(|_| Vec::new());
+        let selected_credential = app
+            .selected_idx
+            .and_then(|idx| app.vault.get_credential(idx).ok())
+            .cloned();
+
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -345,19 +359,16 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
             // Store area for mouse interaction
             app.credential_list_area = main_chunks[0];
 
-            // Left pane: credential list
+            // Left pane: credential list (now uses titles only)
             let credential_list = CredentialList::new(
-                &app.vault.credentials,
+                &titles,
                 app.selected_idx,
                 app.scroll_offset,
             );
             f.render_widget(credential_list, main_chunks[0]);
 
             // Right pane: credential details
-            let selected_credential = app
-                .selected_idx
-                .and_then(|idx| app.vault.credentials.get(idx));
-            let credential_detail = CredentialDetail::new(selected_credential, app.show_password);
+            let credential_detail = CredentialDetail::new(selected_credential.as_ref(), app.show_password);
             f.render_widget(credential_detail, main_chunks[1]);
 
             // Bottom: help bar
@@ -419,7 +430,7 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                     KeyCode::Down => app.select_next(),
                     KeyCode::Up => app.select_prev(),
                     KeyCode::Enter => {
-                        if app.selected_idx.is_none() && !app.vault.credentials.is_empty() {
+                        if app.selected_idx.is_none() && !app.vault.is_empty() {
                             app.selected_idx = Some(0);
                         }
                     }
@@ -442,7 +453,7 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                             )?;
 
                             // Display credential details for copying
-                            display_credential_for_copying(&app)?;
+                            display_credential_for_copying(&mut app)?;
 
                             // Wait for user to press a key
                             println!("\nPress any key to return to the application...");
@@ -482,9 +493,9 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
     Ok(())
 }
 
-fn display_credential_for_copying(app: &App) -> Result<()> {
+fn display_credential_for_copying(app: &mut App) -> Result<()> {
     if let Some(idx) = app.selected_idx {
-        if let Some(cred) = app.vault.credentials.get(idx) {
+        if let Ok(cred) = app.vault.get_credential(idx) {
             println!("\n╔══════════════════════════════════════════════════════════════╗");
             println!("║           COPY MODE - Select text with your mouse           ║");
             println!("║                                                              ║");
@@ -529,7 +540,7 @@ fn create_vault(vault_path: PathBuf) -> Result<()> {
     }
 
     // Create empty vault
-    let vault = Vault::new();
+    let vault = Vault::with_password(password.clone());
     let encrypted = crypto::encrypt_vault(&vault, &password).context("Failed to encrypt vault")?;
 
     fs::write(&vault_path, encrypted).context("Failed to write vault file")?;
