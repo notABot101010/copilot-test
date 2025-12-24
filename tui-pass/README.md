@@ -58,6 +58,7 @@ Enter your master password when prompted.
 
 ### Actions
 - **Space**: Toggle password visibility (show/hide)
+- **c**: Copy Mode - Temporarily exit TUI to allow text selection with mouse (press any key to return)
 - **a**: Add a new credential
 - **e**: Edit the selected credential
 - **d**: Delete the selected credential
@@ -73,6 +74,17 @@ Enter your master password when prompted.
 ### Confirmation Dialogs
 - **Y**: Confirm action
 - **N**: Cancel action
+
+## Text Selection and Copying
+
+To copy passwords or other credential information:
+1. Select a credential from the list
+2. Press **c** to enter Copy Mode
+3. The TUI will temporarily exit, showing the credential details in plain text
+4. Use your mouse to select and copy the text you need
+5. Press any key to return to the TUI
+
+This feature allows you to easily copy passwords to your clipboard using standard terminal text selection.
 
 ## Interface Layout
 
