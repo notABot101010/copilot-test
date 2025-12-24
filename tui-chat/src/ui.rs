@@ -157,10 +157,14 @@ impl MessageView {
                 })
                 .collect();
 
-            // Apply scroll offset
+            // Apply scroll offset with bounds checking
+            let total_lines = messages.len();
+            let max_scroll = total_lines.saturating_sub(inner_area.height as usize);
+            let capped_offset = scroll_offset.min(max_scroll);
+            
             let visible_messages: Vec<Line> = messages
                 .into_iter()
-                .skip(scroll_offset)
+                .skip(capped_offset)
                 .collect();
 
             let paragraph = Paragraph::new(visible_messages).wrap(Wrap { trim: false });
