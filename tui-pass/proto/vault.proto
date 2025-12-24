@@ -19,7 +19,14 @@ message EncryptedEntry {
     bytes ciphertext = 2;
 }
 
-// The vault containing all encrypted entries
+// The vault containing all encrypted entries and metadata
 message Vault {
-    repeated EncryptedEntry entries = 1;
+    // Magic identifier for vault format (should be "TUIPASS2")
+    string magic = 1;
+    // Vault format version
+    uint32 version = 2;
+    // Random salt for key derivation (16 bytes)
+    bytes salt = 3;
+    // Encrypted credential entries
+    repeated EncryptedEntry entries = 4;
 }
