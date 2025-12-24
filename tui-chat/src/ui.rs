@@ -99,7 +99,7 @@ impl ConversationList {
 pub struct MessageView;
 
 impl MessageView {
-    pub fn render(area: Rect, buf: &mut Buffer, conversation: Option<&Conversation>) {
+    pub fn render(area: Rect, buf: &mut Buffer, conversation: Option<&Conversation>, scroll_offset: usize) {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(
@@ -157,7 +157,13 @@ impl MessageView {
                 })
                 .collect();
 
-            let paragraph = Paragraph::new(messages).wrap(Wrap { trim: false });
+            // Apply scroll offset
+            let visible_messages: Vec<Line> = messages
+                .into_iter()
+                .skip(scroll_offset)
+                .collect();
+
+            let paragraph = Paragraph::new(visible_messages).wrap(Wrap { trim: false });
             paragraph.render(inner_area, buf);
         } else {
             let text = Text::from(vec![
@@ -173,6 +179,10 @@ impl MessageView {
                 )),
                 Line::from(Span::styled(
                     "Press Enter to select a conversation",
+                    Style::default().fg(Color::DarkGray),
+                )),
+                Line::from(Span::styled(
+                    "Click on a conversation to select it",
                     Style::default().fg(Color::DarkGray),
                 )),
             ]);
