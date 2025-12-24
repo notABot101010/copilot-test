@@ -18,6 +18,9 @@ use std::io;
 use ui::{ConversationList, InputBox, MessageView};
 use uuid::Uuid;
 
+const SCROLL_STEP: usize = 3;
+const PAGE_SCROLL_STEP: usize = 10;
+
 enum InputMode {
     Normal,
     Editing,
@@ -133,8 +136,8 @@ impl App {
                 // Check if click is in input box area
                 else if self.is_in_rect(x, y, self.input_box_area) {
                     if self.selected_conversation.is_some() {
-                        self.input_mode = InputMode::Editing;
                         self.select_current_conversation();
+                        self.input_mode = InputMode::Editing;
                     }
                 }
                 // Check if click is in message view area
@@ -144,12 +147,12 @@ impl App {
             }
             MouseEventKind::ScrollUp => {
                 if self.is_in_rect(mouse_event.column, mouse_event.row, self.message_view_area) {
-                    self.message_scroll_offset = self.message_scroll_offset.saturating_sub(3);
+                    self.message_scroll_offset = self.message_scroll_offset.saturating_sub(SCROLL_STEP);
                 }
             }
             MouseEventKind::ScrollDown => {
                 if self.is_in_rect(mouse_event.column, mouse_event.row, self.message_view_area) {
-                    self.message_scroll_offset = self.message_scroll_offset.saturating_add(3);
+                    self.message_scroll_offset = self.message_scroll_offset.saturating_add(SCROLL_STEP);
                 }
             }
             _ => {}
@@ -187,10 +190,10 @@ impl App {
                     self.previous_conversation();
                 }
                 KeyCode::PageUp => {
-                    self.message_scroll_offset = self.message_scroll_offset.saturating_sub(10);
+                    self.message_scroll_offset = self.message_scroll_offset.saturating_sub(PAGE_SCROLL_STEP);
                 }
                 KeyCode::PageDown => {
-                    self.message_scroll_offset = self.message_scroll_offset.saturating_add(10);
+                    self.message_scroll_offset = self.message_scroll_offset.saturating_add(PAGE_SCROLL_STEP);
                 }
                 KeyCode::Enter => {
                     if self.selected_conversation.is_some() {
