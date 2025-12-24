@@ -229,13 +229,11 @@ impl App {
                 _ => {}
             },
             InputMode::Editing => match key_event.code {
+                KeyCode::Enter if key_event.modifiers.contains(KeyModifiers::SHIFT) => {
+                    self.input.push('\n');
+                }
                 KeyCode::Enter => {
-                    // Check for Shift modifier for newline
-                    if key_event.modifiers.contains(KeyModifiers::SHIFT) {
-                        self.input.push('\n');
-                    } else {
-                        self.send_message();
-                    }
+                    self.send_message();
                 }
                 KeyCode::Char(c) => {
                     self.input.push(c);
