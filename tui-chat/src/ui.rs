@@ -99,7 +99,7 @@ impl ConversationList {
 pub struct MessageView;
 
 impl MessageView {
-    pub fn render(area: Rect, buf: &mut Buffer, conversation: Option<&Conversation>, scroll_offset: usize) {
+    pub fn render(area: Rect, buf: &mut Buffer, conversation: Option<&Conversation>, scroll_offset: usize) -> usize {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(
@@ -169,6 +169,9 @@ impl MessageView {
 
             let paragraph = Paragraph::new(visible_messages).wrap(Wrap { trim: false });
             paragraph.render(inner_area, buf);
+            
+            // Return total lines so caller can calculate scroll position
+            total_lines
         } else {
             let text = Text::from(vec![
                 Line::from(""),
@@ -192,6 +195,7 @@ impl MessageView {
             ]);
             let paragraph = Paragraph::new(text).centered();
             paragraph.render(inner_area, buf);
+            0
         }
     }
 }
