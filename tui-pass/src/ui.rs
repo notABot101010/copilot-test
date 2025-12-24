@@ -280,10 +280,11 @@ impl Widget for InputDialog<'_> {
             height,
         };
 
-        // Draw semi-transparent background
+        // Draw opaque background to prevent text bleed-through
         for dy in 0..area.height {
             for dx in 0..area.width {
                 if let Some(cell) = buf.cell_mut((area.x + dx, area.y + dy)) {
+                    cell.set_symbol(" ");
                     cell.set_style(Style::default().bg(Color::Black).fg(Color::DarkGray));
                 }
             }
@@ -393,10 +394,11 @@ impl Widget for ConfirmDialog<'_> {
             height,
         };
 
-        // Draw semi-transparent background
+        // Draw opaque background to prevent text bleed-through
         for dy in 0..area.height {
             for dx in 0..area.width {
                 if let Some(cell) = buf.cell_mut((area.x + dx, area.y + dy)) {
+                    cell.set_symbol(" ");
                     cell.set_style(Style::default().bg(Color::Black).fg(Color::DarkGray));
                 }
             }
