@@ -400,8 +400,8 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
             }
         })?;
 
-        if let Event::Key(key) = event::read()? {
-            match app.mode {
+        match event::read()? {
+            Event::Key(key) => match app.mode {
                 AppMode::Normal => match key.code {
                     KeyCode::Char('q') => {
                         if app.modified {
@@ -433,11 +433,13 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                 AppMode::ConfirmDelete(_) => {
                     app.handle_confirm_delete_key(key.code);
                 }
+            },
+            Event::Mouse(mouse) => {
+                if matches!(app.mode, AppMode::Normal) {
+                    app.handle_mouse(mouse);
+                }
             }
-        } else if let Event::Mouse(mouse) = event::read()? {
-            if matches!(app.mode, AppMode::Normal) {
-                app.handle_mouse(mouse);
-            }
+            _ => {}
         }
     }
 
