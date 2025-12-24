@@ -187,7 +187,7 @@ impl Widget for InputDialog<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // Calculate dialog size (centered)
         let width = area.width.min(60);
-        let height = (self.fields.len() * 3 + 4).min(area.height as usize) as u16;
+        let height = (self.fields.len() * 2 + 4).min(area.height as usize) as u16;
         let x = (area.width.saturating_sub(width)) / 2;
         let y = (area.height.saturating_sub(height)) / 2;
 
@@ -267,7 +267,7 @@ impl Widget for InputDialog<'_> {
 
                 let value_text = Paragraph::new(display_value).style(value_style);
                 value_text.render(value_area, buf);
-                y_offset += 2;
+                y_offset += 1;
             }
         }
 
