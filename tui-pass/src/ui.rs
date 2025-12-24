@@ -201,7 +201,7 @@ impl Widget for InputDialog<'_> {
 
         // Calculate dialog size (centered)
         let width = area.width.min(60);
-        let height = (fields.len() * 2 + 4).min(area.height as usize) as u16;
+        let height = (fields.len() * 3 + 4).min(area.height as usize) as u16;
         let x = (area.width.saturating_sub(width)) / 2;
         let y = (area.height.saturating_sub(height)) / 2;
 
@@ -254,9 +254,9 @@ impl Widget for InputDialog<'_> {
                 width: inner.width,
                 height: 1,
             };
-            let label_text = Paragraph::new(*label).style(style);
-            label_text.render(label_area, buf);
-            y_offset += 1;
+            // let label_text = Paragraph::new(*label).style(style);
+            // label_text.render(label_area, buf);
+            // y_offset += 1;
 
             // Value (using tui-input's rendering)
             if y_offset < inner.height {
@@ -264,7 +264,7 @@ impl Widget for InputDialog<'_> {
                     x: inner.x,
                     y: inner.y + y_offset,
                     width: inner.width,
-                    height: 1,
+                    height: 3,
                 };
 
                 let value_style = if is_active {
@@ -274,15 +274,19 @@ impl Widget for InputDialog<'_> {
                 };
 
                 // Create paragraph from Input value
-                let display_value = if is_active {
-                    format!("{}_", input.value())
-                } else {
-                    input.value().to_string()
-                };
+                // let display_value = if is_active {
+                //     format!("{}_", input.value())
+                // } else {
+                //     input.value().to_string()
+                // };
 
-                let value_text = Paragraph::new(display_value).style(value_style);
+                let scroll = input.visual_scroll(value_area.width as usize);
+
+                let value_text = Paragraph::new(input.value()).style(value_style)
+                .scroll((0, scroll as u16))
+                .block(Block::bordered().title(*label));
                 value_text.render(value_area, buf);
-                y_offset += 1;
+                y_offset += 3;
             }
         }
 
