@@ -4,10 +4,11 @@ mod ui;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton, MouseEventKind},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use tui_input::backend::crossterm::EventHandler;
 use crypto::{Credential, Vault};
 use ratatui::{
     backend::CrosstermBackend,
@@ -18,6 +19,7 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 use ui::{ConfirmDialog, CredentialDetail, CredentialList, HelpBar, InputDialog};
+use tui_input::Input;
 use zeroize::Zeroize;
 
 #[derive(Parser)]
@@ -48,57 +50,57 @@ enum AppMode {
 }
 
 struct InputState {
-    title: String,
-    username: String,
-    password: String,
-    url: String,
-    notes: String,
+    title: Input,
+    username: Input,
+    password: Input,
+    url: Input,
+    notes: Input,
     active_field: usize,
 }
 
 impl InputState {
     fn new() -> Self {
         Self {
-            title: String::new(),
-            username: String::new(),
-            password: String::new(),
-            url: String::new(),
-            notes: String::new(),
+            title: Input::default(),
+            username: Input::default(),
+            password: Input::default(),
+            url: Input::default(),
+            notes: Input::default(),
             active_field: 0,
         }
     }
 
     fn from_credential(cred: &Credential) -> Self {
         Self {
-            title: cred.title.clone(),
-            username: cred.username.clone(),
-            password: cred.password.clone(),
-            url: cred.url.clone(),
-            notes: cred.notes.clone(),
+            title: Input::new(cred.title.clone()),
+            username: Input::new(cred.username.clone()),
+            password: Input::new(cred.password.clone()),
+            url: Input::new(cred.url.clone()),
+            notes: Input::new(cred.notes.clone()),
             active_field: 0,
         }
     }
 
     fn to_credential(&self) -> Credential {
         Credential {
-            title: self.title.clone(),
-            username: self.username.clone(),
-            password: self.password.clone(),
-            url: self.url.clone(),
-            notes: self.notes.clone(),
+            title: self.title.value().to_string(),
+            username: self.username.value().to_string(),
+            password: self.password.value().to_string(),
+            url: self.url.value().to_string(),
+            notes: self.notes.value().to_string(),
         }
     }
 
     fn clear(&mut self) {
-        self.title.clear();
-        self.username.clear();
-        self.password.clear();
-        self.url.clear();
-        self.notes.clear();
+        self.title = Input::default();
+        self.username = Input::default();
+        self.password = Input::default();
+        self.url = Input::default();
+        self.notes = Input::default();
         self.active_field = 0;
     }
 
-    fn get_active_field_mut(&mut self) -> &mut String {
+    fn get_active_field_mut(&mut self) -> &mut Input {
         match self.active_field {
             0 => &mut self.title,
             1 => &mut self.username,
@@ -222,18 +224,10 @@ impl App {
         Ok(())
     }
 
-    fn handle_input_mode_key(&mut self, key: KeyCode, modifiers: KeyModifiers) {
-        match key {
-            KeyCode::Char(c) => {
-                if !modifiers.contains(KeyModifiers::CONTROL) {
-                    self.input_state.get_active_field_mut().push(c);
-                }
-            }
-            KeyCode::Backspace => {
-                self.input_state.get_active_field_mut().pop();
-            }
+    fn handle_input_mode_key(&mut self, key: KeyEvent) {
+        match key.code {
             KeyCode::Tab => {
-                if modifiers.contains(KeyModifiers::SHIFT) {
+                if key.modifiers.contains(KeyModifiers::SHIFT) {
                     self.input_state.active_field = 
                         self.input_state.active_field.saturating_sub(1);
                 } else {
@@ -268,7 +262,10 @@ impl App {
             KeyCode::Esc => {
                 self.mode = AppMode::Normal;
             }
-            _ => {}
+            _ => {
+                // Let tui-input handle all other keys
+                self.input_state.get_active_field_mut().handle_event(&Event::Key(key));
+            }
         }
     }
 
@@ -376,31 +373,25 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
             // Overlay dialogs
             match &app.mode {
                 AppMode::AddingCredential => {
-                    let fields = [
-                        ("Title:", app.input_state.title.clone()),
-                        ("Username:", app.input_state.username.clone()),
-                        ("Password:", app.input_state.password.clone()),
-                        ("URL:", app.input_state.url.clone()),
-                        ("Notes:", app.input_state.notes.clone()),
-                    ];
                     let dialog = InputDialog {
                         title: "Add Credential",
-                        fields: &fields,
+                        title_input: &app.input_state.title,
+                        username_input: &app.input_state.username,
+                        password_input: &app.input_state.password,
+                        url_input: &app.input_state.url,
+                        notes_input: &app.input_state.notes,
                         active_field: app.input_state.active_field,
                     };
                     f.render_widget(dialog, f.area());
                 }
                 AppMode::EditingCredential(_) => {
-                    let fields = [
-                        ("Title:", app.input_state.title.clone()),
-                        ("Username:", app.input_state.username.clone()),
-                        ("Password:", app.input_state.password.clone()),
-                        ("URL:", app.input_state.url.clone()),
-                        ("Notes:", app.input_state.notes.clone()),
-                    ];
                     let dialog = InputDialog {
                         title: "Edit Credential",
-                        fields: &fields,
+                        title_input: &app.input_state.title,
+                        username_input: &app.input_state.username,
+                        password_input: &app.input_state.password,
+                        url_input: &app.input_state.url,
+                        notes_input: &app.input_state.notes,
                         active_field: app.input_state.active_field,
                     };
                     f.render_widget(dialog, f.area());
@@ -474,7 +465,7 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                     _ => {}
                 },
                 AppMode::AddingCredential | AppMode::EditingCredential(_) => {
-                    app.handle_input_mode_key(key.code, key.modifiers);
+                    app.handle_input_mode_key(key);
                 }
                 AppMode::ConfirmDelete(_) => {
                     app.handle_confirm_delete_key(key.code);
