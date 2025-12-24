@@ -5,6 +5,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Widget, Wrap},
 };
+use tui_input::Input;
 
 use crate::crypto::Credential;
 
@@ -179,15 +180,28 @@ impl Widget for HelpBar {
 /// Input dialog for adding/editing credentials
 pub struct InputDialog<'a> {
     pub title: &'a str,
-    pub fields: &'a [(&'a str, String)],
+    pub title_input: &'a Input,
+    pub username_input: &'a Input,
+    pub password_input: &'a Input,
+    pub url_input: &'a Input,
+    pub notes_input: &'a Input,
     pub active_field: usize,
 }
 
 impl Widget for InputDialog<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        // Field definitions with labels
+        let fields = [
+            ("Title:", self.title_input),
+            ("Username:", self.username_input),
+            ("Password:", self.password_input),
+            ("URL:", self.url_input),
+            ("Notes:", self.notes_input),
+        ];
+
         // Calculate dialog size (centered)
         let width = area.width.min(60);
-        let height = (self.fields.len() * 2 + 4).min(area.height as usize) as u16;
+        let height = (fields.len() * 2 + 4).min(area.height as usize) as u16;
         let x = (area.width.saturating_sub(width)) / 2;
         let y = (area.height.saturating_sub(height)) / 2;
 
@@ -219,7 +233,7 @@ impl Widget for InputDialog<'_> {
 
         // Draw fields
         let mut y_offset = 0;
-        for (idx, (label, value)) in self.fields.iter().enumerate() {
+        for (idx, (label, input)) in fields.iter().enumerate() {
             if y_offset >= inner.height {
                 break;
             }
@@ -244,7 +258,7 @@ impl Widget for InputDialog<'_> {
             label_text.render(label_area, buf);
             y_offset += 1;
 
-            // Value
+            // Value (using tui-input's rendering)
             if y_offset < inner.height {
                 let value_area = Rect {
                     x: inner.x,
@@ -253,16 +267,17 @@ impl Widget for InputDialog<'_> {
                     height: 1,
                 };
 
-                let display_value = if is_active {
-                    format!("{}_", value)
-                } else {
-                    value.clone()
-                };
-
                 let value_style = if is_active {
                     Style::default().bg(Color::DarkGray).fg(Color::White)
                 } else {
                     Style::default().fg(Color::Gray)
+                };
+
+                // Create paragraph from Input value
+                let display_value = if is_active {
+                    format!("{}_", input.value())
+                } else {
+                    input.value().to_string()
                 };
 
                 let value_text = Paragraph::new(display_value).style(value_style);
