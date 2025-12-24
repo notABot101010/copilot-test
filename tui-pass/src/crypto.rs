@@ -146,6 +146,10 @@ impl Vault {
     }
 
     /// Get all credential titles (for listing, without decrypting full entries)
+    /// 
+    /// Note: This currently decrypts all entries to extract titles, which may
+    /// be a performance concern for large vaults. A future optimization would
+    /// store titles as unencrypted metadata or in a separate index.
     pub fn get_titles(&mut self) -> Result<Vec<String>> {
         let mut titles = Vec::new();
         for i in 0..self.encrypted_entries.len() {
@@ -207,7 +211,7 @@ impl Vault {
     }
 
     /// Get the salt (for serialization)
-    fn get_salt(&self) -> [u8; SALT_SIZE] {
+    fn salt(&self) -> [u8; SALT_SIZE] {
         self.salt
     }
 
@@ -369,7 +373,12 @@ impl VaultHeader {
     }
 }
 
-/// Encrypt a vault with the given password (password parameter kept for API consistency)
+/// Encrypt a vault (password parameter unused but kept for API backward compatibility)
+/// 
+/// Note: The password is not needed here since each entry is already encrypted
+/// with the master key derived from the password. The vault structure stores
+/// the salt needed for key derivation. This function simply serializes the 
+/// encrypted entries to protobuf format.
 pub fn encrypt_vault(vault: &Vault, _password: &str) -> Result<Vec<u8>> {
     // Create protobuf vault message
     let proto_vault = proto::Vault {
@@ -380,7 +389,7 @@ pub fn encrypt_vault(vault: &Vault, _password: &str) -> Result<Vec<u8>> {
     let plaintext = proto_vault.encode_to_vec();
 
     // Create header with vault's salt
-    let header = VaultHeader::new(vault.salt);
+    let header = VaultHeader::new(vault.salt());
 
     // Combine header and protobuf data
     let mut output = header.to_bytes();
