@@ -51,7 +51,7 @@ Enter your master password when prompted.
 ## Keyboard Shortcuts
 
 ### Navigation
-- **↑/↓** or **j/k**: Navigate up/down in the credential list
+- **↑/↓**: Navigate up/down in the credential list
 - **Enter**: Select a credential (if none selected)
 - **Mouse Click**: Click on a credential to select it
 - **Mouse Scroll**: Scroll the credential list
