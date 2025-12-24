@@ -59,6 +59,8 @@ struct InputState {
 }
 
 impl InputState {
+    const MAX_FIELD_INDEX: usize = 4;
+
     fn new() -> Self {
         Self {
             title: Input::default(),
@@ -116,7 +118,7 @@ impl InputState {
     }
 
     fn move_to_next_field(&mut self) {
-        self.active_field = (self.active_field + 1).min(4);
+        self.active_field = (self.active_field + 1).min(Self::MAX_FIELD_INDEX);
     }
 }
 
