@@ -298,7 +298,7 @@ impl Widget for InputDialog<'_> {
                 width: inner.width,
                 height: 1,
             };
-            let instructions = Paragraph::new("Tab: Next | Shift+Tab: Prev | Enter: Save | Esc: Cancel")
+            let instructions = Paragraph::new("↑/↓: Navigate | Tab: Next | Shift+Tab: Prev | Enter: Save | Esc: Cancel")
                 .style(Style::default().fg(Color::DarkGray));
             instructions.render(instructions_area, buf);
         }

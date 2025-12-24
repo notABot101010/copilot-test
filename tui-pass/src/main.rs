@@ -59,6 +59,8 @@ struct InputState {
 }
 
 impl InputState {
+    const MAX_FIELD_INDEX: usize = 4;
+
     fn new() -> Self {
         Self {
             title: Input::default(),
@@ -109,6 +111,14 @@ impl InputState {
             4 => &mut self.notes,
             _ => &mut self.title,
         }
+    }
+
+    fn move_to_previous_field(&mut self) {
+        self.active_field = self.active_field.saturating_sub(1);
+    }
+
+    fn move_to_next_field(&mut self) {
+        self.active_field = (self.active_field + 1).min(Self::MAX_FIELD_INDEX);
     }
 }
 
@@ -228,12 +238,16 @@ impl App {
         match key.code {
             KeyCode::Tab => {
                 if key.modifiers.contains(KeyModifiers::SHIFT) {
-                    self.input_state.active_field = 
-                        self.input_state.active_field.saturating_sub(1);
+                    self.input_state.move_to_previous_field();
                 } else {
-                    self.input_state.active_field = 
-                        (self.input_state.active_field + 1).min(4);
+                    self.input_state.move_to_next_field();
                 }
+            }
+            KeyCode::Up => {
+                self.input_state.move_to_previous_field();
+            }
+            KeyCode::Down => {
+                self.input_state.move_to_next_field();
             }
             KeyCode::Enter => {
                 let credential = self.input_state.to_credential();
