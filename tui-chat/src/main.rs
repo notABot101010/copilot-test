@@ -36,6 +36,7 @@ struct App {
     conversation_list_area: Rect,
     message_view_area: Rect,
     input_box_area: Rect,
+    auto_scroll_to_bottom: bool,
 }
 
 impl App {
@@ -50,6 +51,7 @@ impl App {
             conversation_list_area: Rect::default(),
             message_view_area: Rect::default(),
             input_box_area: Rect::default(),
+            auto_scroll_to_bottom: false,
         }
     }
 
@@ -68,6 +70,7 @@ impl App {
             Some(0)
         };
         self.message_scroll_offset = 0;
+        self.auto_scroll_to_bottom = true;
     }
 
     fn previous_conversation(&mut self) {
@@ -85,6 +88,7 @@ impl App {
             Some(0)
         };
         self.message_scroll_offset = 0;
+        self.auto_scroll_to_bottom = true;
     }
 
     fn select_current_conversation(&mut self) {
@@ -119,6 +123,7 @@ impl App {
                 self.conversations[idx].add_message(message);
                 self.conversations[idx].mark_as_read();
                 self.input.clear();
+                self.auto_scroll_to_bottom = true;
             }
         }
     }
@@ -174,6 +179,7 @@ impl App {
             self.selected_conversation = Some(clicked_index);
             self.message_scroll_offset = 0;
             self.select_current_conversation();
+            self.auto_scroll_to_bottom = true;
         }
     }
 
@@ -184,16 +190,32 @@ impl App {
                     self.should_quit = true;
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    self.next_conversation();
+                    if self.selected_conversation.is_some() {
+                        // Scroll messages down when a conversation is selected
+                        self.message_scroll_offset = self.message_scroll_offset.saturating_add(SCROLL_STEP);
+                        self.auto_scroll_to_bottom = false;
+                    } else {
+                        // Navigate to next conversation
+                        self.next_conversation();
+                    }
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
-                    self.previous_conversation();
+                    if self.selected_conversation.is_some() {
+                        // Scroll messages up when a conversation is selected
+                        self.message_scroll_offset = self.message_scroll_offset.saturating_sub(SCROLL_STEP);
+                        self.auto_scroll_to_bottom = false;
+                    } else {
+                        // Navigate to previous conversation
+                        self.previous_conversation();
+                    }
                 }
                 KeyCode::PageUp => {
                     self.message_scroll_offset = self.message_scroll_offset.saturating_sub(PAGE_SCROLL_STEP);
+                    self.auto_scroll_to_bottom = false;
                 }
                 KeyCode::PageDown => {
                     self.message_scroll_offset = self.message_scroll_offset.saturating_add(PAGE_SCROLL_STEP);
+                    self.auto_scroll_to_bottom = false;
                 }
                 KeyCode::Enter => {
                     if self.selected_conversation.is_some() {
@@ -207,11 +229,13 @@ impl App {
                 _ => {}
             },
             InputMode::Editing => match key_event.code {
-                KeyCode::Enter if key_event.modifiers.contains(KeyModifiers::SHIFT) => {
-                    self.input.push('\n');
-                }
                 KeyCode::Enter => {
-                    self.send_message();
+                    // Check for Shift modifier for newline
+                    if key_event.modifiers.contains(KeyModifiers::SHIFT) {
+                        self.input.push('\n');
+                    } else {
+                        self.send_message();
+                    }
                 }
                 KeyCode::Char(c) => {
                     self.input.push(c);
@@ -258,11 +282,22 @@ fn run_app<B: ratatui::backend::Backend>(
                 app.selected_conversation,
             );
 
-            // Render message view
+            // Render message view and get total lines
             let selected_conv = app
                 .selected_conversation
                 .and_then(|idx| app.conversations.get(idx));
-            MessageView::render(right_chunks[0], f.buffer_mut(), selected_conv, app.message_scroll_offset);
+            let total_lines = MessageView::render(right_chunks[0], f.buffer_mut(), selected_conv, app.message_scroll_offset);
+            
+            // Calculate scroll position to show latest messages if auto_scroll is enabled
+            if app.auto_scroll_to_bottom && selected_conv.is_some() {
+                let inner_height = right_chunks[0].height.saturating_sub(2) as usize; // Subtract borders
+                if total_lines > inner_height {
+                    app.message_scroll_offset = total_lines.saturating_sub(inner_height);
+                } else {
+                    app.message_scroll_offset = 0;
+                }
+                app.auto_scroll_to_bottom = false;
+            }
 
             // Render input box
             let is_editing = matches!(app.input_mode, InputMode::Editing);
