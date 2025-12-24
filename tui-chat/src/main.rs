@@ -4,14 +4,14 @@ mod ui;
 use anyhow::Result;
 use chrono::Utc;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton, MouseEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use mock_data::{generate_mock_data, Conversation, Message};
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     Terminal,
 };
 use std::io;
@@ -29,6 +29,10 @@ struct App {
     input: String,
     input_mode: InputMode,
     should_quit: bool,
+    message_scroll_offset: usize,
+    conversation_list_area: Rect,
+    message_view_area: Rect,
+    input_box_area: Rect,
 }
 
 impl App {
@@ -39,6 +43,10 @@ impl App {
             input: String::new(),
             input_mode: InputMode::Normal,
             should_quit: false,
+            message_scroll_offset: 0,
+            conversation_list_area: Rect::default(),
+            message_view_area: Rect::default(),
+            input_box_area: Rect::default(),
         }
     }
 
@@ -56,6 +64,7 @@ impl App {
         } else {
             Some(0)
         };
+        self.message_scroll_offset = 0;
     }
 
     fn previous_conversation(&mut self) {
@@ -72,6 +81,7 @@ impl App {
         } else {
             Some(0)
         };
+        self.message_scroll_offset = 0;
     }
 
     fn select_current_conversation(&mut self) {
@@ -86,6 +96,7 @@ impl App {
         self.selected_conversation = None;
         self.input.clear();
         self.input_mode = InputMode::Normal;
+        self.message_scroll_offset = 0;
     }
 
     fn send_message(&mut self) {
@@ -109,6 +120,60 @@ impl App {
         }
     }
 
+    fn handle_mouse_event(&mut self, mouse_event: event::MouseEvent) {
+        match mouse_event.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                let x = mouse_event.column;
+                let y = mouse_event.row;
+
+                // Check if click is in conversation list area
+                if self.is_in_rect(x, y, self.conversation_list_area) {
+                    self.handle_conversation_list_click(y);
+                }
+                // Check if click is in input box area
+                else if self.is_in_rect(x, y, self.input_box_area) {
+                    if self.selected_conversation.is_some() {
+                        self.input_mode = InputMode::Editing;
+                        self.select_current_conversation();
+                    }
+                }
+                // Check if click is in message view area
+                else if self.is_in_rect(x, y, self.message_view_area) {
+                    // Focus on message view (could add additional functionality here)
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                if self.is_in_rect(mouse_event.column, mouse_event.row, self.message_view_area) {
+                    self.message_scroll_offset = self.message_scroll_offset.saturating_sub(3);
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if self.is_in_rect(mouse_event.column, mouse_event.row, self.message_view_area) {
+                    self.message_scroll_offset = self.message_scroll_offset.saturating_add(3);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn is_in_rect(&self, x: u16, y: u16, rect: Rect) -> bool {
+        x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height
+    }
+
+    fn handle_conversation_list_click(&mut self, y: u16) {
+        // Calculate which conversation was clicked
+        // The conversation list has a border (1 line at top)
+        // Each conversation item takes 2 lines
+        let inner_y = y.saturating_sub(self.conversation_list_area.y + 1);
+        let clicked_index = (inner_y / 2) as usize;
+
+        if clicked_index < self.conversations.len() {
+            self.selected_conversation = Some(clicked_index);
+            self.message_scroll_offset = 0;
+            self.select_current_conversation();
+        }
+    }
+
     fn handle_key_event(&mut self, key_event: event::KeyEvent) {
         match self.input_mode {
             InputMode::Normal => match key_event.code {
@@ -120,6 +185,12 @@ impl App {
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
                     self.previous_conversation();
+                }
+                KeyCode::PageUp => {
+                    self.message_scroll_offset = self.message_scroll_offset.saturating_sub(10);
+                }
+                KeyCode::PageDown => {
+                    self.message_scroll_offset = self.message_scroll_offset.saturating_add(10);
                 }
                 KeyCode::Enter => {
                     if self.selected_conversation.is_some() {
@@ -171,6 +242,11 @@ fn run_app<B: ratatui::backend::Backend>(
                 .constraints([Constraint::Min(3), Constraint::Length(5)])
                 .split(chunks[1]);
 
+            // Store the areas for mouse event handling
+            app.conversation_list_area = chunks[0];
+            app.message_view_area = right_chunks[0];
+            app.input_box_area = right_chunks[1];
+
             // Render conversation list
             ConversationList::render(
                 chunks[0],
@@ -183,7 +259,7 @@ fn run_app<B: ratatui::backend::Backend>(
             let selected_conv = app
                 .selected_conversation
                 .and_then(|idx| app.conversations.get(idx));
-            MessageView::render(right_chunks[0], f.buffer_mut(), selected_conv);
+            MessageView::render(right_chunks[0], f.buffer_mut(), selected_conv, app.message_scroll_offset);
 
             // Render input box
             let is_editing = matches!(app.input_mode, InputMode::Editing);
@@ -194,8 +270,10 @@ fn run_app<B: ratatui::backend::Backend>(
             return Ok(());
         }
 
-        if let Event::Key(key) = event::read()? {
-            app.handle_key_event(key);
+        match event::read()? {
+            Event::Key(key) => app.handle_key_event(key),
+            Event::Mouse(mouse) => app.handle_mouse_event(mouse),
+            _ => {}
         }
     }
 }
