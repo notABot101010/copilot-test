@@ -63,6 +63,8 @@ impl Credential {
 pub struct Vault {
     /// Master password (kept for encryption operations)
     master_password: String,
+    /// Salt for key derivation
+    salt: [u8; SALT_SIZE],
     /// Encrypted entries stored in protobuf format
     encrypted_entries: Vec<proto::EncryptedEntry>,
     /// Cached decrypted credentials (indexed by position)
@@ -71,8 +73,13 @@ pub struct Vault {
 
 impl Vault {
     pub fn new() -> Self {
+        let mut salt = [0u8; SALT_SIZE];
+        let mut rng = rand::thread_rng();
+        rng.fill_bytes(&mut salt);
+        
         Self {
             master_password: String::new(),
+            salt,
             encrypted_entries: Vec::new(),
             credential_cache: Vec::new(),
         }
@@ -80,8 +87,23 @@ impl Vault {
 
     /// Initialize with master password
     pub fn with_password(password: String) -> Self {
+        let mut salt = [0u8; SALT_SIZE];
+        let mut rng = rand::thread_rng();
+        rng.fill_bytes(&mut salt);
+        
         Self {
             master_password: password,
+            salt,
+            encrypted_entries: Vec::new(),
+            credential_cache: Vec::new(),
+        }
+    }
+
+    /// Initialize with password and salt (for loading existing vaults)
+    fn with_password_and_salt(password: String, salt: [u8; SALT_SIZE]) -> Self {
+        Self {
+            master_password: password,
+            salt,
             encrypted_entries: Vec::new(),
             credential_cache: Vec::new(),
         }
@@ -110,7 +132,7 @@ impl Vault {
 
         // Decrypt the entry
         let encrypted_entry = &self.encrypted_entries[index];
-        let master_key = MasterKey::derive_from_str(&self.master_password)?;
+        let master_key = MasterKey::derive(&self.master_password, &self.salt)?;
         let credential = decrypt_entry(encrypted_entry, &master_key)?;
 
         // Ensure cache is large enough
@@ -135,7 +157,7 @@ impl Vault {
 
     /// Add a new credential (encrypts immediately)
     pub fn add_credential(&mut self, credential: Credential) -> Result<()> {
-        let master_key = MasterKey::derive_from_str(&self.master_password)?;
+        let master_key = MasterKey::derive(&self.master_password, &self.salt)?;
         let encrypted_entry = encrypt_entry(&credential, &master_key)?;
         self.encrypted_entries.push(encrypted_entry);
         self.credential_cache.push(Some(credential));
@@ -148,7 +170,7 @@ impl Vault {
             return Err(anyhow!("Index out of bounds"));
         }
 
-        let master_key = MasterKey::derive_from_str(&self.master_password)?;
+        let master_key = MasterKey::derive(&self.master_password, &self.salt)?;
         let encrypted_entry = encrypt_entry(&credential, &master_key)?;
         self.encrypted_entries[index] = encrypted_entry;
 
@@ -182,6 +204,11 @@ impl Vault {
     /// Get reference to encrypted entries (for serialization)
     fn get_encrypted_entries(&self) -> &[proto::EncryptedEntry] {
         &self.encrypted_entries
+    }
+
+    /// Get the salt (for serialization)
+    fn get_salt(&self) -> [u8; SALT_SIZE] {
+        self.salt
     }
 
     /// Set encrypted entries (for deserialization)
@@ -225,16 +252,6 @@ impl MasterKey {
             .map_err(|e| anyhow!("Failed to derive key: {}", e))?;
 
         Ok(MasterKey { key })
-    }
-
-    /// Derive key directly from password string (generates a deterministic salt from password)
-    fn derive_from_str(password: &str) -> Result<Self> {
-        // Use BLAKE3 to generate a deterministic salt from the password
-        // This allows us to derive the same key without storing the salt
-        let mut salt = [0u8; SALT_SIZE];
-        let hash = blake3::hash(password.as_bytes());
-        salt.copy_from_slice(&hash.as_bytes()[0..SALT_SIZE]);
-        Self::derive(password, &salt)
     }
 
     fn as_bytes(&self) -> &[u8; KEY_SIZE] {
@@ -293,15 +310,17 @@ fn decrypt_entry(entry: &proto::EncryptedEntry, master_key: &MasterKey) -> Resul
 struct VaultHeader {
     magic: [u8; 8],
     version: u32,
-    reserved: [u8; 52], // Reserved for future use
+    salt: [u8; SALT_SIZE],  // Random salt for key derivation
+    reserved: [u8; 36],      // Reserved for future use (64 - 8 - 4 - 16 = 36)
 }
 
 impl VaultHeader {
-    fn new() -> Self {
+    fn new(salt: [u8; SALT_SIZE]) -> Self {
         Self {
             magic: *MAGIC_NUMBER,
             version: VERSION,
-            reserved: [0u8; 52],
+            salt,
+            reserved: [0u8; 36],
         }
     }
 
@@ -309,6 +328,7 @@ impl VaultHeader {
         let mut bytes = Vec::with_capacity(64);
         bytes.extend_from_slice(&self.magic);
         bytes.extend_from_slice(&self.version.to_le_bytes());
+        bytes.extend_from_slice(&self.salt);
         bytes.extend_from_slice(&self.reserved);
         bytes
     }
@@ -334,18 +354,22 @@ impl VaultHeader {
             ));
         }
 
-        let mut reserved = [0u8; 52];
-        reserved.copy_from_slice(&bytes[12..64]);
+        let mut salt = [0u8; SALT_SIZE];
+        salt.copy_from_slice(&bytes[12..28]);
+
+        let mut reserved = [0u8; 36];
+        reserved.copy_from_slice(&bytes[28..64]);
 
         Ok(Self {
             magic,
             version,
+            salt,
             reserved,
         })
     }
 }
 
-/// Encrypt a vault with the given password
+/// Encrypt a vault with the given password (password parameter kept for API consistency)
 pub fn encrypt_vault(vault: &Vault, _password: &str) -> Result<Vec<u8>> {
     // Create protobuf vault message
     let proto_vault = proto::Vault {
@@ -355,8 +379,8 @@ pub fn encrypt_vault(vault: &Vault, _password: &str) -> Result<Vec<u8>> {
     // Serialize vault to protobuf
     let plaintext = proto_vault.encode_to_vec();
 
-    // Create header
-    let header = VaultHeader::new();
+    // Create header with vault's salt
+    let header = VaultHeader::new(vault.salt);
 
     // Combine header and protobuf data
     let mut output = header.to_bytes();
@@ -368,7 +392,7 @@ pub fn encrypt_vault(vault: &Vault, _password: &str) -> Result<Vec<u8>> {
 /// Decrypt a vault with the given password
 pub fn decrypt_vault(data: &[u8], password: &str) -> Result<Vault> {
     // Parse header
-    let _header = VaultHeader::from_bytes(data).context("Failed to parse vault header")?;
+    let header = VaultHeader::from_bytes(data).context("Failed to parse vault header")?;
 
     // Extract protobuf data
     let proto_data = &data[64..];
@@ -377,8 +401,8 @@ pub fn decrypt_vault(data: &[u8], password: &str) -> Result<Vault> {
     let proto_vault = proto::Vault::decode(proto_data)
         .context("Failed to deserialize vault")?;
 
-    // Create vault with password
-    let mut vault = Vault::with_password(password.to_string());
+    // Create vault with password and salt from header
+    let mut vault = Vault::with_password_and_salt(password.to_string(), header.salt);
     vault.set_encrypted_entries(proto_vault.entries);
 
     Ok(vault)

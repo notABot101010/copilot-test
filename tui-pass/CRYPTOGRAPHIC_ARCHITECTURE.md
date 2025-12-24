@@ -30,7 +30,7 @@ This document describes the cryptographic architecture used in the TUI Password 
 
 **Rationale**: Argon2id is the winner of the Password Hashing Competition and provides the best balance between side-channel resistance (from Argon2i) and GPU/ASIC resistance (from Argon2d). The parameters are chosen to provide strong security while maintaining reasonable performance on modern hardware.
 
-**Salt**: A deterministic salt is derived from the password using BLAKE3. This allows for individual entry encryption without storing a vault-level salt, simplifying the architecture while maintaining security.
+**Salt**: A unique 16-byte random salt is generated for each vault and stored in the vault header. This prevents rainbow table attacks and ensures that the same password produces different keys for different vaults.
 
 ### 2. Authenticated Encryption
 
@@ -85,22 +85,23 @@ The 12-byte nonce is sufficient for the birthday bound given the expected number
 The vault file uses a simplified binary format with Protocol Buffers:
 
 ```
-+------------------+------------------+-------------------------------------+
-| Magic Number     | Version          | Reserved                            |
-| (8 bytes)        | (4 bytes)        | (52 bytes)                          |
-+------------------+------------------+-------------------------------------+
-| Protobuf Serialized Vault Data (variable length)                        |
-| - Contains array of EncryptedEntry messages                              |
-| - Each EncryptedEntry has its own nonce and ciphertext                   |
-+--------------------------------------------------------------------------+
++------------------+------------------+------------------+---------------------+
+| Magic Number     | Version          | Random Salt      | Reserved            |
+| (8 bytes)        | (4 bytes)        | (16 bytes)       | (36 bytes)          |
++------------------+------------------+------------------+---------------------+
+| Protobuf Serialized Vault Data (variable length)                           |
+| - Contains array of EncryptedEntry messages                                 |
+| - Each EncryptedEntry has its own nonce and ciphertext                      |
++-----------------------------------------------------------------------------+
 ```
 
 ### Field Descriptions
 
 1. **Magic Number** (8 bytes): `TUIPASS2` - Identifies the file as a tui-pass vault (version 2)
 2. **Version** (4 bytes): Format version number (currently 2) for future compatibility
-3. **Reserved** (52 bytes): Reserved for future use (set to 0)
-4. **Protobuf Data**: Variable-length protobuf-encoded vault containing encrypted entries
+3. **Random Salt** (16 bytes): Unique random salt for Argon2id key derivation
+4. **Reserved** (36 bytes): Reserved for future use (set to 0)
+5. **Protobuf Data**: Variable-length protobuf-encoded vault containing encrypted entries
 
 ### Protobuf Schema
 
@@ -126,42 +127,51 @@ message Vault {
 ## Key Derivation Process
 
 1. User enters master password
-2. BLAKE3 hashes the password to generate a deterministic 16-byte salt
+2. Random 16-byte salt is generated (on vault creation) or loaded from vault header
 3. Argon2id derives a 32-byte master key using:
    - Master password as input
-   - Deterministic salt from step 2
+   - Random salt
    - Fixed memory, time, and parallelism parameters
 4. The 32-byte master key is used as the ChaCha20-Poly1305 encryption key for all entries
 
 ```
-Master Password → BLAKE3 → Salt (16 bytes)
+Vault Creation:
+    Master Password → Random Salt (16 bytes)
                               ↓
-Master Password + Salt → Argon2id → Master Key (32 bytes)
-                                        ↓
-Master Key + Nonce → ChaCha20-Poly1305 → Encrypted Entry
+    Master Password + Salt → Argon2id → Master Key (32 bytes)
+                                            ↓
+    Master Key + Nonce → ChaCha20-Poly1305 → Encrypted Entry
+
+Vault Opening:
+    Vault File → Extract Salt (16 bytes)
+                       ↓
+    Master Password + Salt → Argon2id → Master Key (32 bytes)
+                                            ↓
+    Master Key + Nonce → ChaCha20-Poly1305 → Decrypt Entry (on-demand)
 ```
 
 ## Encryption Process
 
 When creating or updating a vault:
 
-1. Derive master key from password using Argon2id with deterministic salt
-2. For each credential to encrypt:
+1. Generate a random 16-byte salt (on vault creation) or use existing salt
+2. Derive master key from password using Argon2id with the salt
+3. For each credential to encrypt:
    a. Serialize credential to protobuf format
    b. Generate a random 12-byte nonce
    c. Encrypt protobuf data using ChaCha20-Poly1305 with master key and nonce
    d. Store nonce and ciphertext in an EncryptedEntry message
-3. Create Vault protobuf message containing all EncryptedEntry messages
-4. Serialize Vault to protobuf format
-5. Write vault header (64 bytes) and protobuf data to file
+4. Create Vault protobuf message containing all EncryptedEntry messages
+5. Serialize Vault to protobuf format
+6. Write vault header (including salt) and protobuf data to file
 
 ## Decryption Process
 
 When opening a vault:
 
-1. Read vault header (64 bytes) to verify magic number and version
+1. Read vault header (64 bytes) to verify magic number, version, and extract salt
 2. Prompt user for master password
-3. Derive master key from password using Argon2id with deterministic salt
+3. Derive master key from password using Argon2id with salt from header
 4. Read and deserialize protobuf Vault data
 5. Store encrypted entries without decrypting them
 
@@ -194,7 +204,7 @@ If the password is incorrect or an entry has been tampered with, the authenticat
 
 ### Salt and Nonce Management
 
-- Salt is deterministically derived from the master password using BLAKE3
+- Each vault has a unique random salt generated at creation time and stored in the header
 - Each credential entry has its own unique random nonce
 - Nonce reuse is prevented by generating a new nonce whenever the vault is saved
 
@@ -216,11 +226,12 @@ While the cryptographic scheme is robust, users should still follow password bes
 ### Protected Against
 
 1. **Brute force attacks**: Argon2id makes password guessing computationally expensive
-2. **Rainbow tables**: Deterministic salt derivation still provides unique per-password keys
+2. **Rainbow tables**: Unique random salts prevent precomputed attacks
 3. **Tampering**: Poly1305 authentication tag on each entry detects any modifications
 4. **Known-plaintext attacks**: Modern AEAD cipher resistant to such attacks
 5. **Memory dumps**: Minimized exposure through on-demand decryption and zeroization
 6. **Selective decryption attacks**: Individual entry encryption prevents full vault exposure
+7. **Parallel attacks**: Unique salts prevent attackers from amortizing brute-force costs across multiple vaults
 
 ### Not Protected Against
 
