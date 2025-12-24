@@ -189,6 +189,10 @@ impl MessageView {
                     Style::default().fg(Color::DarkGray),
                 )),
                 Line::from(Span::styled(
+                    "Press ↑/↓ or j/k to scroll messages when selected",
+                    Style::default().fg(Color::DarkGray),
+                )),
+                Line::from(Span::styled(
                     "Click on a conversation to select it",
                     Style::default().fg(Color::DarkGray),
                 )),
