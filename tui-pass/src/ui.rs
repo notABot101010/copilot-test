@@ -306,7 +306,7 @@ impl<'a> InputDialog<'a> {
             // Check if mouse is within this field's area
             if mouse_y >= value_area.y && mouse_y < value_area.y + value_area.height
                 && mouse_x >= value_area.x && mouse_x < value_area.x + value_area.width {
-                
+
                 // Calculate cursor position within the field
                 // Account for borders (1 char on each side)
                 let text_inner_x = value_area.x + 1;

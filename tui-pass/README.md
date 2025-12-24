@@ -68,8 +68,10 @@ Enter your master password when prompted.
 ### In Dialogs
 - **Tab**: Next field
 - **Shift+Tab**: Previous field
+- **↑/↓**: Navigate between fields
 - **Enter**: Save
 - **Esc**: Cancel
+- **Mouse Click**: Click on a field to activate it and position cursor
 
 ### Confirmation Dialogs
 - **Y**: Confirm action
