@@ -72,16 +72,6 @@ pub struct Vault {
 }
 
 impl Vault {
-    /// Initialize with master key (used internally)
-    fn with_master_key(master_key: MasterKey, salt: [u8; SALT_SIZE]) -> Self {
-        Self {
-            master_key,
-            salt,
-            encrypted_entries: Vec::new(),
-            credential_cache: Vec::new(),
-        }
-    }
-
     /// Initialize with master password
     pub fn with_password(mut password: String) -> Result<Self> {
         let mut salt = [0u8; SALT_SIZE];
@@ -315,13 +305,12 @@ fn decrypt_entry(entry: &proto::EncryptedEntry, master_key: &MasterKey) -> Resul
     Ok(Credential::from_proto(proto_cred))
 }
 
-/// Encrypt a vault (password parameter unused but kept for API backward compatibility)
+/// Encrypt a vault to protobuf format
 /// 
-/// Note: The password is not needed here since each entry is already encrypted
-/// with the master key derived from the password. The vault structure stores
-/// the salt needed for key derivation. This function simply serializes the 
-/// vault to protobuf format.
-pub fn encrypt_vault(vault: &Vault, _password: &str) -> Result<Vec<u8>> {
+/// Note: The vault structure stores the salt needed for key derivation, and
+/// each entry is already encrypted with the master key. This function simply
+/// serializes the vault structure to protobuf format.
+pub fn encrypt_vault(vault: &Vault) -> Result<Vec<u8>> {
     // Create protobuf vault message with all metadata
     let proto_vault = proto::Vault {
         magic: String::from_utf8(MAGIC_NUMBER.to_vec())?,
@@ -382,7 +371,7 @@ mod tests {
         let password = "test-password-123";
         let vault = Vault::with_password(password.to_string()).unwrap();
 
-        let encrypted = encrypt_vault(&vault, "").unwrap();
+        let encrypted = encrypt_vault(&vault).unwrap();
         let decrypted = decrypt_vault(&encrypted, password).unwrap();
 
         assert_eq!(decrypted.len(), 0);
@@ -401,7 +390,7 @@ mod tests {
             notes: "Test notes".to_string(),
         }).unwrap();
 
-        let encrypted = encrypt_vault(&vault, "").unwrap();
+        let encrypted = encrypt_vault(&vault).unwrap();
         let mut decrypted = decrypt_vault(&encrypted, password).unwrap();
 
         assert_eq!(decrypted.len(), 1);
@@ -424,7 +413,7 @@ mod tests {
             notes: "notes".to_string(),
         }).unwrap();
 
-        let encrypted = encrypt_vault(&vault, "").unwrap();
+        let encrypted = encrypt_vault(&vault).unwrap();
         let mut decrypted = decrypt_vault(&encrypted, "wrong-password").unwrap();
         
         // Decryption of individual entry should fail
@@ -445,7 +434,7 @@ mod tests {
             notes: "notes".to_string(),
         }).unwrap();
 
-        let mut encrypted = encrypt_vault(&vault, "").unwrap();
+        let mut encrypted = encrypt_vault(&vault).unwrap();
         
         // Corrupt the protobuf data more significantly (corrupt multiple bytes)
         if encrypted.len() > 70 {
