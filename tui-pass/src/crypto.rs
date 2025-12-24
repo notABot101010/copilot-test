@@ -61,8 +61,8 @@ impl Credential {
 
 /// The vault containing encrypted entries
 pub struct Vault {
-    /// Master password (kept for encryption operations)
-    master_password: String,
+    /// Master key derived from password (zeroized on drop)
+    master_key: MasterKey,
     /// Salt for key derivation
     salt: [u8; SALT_SIZE],
     /// Encrypted entries stored in protobuf format
@@ -72,13 +72,10 @@ pub struct Vault {
 }
 
 impl Vault {
-    pub fn new() -> Self {
-        let mut salt = [0u8; SALT_SIZE];
-        let mut rng = rand::thread_rng();
-        rng.fill_bytes(&mut salt);
-        
+    /// Initialize with master key (used internally)
+    fn with_master_key(master_key: MasterKey, salt: [u8; SALT_SIZE]) -> Self {
         Self {
-            master_password: String::new(),
+            master_key,
             salt,
             encrypted_entries: Vec::new(),
             credential_cache: Vec::new(),
@@ -86,27 +83,39 @@ impl Vault {
     }
 
     /// Initialize with master password
-    pub fn with_password(password: String) -> Self {
+    pub fn with_password(mut password: String) -> Result<Self> {
         let mut salt = [0u8; SALT_SIZE];
         let mut rng = rand::thread_rng();
         rng.fill_bytes(&mut salt);
         
-        Self {
-            master_password: password,
+        // Derive master key from password
+        let master_key = MasterKey::derive(&password, &salt)?;
+        
+        // Zeroize password from memory
+        password.zeroize();
+        
+        Ok(Self {
+            master_key,
             salt,
             encrypted_entries: Vec::new(),
             credential_cache: Vec::new(),
-        }
+        })
     }
 
     /// Initialize with password and salt (for loading existing vaults)
-    fn with_password_and_salt(password: String, salt: [u8; SALT_SIZE]) -> Self {
-        Self {
-            master_password: password,
+    fn with_password_and_salt(mut password: String, salt: [u8; SALT_SIZE]) -> Result<Self> {
+        // Derive master key from password
+        let master_key = MasterKey::derive(&password, &salt)?;
+        
+        // Zeroize password from memory
+        password.zeroize();
+        
+        Ok(Self {
+            master_key,
             salt,
             encrypted_entries: Vec::new(),
             credential_cache: Vec::new(),
-        }
+        })
     }
 
     /// Get the number of credentials in the vault
@@ -130,10 +139,9 @@ impl Vault {
             return Ok(self.credential_cache[index].as_ref().unwrap());
         }
 
-        // Decrypt the entry
+        // Decrypt the entry using stored master key
         let encrypted_entry = &self.encrypted_entries[index];
-        let master_key = MasterKey::derive(&self.master_password, &self.salt)?;
-        let credential = decrypt_entry(encrypted_entry, &master_key)?;
+        let credential = decrypt_entry(encrypted_entry, &self.master_key)?;
 
         // Ensure cache is large enough
         while self.credential_cache.len() <= index {
@@ -161,8 +169,7 @@ impl Vault {
 
     /// Add a new credential (encrypts immediately)
     pub fn add_credential(&mut self, credential: Credential) -> Result<()> {
-        let master_key = MasterKey::derive(&self.master_password, &self.salt)?;
-        let encrypted_entry = encrypt_entry(&credential, &master_key)?;
+        let encrypted_entry = encrypt_entry(&credential, &self.master_key)?;
         self.encrypted_entries.push(encrypted_entry);
         self.credential_cache.push(Some(credential));
         Ok(())
@@ -174,8 +181,7 @@ impl Vault {
             return Err(anyhow!("Index out of bounds"));
         }
 
-        let master_key = MasterKey::derive(&self.master_password, &self.salt)?;
-        let encrypted_entry = encrypt_entry(&credential, &master_key)?;
+        let encrypted_entry = encrypt_entry(&credential, &self.master_key)?;
         self.encrypted_entries[index] = encrypted_entry;
 
         // Update cache
@@ -360,7 +366,8 @@ pub fn decrypt_vault(data: &[u8], password: &str) -> Result<Vault> {
     salt.copy_from_slice(&proto_vault.salt);
 
     // Create vault with password and salt from protobuf
-    let mut vault = Vault::with_password_and_salt(password.to_string(), salt);
+    // Note: password is passed by reference and will be zeroized by caller
+    let mut vault = Vault::with_password_and_salt(password.to_string(), salt)?;
     vault.set_encrypted_entries(proto_vault.entries);
 
     Ok(vault)
@@ -373,9 +380,9 @@ mod tests {
     #[test]
     fn test_encrypt_decrypt_empty_vault() {
         let password = "test-password-123";
-        let vault = Vault::with_password(password.to_string());
+        let vault = Vault::with_password(password.to_string()).unwrap();
 
-        let encrypted = encrypt_vault(&vault, password).unwrap();
+        let encrypted = encrypt_vault(&vault, "").unwrap();
         let decrypted = decrypt_vault(&encrypted, password).unwrap();
 
         assert_eq!(decrypted.len(), 0);
@@ -384,7 +391,7 @@ mod tests {
     #[test]
     fn test_encrypt_decrypt_with_credentials() {
         let password = "test-password-123";
-        let mut vault = Vault::with_password(password.to_string());
+        let mut vault = Vault::with_password(password.to_string()).unwrap();
         
         vault.add_credential(Credential {
             title: "Test Account".to_string(),
@@ -394,7 +401,7 @@ mod tests {
             notes: "Test notes".to_string(),
         }).unwrap();
 
-        let encrypted = encrypt_vault(&vault, password).unwrap();
+        let encrypted = encrypt_vault(&vault, "").unwrap();
         let mut decrypted = decrypt_vault(&encrypted, password).unwrap();
 
         assert_eq!(decrypted.len(), 1);
@@ -407,7 +414,7 @@ mod tests {
     #[test]
     fn test_wrong_password_fails() {
         let password = "correct-password";
-        let mut vault = Vault::with_password(password.to_string());
+        let mut vault = Vault::with_password(password.to_string()).unwrap();
         
         vault.add_credential(Credential {
             title: "Test".to_string(),
@@ -417,7 +424,7 @@ mod tests {
             notes: "notes".to_string(),
         }).unwrap();
 
-        let encrypted = encrypt_vault(&vault, password).unwrap();
+        let encrypted = encrypt_vault(&vault, "").unwrap();
         let mut decrypted = decrypt_vault(&encrypted, "wrong-password").unwrap();
         
         // Decryption of individual entry should fail
@@ -428,7 +435,7 @@ mod tests {
     #[test]
     fn test_corrupted_data_fails() {
         let password = "test-password";
-        let mut vault = Vault::with_password(password.to_string());
+        let mut vault = Vault::with_password(password.to_string()).unwrap();
         
         vault.add_credential(Credential {
             title: "Test".to_string(),
@@ -438,7 +445,7 @@ mod tests {
             notes: "notes".to_string(),
         }).unwrap();
 
-        let mut encrypted = encrypt_vault(&vault, password).unwrap();
+        let mut encrypted = encrypt_vault(&vault, "").unwrap();
         
         // Corrupt the protobuf data more significantly (corrupt multiple bytes)
         if encrypted.len() > 70 {
@@ -460,7 +467,7 @@ mod tests {
     #[test]
     fn test_individual_entry_encryption() {
         let password = "test-password";
-        let mut vault = Vault::with_password(password.to_string());
+        let mut vault = Vault::with_password(password.to_string()).unwrap();
         
         vault.add_credential(Credential {
             title: "Entry 1".to_string(),
@@ -489,7 +496,7 @@ mod tests {
     #[test]
     fn test_cache_clearing() {
         let password = "test-password";
-        let mut vault = Vault::with_password(password.to_string());
+        let mut vault = Vault::with_password(password.to_string()).unwrap();
         
         vault.add_credential(Credential {
             title: "Test".to_string(),

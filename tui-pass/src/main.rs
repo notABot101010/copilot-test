@@ -18,6 +18,7 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 use ui::{ConfirmDialog, CredentialDetail, CredentialList, HelpBar, InputDialog};
+use zeroize::Zeroize;
 
 #[derive(Parser)]
 #[command(name = "tui-pass")]
@@ -112,7 +113,6 @@ impl InputState {
 struct App {
     vault: Vault,
     vault_path: PathBuf,
-    password: String,
     selected_idx: Option<usize>,
     scroll_offset: usize,
     show_password: bool,
@@ -123,11 +123,10 @@ struct App {
 }
 
 impl App {
-    fn new(vault: Vault, vault_path: PathBuf, password: String) -> Self {
+    fn new(vault: Vault, vault_path: PathBuf) -> Self {
         Self {
             vault,
             vault_path,
-            password,
             selected_idx: None,
             scroll_offset: 0,
             show_password: false,
@@ -214,7 +213,7 @@ impl App {
     }
 
     fn save_vault(&mut self) -> Result<()> {
-        let encrypted = crypto::encrypt_vault(&self.vault, &self.password)
+        let encrypted = crypto::encrypt_vault(&self.vault, "")
             .context("Failed to encrypt vault")?;
 
         fs::write(&self.vault_path, encrypted).context("Failed to write vault file")?;
@@ -528,20 +527,27 @@ fn create_vault(vault_path: PathBuf) -> Result<()> {
     }
 
     // Prompt for password twice
-    let password = prompt_password("Enter master password: ")?;
-    let password_confirm = prompt_password("Confirm master password: ")?;
+    let mut password = prompt_password("Enter master password: ")?;
+    let mut password_confirm = prompt_password("Confirm master password: ")?;
 
     if password != password_confirm {
+        // Zeroize passwords before returning error
+        password.zeroize();
+        password_confirm.zeroize();
         anyhow::bail!("Passwords do not match");
     }
 
+    // Zeroize confirmation password as it's no longer needed
+    password_confirm.zeroize();
+
     if password.is_empty() {
+        password.zeroize();
         anyhow::bail!("Password cannot be empty");
     }
 
-    // Create empty vault
-    let vault = Vault::with_password(password.clone());
-    let encrypted = crypto::encrypt_vault(&vault, &password).context("Failed to encrypt vault")?;
+    // Create empty vault (password will be zeroized inside with_password)
+    let vault = Vault::with_password(password)?;
+    let encrypted = crypto::encrypt_vault(&vault, "").context("Failed to encrypt vault")?;
 
     fs::write(&vault_path, encrypted).context("Failed to write vault file")?;
 
@@ -559,10 +565,13 @@ fn open_vault(vault_path: PathBuf) -> Result<()> {
     let encrypted = fs::read(&vault_path).context("Failed to read vault file")?;
 
     // Prompt for password
-    let password = prompt_password("Enter master password: ")?;
+    let mut password = prompt_password("Enter master password: ")?;
 
-    // Decrypt vault
+    // Decrypt vault (password will be zeroized inside decrypt_vault -> with_password_and_salt)
     let vault = crypto::decrypt_vault(&encrypted, &password).context("Failed to decrypt vault")?;
+
+    // Zeroize password from memory as it's no longer needed
+    password.zeroize();
 
     // Setup terminal
     enable_raw_mode()?;
@@ -572,7 +581,7 @@ fn open_vault(vault_path: PathBuf) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Run app
-    let app = App::new(vault, vault_path, password);
+    let app = App::new(vault, vault_path);
     let result = run_app(&mut terminal, app);
 
     // Restore terminal
