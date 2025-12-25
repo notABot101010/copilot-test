@@ -78,15 +78,14 @@ pub fn render_book_content(
     frame.render_widget(block, area);
 
     // Calculate centered content area (60% width centered)
-    let content_width = inner_area.width * 60 / 100;
-    let margin = (inner_area.width - content_width) / 2;
-
+    let margin_percent = 20; // 20% on each side, 60% in the middle
+    
     let centered_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Length(margin),
-            Constraint::Length(content_width),
-            Constraint::Length(margin),
+            Constraint::Percentage(margin_percent),
+            Constraint::Percentage(60),
+            Constraint::Percentage(margin_percent),
         ])
         .split(inner_area);
 

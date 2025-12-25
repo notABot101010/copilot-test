@@ -32,8 +32,8 @@ tui-book alice.epub
 - **Ctrl+B**: Toggle the table of contents panel
 - **Tab**: Switch focus between the TOC panel and content panel
 - **Arrow Up/Down**: Navigate within the focused panel
-  - In TOC: Select different sections
-  - In Content: Scroll through the book
+  - In TOC: Select different sections (with auto-scrolling for long lists)
+  - In Content: Scroll through the book (automatically continues to next/previous chapter at boundaries)
 - **Enter**: When in TOC, jump to the selected section
 - **q**: Quit the application
 
@@ -43,13 +43,16 @@ tui-book alice.epub
 - Appears on the left side of the screen
 - Shows the book's table of contents
 - Navigate with arrow keys
+- Auto-scrolls to keep selected item visible in long tables of contents
 - Press Enter to jump to a section
 - Toggle visibility with Ctrl+B
 
 ### Content Panel
-- Displays the book content with centered text
+- Displays the book content with centered text (60% width for comfortable reading)
 - Scrollable with arrow keys
-- Clean, readable layout
+- Seamlessly continues to next chapter when scrolling down at the end
+- Seamlessly goes to previous chapter when scrolling up at the beginning
+- Clean, readable layout with preserved paragraph breaks
 - Shows current section content
 
 ### Focus Management

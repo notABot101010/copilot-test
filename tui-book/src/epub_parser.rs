@@ -99,6 +99,15 @@ fn strip_html_tags(html: &str) -> String {
                 }
                 if tag_name == "script" || tag_name == "style" {
                     inside_script_or_style = false;
+                } else if tag_name == "p" || tag_name == "div" || 
+                          tag_name == "h1" || tag_name == "h2" || tag_name == "h3" || 
+                          tag_name == "h4" || tag_name == "h5" || tag_name == "h6" {
+                    // Add paragraph break after block element closes
+                    if !result.ends_with("\n\n") && !result.ends_with('\n') {
+                        result.push_str("\n\n");
+                    } else if result.ends_with('\n') && !result.ends_with("\n\n") {
+                        result.push('\n');
+                    }
                 }
             } else {
                 // Opening tag
