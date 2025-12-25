@@ -313,7 +313,12 @@ fn render_top_bar(f: &mut Frame, app: &App, area: Rect) -> Option<(u16, u16)> {
         let style = Style::default().fg(Color::Yellow);
         
         // Calculate scroll for the input portion
-        let available_width = inner.width.saturating_sub(prefix.len() as u16) as usize;
+        let prefix_len_u16 = prefix.len() as u16;
+        let available_width = if inner.width > prefix_len_u16 {
+            (inner.width - prefix_len_u16) as usize
+        } else {
+            0
+        };
         let scroll = if available_width > 0 {
             app.input.visual_scroll(available_width)
         } else {
@@ -328,15 +333,14 @@ fn render_top_bar(f: &mut Frame, app: &App, area: Rect) -> Option<(u16, u16)> {
         
         // Calculate cursor position
         let cursor_offset = app.input.visual_cursor();
-        let prefix_len = prefix.len() as u16;
         
         // The cursor position accounts for scroll affecting the entire text (prefix + input)
         // When scroll > 0, both prefix and input are shifted left
-        let cursor_x = inner.x + (prefix_len + cursor_offset as u16).saturating_sub(scroll as u16);
+        let cursor_x = inner.x + (prefix_len_u16 + cursor_offset as u16).saturating_sub(scroll as u16);
         let cursor_y = inner.y;
         
-        // Make sure cursor is within bounds
-        if cursor_x < inner.x + inner.width && cursor_y < inner.y + inner.height {
+        // Make sure cursor is within bounds (only need to check x-coordinate)
+        if cursor_x >= inner.x && cursor_x < inner.x + inner.width {
             return Some((cursor_x, cursor_y));
         }
     } else {
