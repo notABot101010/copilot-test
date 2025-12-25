@@ -127,14 +127,20 @@ impl App {
     fn sync_toc_with_current_section(&mut self) {
         // Find the TOC entry that corresponds to the current section
         // We look for the TOC entry with the highest section_index that is <= current_section_index
+        if self.book_content.toc.is_empty() {
+            return;
+        }
+        
         let mut best_match = 0;
         for (i, entry) in self.book_content.toc.iter().enumerate() {
             if entry.section_index <= self.current_section_index {
                 best_match = i;
             } else {
+                // TOC is sorted by section_index, so we can stop here
                 break;
             }
         }
+        
         self.selected_toc_index = best_match;
     }
 }
