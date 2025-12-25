@@ -17,6 +17,8 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::io;
+use tui_input::backend::crossterm::EventHandler;
+use tui_input::Input;
 
 const ROWS: usize = 100;
 const COLS: usize = 26; // A-Z
@@ -33,10 +35,11 @@ struct App {
     cursor_row: usize,
     cursor_col: usize,
     mode: Mode,
-    edit_buffer: String,
+    input: Input,
     scroll_row: usize,
     scroll_col: usize,
     should_quit: bool,
+    numeric_multiplier: String,
 }
 
 impl App {
@@ -46,19 +49,30 @@ impl App {
             cursor_row: 0,
             cursor_col: 0,
             mode: Mode::View,
-            edit_buffer: String::new(),
+            input: Input::default(),
             scroll_row: 0,
             scroll_col: 0,
             should_quit: false,
+            numeric_multiplier: String::new(),
         }
     }
 
     fn move_cursor(&mut self, row_delta: i32, col_delta: i32) {
-        let new_row = (self.cursor_row as i32 + row_delta).clamp(0, ROWS as i32 - 1) as usize;
-        let new_col = (self.cursor_col as i32 + col_delta).clamp(0, COLS as i32 - 1) as usize;
+        // Apply numeric multiplier if present
+        let multiplier = if !self.numeric_multiplier.is_empty() {
+            self.numeric_multiplier.parse::<i32>().unwrap_or(1)
+        } else {
+            1
+        };
+        
+        let new_row = (self.cursor_row as i32 + row_delta * multiplier).clamp(0, ROWS as i32 - 1) as usize;
+        let new_col = (self.cursor_col as i32 + col_delta * multiplier).clamp(0, COLS as i32 - 1) as usize;
         
         self.cursor_row = new_row;
         self.cursor_col = new_col;
+        
+        // Clear the numeric multiplier after use
+        self.numeric_multiplier.clear();
     }
 
     fn adjust_scroll(&mut self, visible_rows: usize, visible_cols: usize) {
@@ -80,28 +94,34 @@ impl App {
     fn enter_edit_mode(&mut self) {
         self.mode = Mode::Edit;
         let key = get_cell_key(self.cursor_row, self.cursor_col);
-        self.edit_buffer = self.cells.get(&key).cloned().unwrap_or_default();
+        let cell_value = self.cells.get(&key).cloned().unwrap_or_default();
+        self.input = Input::new(cell_value);
+        // Clear numeric multiplier when entering edit mode
+        self.numeric_multiplier.clear();
     }
 
     fn start_formula(&mut self) {
         self.mode = Mode::Edit;
-        self.edit_buffer = "=".to_string();
+        self.input = Input::new("=".to_string());
+        // Clear numeric multiplier when entering edit mode
+        self.numeric_multiplier.clear();
     }
 
     fn save_edit(&mut self) {
         let key = get_cell_key(self.cursor_row, self.cursor_col);
-        if self.edit_buffer.is_empty() {
+        let value = self.input.value().to_string();
+        if value.is_empty() {
             self.cells.remove(&key);
         } else {
-            self.cells.insert(key, self.edit_buffer.clone());
+            self.cells.insert(key, value);
         }
         self.mode = Mode::View;
-        self.edit_buffer.clear();
+        self.input.reset();
     }
 
     fn cancel_edit(&mut self) {
         self.mode = Mode::View;
-        self.edit_buffer.clear();
+        self.input.reset();
     }
 
     fn handle_key_event(&mut self, key_code: KeyCode, modifiers: KeyModifiers) {
@@ -126,21 +146,42 @@ impl App {
             KeyCode::Char('q') => {
                 self.should_quit = true;
             }
-            KeyCode::Up => self.move_cursor(-1, 0),
-            KeyCode::Down => self.move_cursor(1, 0),
-            KeyCode::Left => self.move_cursor(0, -1),
-            KeyCode::Right => self.move_cursor(0, 1),
-            KeyCode::Char('=') => self.start_formula(),
-            KeyCode::Char('e') | KeyCode::Enter => self.enter_edit_mode(),
+            KeyCode::Up => {
+                self.move_cursor(-1, 0);
+            }
+            KeyCode::Down => {
+                self.move_cursor(1, 0);
+            }
+            KeyCode::Left => {
+                self.move_cursor(0, -1);
+            }
+            KeyCode::Right => {
+                self.move_cursor(0, 1);
+            }
+            KeyCode::Char('=') => {
+                self.start_formula();
+            }
+            KeyCode::Char('e') | KeyCode::Enter => {
+                self.enter_edit_mode();
+            }
             KeyCode::Delete | KeyCode::Backspace => {
                 let key = get_cell_key(self.cursor_row, self.cursor_col);
                 self.cells.remove(&key);
+                // Clear numeric multiplier on delete
+                self.numeric_multiplier.clear();
             }
-            _ => {}
+            KeyCode::Char(c) if c.is_ascii_digit() => {
+                // Accumulate numeric multiplier
+                self.numeric_multiplier.push(c);
+            }
+            _ => {
+                // Clear numeric multiplier on any other key
+                self.numeric_multiplier.clear();
+            }
         }
     }
 
-    fn handle_edit_mode_key(&mut self, key_code: KeyCode, _modifiers: KeyModifiers) {
+    fn handle_edit_mode_key(&mut self, key_code: KeyCode, modifiers: KeyModifiers) {
         match key_code {
             KeyCode::Enter => {
                 self.save_edit();
@@ -148,13 +189,11 @@ impl App {
             KeyCode::Esc => {
                 self.cancel_edit();
             }
-            KeyCode::Backspace => {
-                self.edit_buffer.pop();
+            _ => {
+                // Use tui-input's event handler for all other keys
+                // This handles cursor navigation, character input, deletion, etc.
+                self.input.handle_event(&Event::Key(event::KeyEvent::new(key_code, modifiers)));
             }
-            KeyCode::Char(c) => {
-                self.edit_buffer.push(c);
-            }
-            _ => {}
         }
     }
 }
@@ -239,13 +278,19 @@ fn render_top_bar(f: &mut Frame, app: &App, area: Rect) {
     let cell_ref = format_cell_reference(app.cursor_row, app.cursor_col);
     
     let display_value = if app.mode == Mode::Edit {
-        &app.edit_buffer
+        app.input.value()
     } else {
         let key = get_cell_key(app.cursor_row, app.cursor_col);
         app.cells.get(&key).map(|s| s.as_str()).unwrap_or("")
     };
 
-    let text = format!("{} | fx: {}", cell_ref, display_value);
+    let multiplier_text = if !app.numeric_multiplier.is_empty() {
+        format!(" [{}x]", app.numeric_multiplier)
+    } else {
+        String::new()
+    };
+
+    let text = format!("{}{} | fx: {}", cell_ref, multiplier_text, display_value);
     
     let style = if app.mode == Mode::Edit {
         Style::default().fg(Color::Yellow)
@@ -257,9 +302,9 @@ fn render_top_bar(f: &mut Frame, app: &App, area: Rect) {
         .style(style)
         .block(Block::default().borders(Borders::ALL).title(
             if app.mode == Mode::Edit {
-                "Edit Mode (Enter=Save, Esc=Cancel)"
+                "Edit Mode (Enter=Save, Esc=Cancel, Arrows=Move Cursor)"
             } else {
-                "View Mode (e/==Edit, Arrow keys=Navigate, q=Quit)"
+                "View Mode (e/==Edit, 0-9+Arrow=Navigate with multiplier, q=Quit)"
             }
         ));
 
@@ -297,7 +342,7 @@ fn render_grid(f: &mut Frame, app: &App, area: Rect, visible_rows: usize, visibl
             let is_cursor = row_idx == app.cursor_row && col_idx == app.cursor_col;
             
             let display_value = if is_cursor && app.mode == Mode::Edit {
-                app.edit_buffer.clone()
+                app.input.value().to_string()
             } else {
                 get_computed_value(row_idx, col_idx, &app.cells)
             };
