@@ -92,7 +92,8 @@ impl App {
         } else if self.current_section_index > 0 {
             // At the beginning of current chapter, move to previous chapter
             self.current_section_index -= 1;
-            // Set scroll to end of previous chapter (will be adjusted in render)
+            // Set scroll to maximum value - will be clamped to actual max in render
+            // This ensures we start at the bottom of the previous chapter
             self.content_scroll_offset = usize::MAX;
         }
     }
