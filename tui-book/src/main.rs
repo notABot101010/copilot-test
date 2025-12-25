@@ -26,6 +26,7 @@ struct App {
     toc_visible: bool,
     focus: Focus,
     selected_toc_index: usize,
+    toc_scroll_offset: usize,
     content_scroll_offset: usize,
     current_section_index: usize,
     should_quit: bool,
@@ -39,6 +40,7 @@ impl App {
             toc_visible: true,
             focus: Focus::Content,
             selected_toc_index: 0,
+            toc_scroll_offset: 0,
             content_scroll_offset: 0,
             current_section_index: 0,
             should_quit: false,
@@ -74,15 +76,39 @@ impl App {
         }
     }
 
-    fn scroll_content_up(&mut self) {
-        if self.content_scroll_offset > 0 {
-            self.content_scroll_offset -= 1;
-        }
-    }
-
     fn scroll_content_down(&mut self) {
         if self.content_scroll_offset < self.max_scroll {
             self.content_scroll_offset += 1;
+        } else if self.current_section_index < self.book_content.sections.len() - 1 {
+            // At the end of current chapter, move to next chapter
+            self.current_section_index += 1;
+            self.content_scroll_offset = 0;
+        }
+    }
+
+    fn scroll_content_up(&mut self) {
+        if self.content_scroll_offset > 0 {
+            self.content_scroll_offset -= 1;
+        } else if self.current_section_index > 0 {
+            // At the beginning of current chapter, move to previous chapter
+            self.current_section_index -= 1;
+            // Set scroll to end of previous chapter (will be adjusted in render)
+            self.content_scroll_offset = usize::MAX;
+        }
+    }
+
+    fn update_toc_scroll(&mut self, visible_height: usize) {
+        if visible_height == 0 {
+            return;
+        }
+
+        // Calculate scroll offset to keep selected item visible
+        if self.selected_toc_index < self.toc_scroll_offset {
+            // Selected item is above visible area
+            self.toc_scroll_offset = self.selected_toc_index;
+        } else if self.selected_toc_index >= self.toc_scroll_offset + visible_height {
+            // Selected item is below visible area
+            self.toc_scroll_offset = self.selected_toc_index.saturating_sub(visible_height - 1);
         }
     }
 
@@ -152,11 +178,15 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut A
 
             if app.toc_visible {
                 let toc_focused = matches!(app.focus, Focus::Toc);
+                let toc_height = chunks[0].height.saturating_sub(2) as usize; // Subtract borders
+                app.update_toc_scroll(toc_height);
+                
                 render_toc(
                     f,
                     chunks[0],
                     &app.book_content.toc,
                     app.selected_toc_index,
+                    app.toc_scroll_offset,
                     toc_focused,
                 );
 

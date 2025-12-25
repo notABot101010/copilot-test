@@ -110,9 +110,16 @@ fn strip_html_tags(html: &str) -> String {
                     inside_script_or_style = true;
                 }
                 
-                // Handle line breaks
-                if tag_name == "br" || tag_name == "p" || tag_name == "div" {
+                // Handle line breaks and block elements
+                if tag_name == "br" {
                     result.push('\n');
+                } else if tag_name == "p" || tag_name == "div" || tag_name == "h1" || 
+                          tag_name == "h2" || tag_name == "h3" || tag_name == "h4" || 
+                          tag_name == "h5" || tag_name == "h6" {
+                    // Add paragraph break before block element
+                    if !result.is_empty() && !result.ends_with("\n\n") {
+                        result.push_str("\n\n");
+                    }
                 }
             }
             
@@ -168,13 +175,30 @@ fn strip_html_tags(html: &str) -> String {
         i += 1;
     }
 
-    // Clean up extra whitespace
-    result = result
-        .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
+    // Clean up whitespace while preserving paragraph breaks
+    let mut lines: Vec<String> = Vec::new();
+    let mut current_para = Vec::new();
+    
+    for line in result.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            // Empty line - if we have content, save it and add a paragraph break
+            if !current_para.is_empty() {
+                lines.push(current_para.join(" "));
+                current_para.clear();
+                lines.push(String::new()); // Paragraph break
+            }
+        } else {
+            current_para.push(trimmed.to_string());
+        }
+    }
+    
+    // Add any remaining content
+    if !current_para.is_empty() {
+        lines.push(current_para.join(" "));
+    }
+    
+    result = lines.join("\n");
 
     result
 }
