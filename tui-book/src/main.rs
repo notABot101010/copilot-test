@@ -29,6 +29,7 @@ struct App {
     content_scroll_offset: usize,
     current_section_index: usize,
     should_quit: bool,
+    max_scroll: usize,
 }
 
 impl App {
@@ -41,6 +42,7 @@ impl App {
             content_scroll_offset: 0,
             current_section_index: 0,
             should_quit: false,
+            max_scroll: 0,
         }
     }
 
@@ -78,8 +80,8 @@ impl App {
         }
     }
 
-    fn scroll_content_down(&mut self, max_offset: usize) {
-        if self.content_scroll_offset < max_offset {
+    fn scroll_content_down(&mut self) {
+        if self.content_scroll_offset < self.max_scroll {
             self.content_scroll_offset += 1;
         }
     }
@@ -173,7 +175,8 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut A
                     content_focused,
                 );
 
-                // Adjust scroll offset if it's too large
+                // Update max_scroll and adjust scroll offset if needed
+                app.max_scroll = max_scroll;
                 if app.content_scroll_offset > max_scroll {
                     app.content_scroll_offset = max_scroll;
                 }
@@ -193,6 +196,7 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut A
                     content_focused,
                 );
 
+                app.max_scroll = max_scroll;
                 if app.content_scroll_offset > max_scroll {
                     app.content_scroll_offset = max_scroll;
                 }
@@ -218,11 +222,7 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut A
                             (KeyCode::Char('q'), KeyModifiers::NONE) => app.should_quit = true,
                             (KeyCode::Char('b'), KeyModifiers::CONTROL) => app.toggle_toc(),
                             (KeyCode::Up, KeyModifiers::NONE) => app.scroll_content_up(),
-                            (KeyCode::Down, KeyModifiers::NONE) => {
-                                // We need to calculate max_scroll in the draw function
-                                // For now, use a large number
-                                app.scroll_content_down(10000);
-                            }
+                            (KeyCode::Down, KeyModifiers::NONE) => app.scroll_content_down(),
                             (KeyCode::Tab, KeyModifiers::NONE) => app.switch_focus(),
                             _ => {}
                         }
