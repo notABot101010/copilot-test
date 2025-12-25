@@ -313,6 +313,7 @@ fn render_top_bar(f: &mut Frame, app: &App, area: Rect) -> Option<(u16, u16)> {
         let style = Style::default().fg(Color::Yellow);
         
         // Calculate scroll for the input portion
+        // Note: prefix is always short (cell ref + multiplier + " | fx: "), so casting is safe
         let prefix_len_u16 = prefix.len() as u16;
         let available_width = if inner.width > prefix_len_u16 {
             (inner.width - prefix_len_u16) as usize
