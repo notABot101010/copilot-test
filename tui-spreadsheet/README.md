@@ -8,6 +8,8 @@ A terminal-based spreadsheet application built with Rust and ratatui.
 - **View Mode**: Navigate between cells using arrow keys with numeric multiplier support
 - **Edit Mode**: Edit cells with proper cursor navigation support (using tui-input crate)
 - **Advanced Navigation**: Type numbers before arrow keys to move multiple cells at once (e.g., `123` + Down = move 123 cells)
+- **Undo/Redo**: Full undo/redo support with Ctrl+Z and Ctrl+Y
+- **CSV File Support**: Load and save spreadsheets as CSV files
 - **Formula Engine**: Support for Excel-like formulas
   - Cell references (e.g., `=A1`, `=B2`)
   - Range references (e.g., `=SUM(A1:A100)`)
@@ -31,8 +33,18 @@ A terminal-based spreadsheet application built with Rust and ratatui.
 
 ### Running the Application
 
+#### Without CSV file
 ```bash
 cargo run
+```
+
+#### With CSV file
+```bash
+# Open an existing CSV file
+cargo run -- mydata.csv
+
+# Or create a new CSV file (will be created empty if it doesn't exist)
+cargo run -- newfile.csv
 ```
 
 ### Key Bindings
@@ -43,6 +55,9 @@ cargo run
 - **e** or **Enter**: Enter edit mode for the current cell
 - **=**: Start entering a formula (enters edit mode with `=` prefix)
 - **Delete** or **Backspace**: Clear the current cell
+- **Ctrl+Z**: Undo last change
+- **Ctrl+Y**: Redo last undone change
+- **Ctrl+S**: Save to CSV file (only if file was specified on command line)
 - **q** or **Ctrl+C** or **Ctrl+Q**: Quit the application
 
 #### Edit Mode
@@ -73,6 +88,16 @@ cargo run
    ```
    =A1
    =A1+A2+A3
+   ```
+
+4. **CSV Workflow**:
+   ```bash
+   # Start with a CSV file
+   tui-spreadsheet mydata.csv
+   
+   # Make edits...
+   # Press Ctrl+S to save
+   # Press q to quit
    ```
 
 ## Architecture
