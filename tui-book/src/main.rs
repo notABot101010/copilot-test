@@ -132,12 +132,12 @@ impl App {
         }
         
         let mut best_match = 0;
+        let mut best_section_index = 0;
+        
         for (i, entry) in self.book_content.toc.iter().enumerate() {
-            if entry.section_index <= self.current_section_index {
+            if entry.section_index <= self.current_section_index && entry.section_index >= best_section_index {
                 best_match = i;
-            } else {
-                // TOC is sorted by section_index, so we can stop here
-                break;
+                best_section_index = entry.section_index;
             }
         }
         
