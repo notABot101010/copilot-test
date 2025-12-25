@@ -393,3 +393,144 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
 
     f.render_widget(paragraph, area);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_numeric_multiplier_basic() {
+        let mut app = App::new();
+        
+        // Set up initial position
+        app.cursor_row = 5;
+        app.cursor_col = 5;
+        
+        // Type numeric multiplier
+        app.numeric_multiplier = "3".to_string();
+        
+        // Move down with multiplier
+        app.move_cursor(1, 0);
+        
+        assert_eq!(app.cursor_row, 8); // 5 + 3*1 = 8
+        assert_eq!(app.numeric_multiplier, ""); // Should be cleared
+    }
+
+    #[test]
+    fn test_numeric_multiplier_large() {
+        let mut app = App::new();
+        
+        // Set up initial position
+        app.cursor_row = 10;
+        app.cursor_col = 0;
+        
+        // Type large numeric multiplier
+        app.numeric_multiplier = "50".to_string();
+        
+        // Move down with multiplier
+        app.move_cursor(1, 0);
+        
+        assert_eq!(app.cursor_row, 60); // 10 + 50*1 = 60
+        assert_eq!(app.numeric_multiplier, ""); // Should be cleared
+    }
+
+    #[test]
+    fn test_numeric_multiplier_horizontal() {
+        let mut app = App::new();
+        
+        // Set up initial position
+        app.cursor_row = 0;
+        app.cursor_col = 2;
+        
+        // Type numeric multiplier
+        app.numeric_multiplier = "10".to_string();
+        
+        // Move right with multiplier
+        app.move_cursor(0, 1);
+        
+        assert_eq!(app.cursor_col, 12); // 2 + 10*1 = 12
+        assert_eq!(app.numeric_multiplier, ""); // Should be cleared
+    }
+
+    #[test]
+    fn test_numeric_multiplier_boundary() {
+        let mut app = App::new();
+        
+        // Set up initial position at bottom
+        app.cursor_row = 95;
+        app.cursor_col = 20;
+        
+        // Type numeric multiplier that would exceed bounds
+        app.numeric_multiplier = "100".to_string();
+        
+        // Move down with multiplier - should clamp to max
+        app.move_cursor(1, 0);
+        
+        assert_eq!(app.cursor_row, ROWS - 1); // Should be clamped to max
+        assert_eq!(app.numeric_multiplier, ""); // Should be cleared
+    }
+
+    #[test]
+    fn test_no_multiplier() {
+        let mut app = App::new();
+        
+        // Set up initial position
+        app.cursor_row = 5;
+        app.cursor_col = 5;
+        
+        // Move without multiplier
+        app.move_cursor(1, 0);
+        
+        assert_eq!(app.cursor_row, 6); // 5 + 1*1 = 6
+    }
+
+    #[test]
+    fn test_input_widget_integration() {
+        let mut app = App::new();
+        
+        // Enter edit mode
+        app.enter_edit_mode();
+        
+        assert_eq!(app.mode, Mode::Edit);
+        assert_eq!(app.input.value(), "");
+        
+        // Set a value in input
+        app.input = Input::new("test value".to_string());
+        
+        // Save edit
+        app.save_edit();
+        
+        assert_eq!(app.mode, Mode::View);
+        let key = get_cell_key(0, 0);
+        assert_eq!(app.cells.get(&key).unwrap(), "test value");
+    }
+
+    #[test]
+    fn test_start_formula_clears_multiplier() {
+        let mut app = App::new();
+        
+        // Set numeric multiplier
+        app.numeric_multiplier = "123".to_string();
+        
+        // Start formula
+        app.start_formula();
+        
+        assert_eq!(app.mode, Mode::Edit);
+        assert_eq!(app.input.value(), "=");
+        assert_eq!(app.numeric_multiplier, ""); // Should be cleared
+    }
+
+    #[test]
+    fn test_enter_edit_mode_clears_multiplier() {
+        let mut app = App::new();
+        
+        // Set numeric multiplier
+        app.numeric_multiplier = "456".to_string();
+        
+        // Enter edit mode
+        app.enter_edit_mode();
+        
+        assert_eq!(app.mode, Mode::Edit);
+        assert_eq!(app.numeric_multiplier, ""); // Should be cleared
+    }
+}
