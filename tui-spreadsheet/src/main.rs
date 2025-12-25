@@ -845,9 +845,11 @@ mod tests {
 
     #[test]
     fn test_csv_save_load() {
+        use std::env;
         use std::fs;
         
-        let temp_file = PathBuf::from("/tmp/test_spreadsheet.csv");
+        let temp_dir = env::temp_dir();
+        let temp_file = temp_dir.join("test_spreadsheet.csv");
         
         // Clean up if file exists
         let _ = fs::remove_file(&temp_file);
