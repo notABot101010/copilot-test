@@ -594,4 +594,46 @@ mod tests {
         // Should move by max 1000 cells, clamped to ROWS-1
         assert_eq!(app.cursor_row, ROWS - 1);
     }
+    
+    #[test]
+    fn test_cursor_position_in_edit_mode() {
+        let mut app = App::new();
+        
+        // Enter edit mode
+        app.enter_edit_mode();
+        assert_eq!(app.mode, Mode::Edit);
+        
+        // Type some text
+        app.input = Input::new("Hello".to_string());
+        
+        // The cursor should be at the end of the text
+        let cursor_pos = app.input.visual_cursor();
+        assert_eq!(cursor_pos, 5); // "Hello" has 5 characters
+        
+        // Test that visual_scroll returns 0 for short text
+        let scroll = app.input.visual_scroll(50);
+        assert_eq!(scroll, 0);
+    }
+    
+    #[test]
+    fn test_cursor_position_with_long_text() {
+        let mut app = App::new();
+        
+        // Enter edit mode with long text
+        app.mode = Mode::Edit;
+        let long_text = "This is a very long text that will require scrolling";
+        app.input = Input::new(long_text.to_string());
+        
+        // The cursor should be at the end
+        let cursor_pos = app.input.visual_cursor();
+        assert_eq!(cursor_pos, long_text.len());
+        
+        // With a narrow width, it should scroll
+        let scroll = app.input.visual_scroll(20);
+        assert!(scroll > 0);
+        
+        // The visible cursor position should be within the width
+        let visible_cursor = cursor_pos.saturating_sub(scroll);
+        assert!(visible_cursor <= 20);
+    }
 }
