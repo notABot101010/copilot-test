@@ -488,3 +488,131 @@ pub fn get_computed_value(row: usize, col: usize, cells: &CellMap) -> String {
     visited_cells.insert(key);
     evaluate_formula(cell_value, cells, &mut visited_cells)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_column_conversion() {
+        assert_eq!(column_to_index("A"), 0);
+        assert_eq!(column_to_index("B"), 1);
+        assert_eq!(column_to_index("Z"), 25);
+        assert_eq!(column_to_index("AA"), 26);
+        
+        assert_eq!(index_to_column(0), "A");
+        assert_eq!(index_to_column(1), "B");
+        assert_eq!(index_to_column(25), "Z");
+        assert_eq!(index_to_column(26), "AA");
+    }
+
+    #[test]
+    fn test_cell_reference_parsing() {
+        assert_eq!(parse_cell_reference("A1"), Some((0, 0)));
+        assert_eq!(parse_cell_reference("B2"), Some((1, 1)));
+        assert_eq!(parse_cell_reference("Z26"), Some((25, 25)));
+        assert_eq!(parse_cell_reference("AA10"), Some((9, 26)));
+        
+        assert_eq!(parse_cell_reference(""), None);
+        assert_eq!(parse_cell_reference("A"), None);
+        assert_eq!(parse_cell_reference("1"), None);
+    }
+
+    #[test]
+    fn test_format_cell_reference() {
+        assert_eq!(format_cell_reference(0, 0), "A1");
+        assert_eq!(format_cell_reference(1, 1), "B2");
+        assert_eq!(format_cell_reference(25, 25), "Z26");
+    }
+
+    #[test]
+    fn test_basic_formula() {
+        let mut cells = CellMap::new();
+        cells.insert(get_cell_key(0, 0), "10".to_string());
+        cells.insert(get_cell_key(0, 1), "20".to_string());
+        
+        let mut visited = HashSet::new();
+        let result = evaluate_formula("=10+20", &cells, &mut visited);
+        assert_eq!(result, "30");
+    }
+
+    #[test]
+    fn test_cell_reference_formula() {
+        let mut cells = CellMap::new();
+        cells.insert(get_cell_key(0, 0), "10".to_string());
+        cells.insert(get_cell_key(0, 1), "20".to_string());
+        
+        let mut visited = HashSet::new();
+        let result = evaluate_formula("=A1+B1", &cells, &mut visited);
+        assert_eq!(result, "30");
+    }
+
+    #[test]
+    fn test_sum_function() {
+        let mut cells = CellMap::new();
+        cells.insert(get_cell_key(0, 0), "10".to_string());
+        cells.insert(get_cell_key(1, 0), "20".to_string());
+        cells.insert(get_cell_key(2, 0), "30".to_string());
+        
+        let mut visited = HashSet::new();
+        let result = evaluate_formula("=SUM(A1:A3)", &cells, &mut visited);
+        assert_eq!(result, "60");
+    }
+
+    #[test]
+    fn test_average_function() {
+        let mut cells = CellMap::new();
+        cells.insert(get_cell_key(0, 0), "10".to_string());
+        cells.insert(get_cell_key(1, 0), "20".to_string());
+        cells.insert(get_cell_key(2, 0), "30".to_string());
+        
+        let mut visited = HashSet::new();
+        let result = evaluate_formula("=AVERAGE(A1:A3)", &cells, &mut visited);
+        assert_eq!(result, "20");
+    }
+
+    #[test]
+    fn test_min_max_functions() {
+        let mut cells = CellMap::new();
+        cells.insert(get_cell_key(0, 0), "10".to_string());
+        cells.insert(get_cell_key(1, 0), "5".to_string());
+        cells.insert(get_cell_key(2, 0), "30".to_string());
+        
+        let mut visited = HashSet::new();
+        assert_eq!(evaluate_formula("=MIN(A1:A3)", &cells, &mut visited), "5");
+        
+        let mut visited = HashSet::new();
+        assert_eq!(evaluate_formula("=MAX(A1:A3)", &cells, &mut visited), "30");
+    }
+
+    #[test]
+    fn test_nested_cell_references() {
+        let mut cells = CellMap::new();
+        cells.insert(get_cell_key(0, 0), "10".to_string());
+        cells.insert(get_cell_key(0, 1), "=A1*2".to_string());
+        cells.insert(get_cell_key(0, 2), "=B1+5".to_string());
+        
+        let result = get_computed_value(0, 2, &cells);
+        assert_eq!(result, "25"); // A1=10, B1=A1*2=20, C1=B1+5=25
+    }
+
+    #[test]
+    fn test_complex_expression() {
+        let mut cells = CellMap::new();
+        cells.insert(get_cell_key(0, 0), "10".to_string());
+        cells.insert(get_cell_key(0, 1), "20".to_string());
+        
+        let mut visited = HashSet::new();
+        let result = evaluate_formula("=(A1+B1)*2-5", &cells, &mut visited);
+        assert_eq!(result, "55"); // (10+20)*2-5 = 55
+    }
+
+    #[test]
+    fn test_error_handling() {
+        let cells = CellMap::new();
+        
+        let mut visited = HashSet::new();
+        let result = evaluate_formula("=1/0", &cells, &mut visited);
+        assert_eq!(result, "#ERROR");
+    }
+}
