@@ -12,6 +12,7 @@ pub fn render_toc(
     area: Rect,
     toc: &[TocEntry],
     selected_index: usize,
+    scroll_offset: usize,
     focused: bool,
 ) {
     let border_style = if focused {
@@ -25,11 +26,19 @@ pub fn render_toc(
         .border_style(border_style)
         .title("Table of Contents");
 
-    let items: Vec<ListItem> = toc
+    let inner_area = block.inner(area);
+    let visible_height = inner_area.height as usize;
+
+    // Calculate which items to display
+    let start_index = scroll_offset;
+    let end_index = (start_index + visible_height).min(toc.len());
+
+    let items: Vec<ListItem> = toc[start_index..end_index]
         .iter()
         .enumerate()
         .map(|(i, entry)| {
-            let style = if i == selected_index {
+            let actual_index = start_index + i;
+            let style = if actual_index == selected_index {
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD)
@@ -37,7 +46,7 @@ pub fn render_toc(
                 Style::default()
             };
 
-            let prefix = if i == selected_index { "> " } else { "  " };
+            let prefix = if actual_index == selected_index { "> " } else { "  " };
             ListItem::new(format!("{}{}", prefix, entry.title)).style(style)
         })
         .collect();
