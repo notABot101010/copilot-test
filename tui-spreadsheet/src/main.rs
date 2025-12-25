@@ -160,6 +160,7 @@ impl App {
             if path.exists() {
                 let mut reader = csv::ReaderBuilder::new()
                     .has_headers(false)
+                    .flexible(true)  // Allow variable number of fields per record
                     .from_path(path)?;
 
                 for (row_idx, result) in reader.records().enumerate() {
@@ -186,11 +187,14 @@ impl App {
         if let Some(path) = &self.csv_file {
             let mut writer = csv::WriterBuilder::new()
                 .has_headers(false)
+                .flexible(true)  // Allow variable number of fields per record
                 .from_path(path)?;
 
+            let mut has_any_data = false;
+            
             for row_idx in 0..ROWS {
                 let mut row_data = Vec::new();
-                let mut last_non_empty = 0;
+                let mut last_non_empty_col = None;
                 
                 // Collect row data and track last non-empty cell
                 for col_idx in 0..COLS {
@@ -198,18 +202,21 @@ impl App {
                     let value = self.cells.get(&key).map(|s| s.as_str()).unwrap_or("");
                     row_data.push(value);
                     if !value.is_empty() {
-                        last_non_empty = col_idx;
+                        last_non_empty_col = Some(col_idx);
                     }
                 }
                 
                 // Only write rows that have at least one non-empty cell
-                if last_non_empty > 0 || !row_data[0].is_empty() {
+                if let Some(last_col) = last_non_empty_col {
                     // Write only up to the last non-empty cell
-                    writer.write_record(&row_data[..=last_non_empty])?;
-                } else if row_idx == 0 {
-                    // Always write at least one empty row to create the file
-                    writer.write_record(&[""])?;
+                    writer.write_record(&row_data[..=last_col])?;
+                    has_any_data = true;
                 }
+            }
+            
+            // If no data was written at all, write an empty row to create a valid CSV file
+            if !has_any_data {
+                writer.write_record(&[""])?;
             }
             
             writer.flush()?;
@@ -878,6 +885,56 @@ mod tests {
         assert_eq!(app2.cells.get(&get_cell_key(0, 1)).unwrap(), "20");
         assert_eq!(app2.cells.get(&get_cell_key(1, 0)).unwrap(), "30");
         assert_eq!(app2.cells.get(&get_cell_key(1, 1)).unwrap(), "=A1+B1");
+        
+        // Clean up
+        let _ = fs::remove_file(&temp_file);
+    }
+
+    #[test]
+    fn test_csv_save_sparse_rows() {
+        use std::env;
+        use std::fs;
+        
+        let temp_dir = env::temp_dir();
+        let temp_file = temp_dir.join("test_sparse.csv");
+        
+        // Clean up if file exists
+        let _ = fs::remove_file(&temp_file);
+        
+        // Create app with sparse data (empty first cell, data in middle)
+        let mut app = App::new(Some(temp_file.clone()));
+        app.cells.insert(get_cell_key(0, 1), "B1".to_string()); // Empty A1, data in B1
+        app.cells.insert(get_cell_key(1, 0), "A2".to_string()); // Data in A2
+        app.cells.insert(get_cell_key(2, 2), "C3".to_string()); // Empty A3, B3, data in C3
+        
+        // Save CSV
+        let result = app.save_csv();
+        if let Err(err) = &result {
+            eprintln!("Save error: {}", err);
+        }
+        assert!(result.is_ok());
+        
+        // Verify the file was created
+        assert!(temp_file.exists());
+        
+        // Read the CSV file content
+        let content = fs::read_to_string(&temp_file).unwrap();
+        eprintln!("CSV content:\n{}", content);
+        
+        // Load it back
+        let mut app2 = App::new(Some(temp_file.clone()));
+        let load_result = app2.load_csv();
+        if let Err(err) = &load_result {
+            eprintln!("Load error: {}", err);
+        }
+        assert!(load_result.is_ok());
+        
+        // Verify sparse data was preserved correctly
+        // Note: CSV format doesn't distinguish between empty string and missing cell,
+        // so we check that the non-empty cells are loaded correctly
+        assert_eq!(app2.cells.get(&get_cell_key(0, 1)).unwrap(), "B1");
+        assert_eq!(app2.cells.get(&get_cell_key(1, 0)).unwrap(), "A2");
+        assert_eq!(app2.cells.get(&get_cell_key(2, 2)).unwrap(), "C3");
         
         // Clean up
         let _ = fs::remove_file(&temp_file);
