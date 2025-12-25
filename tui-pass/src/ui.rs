@@ -133,15 +133,15 @@ impl Widget for CredentialDetail<'_> {
         let password_display = if self.show_password {
             cred.password.clone()
         } else {
-            "•".repeat(cred.password.len().min(12))
+            "•".repeat(12)
         };
         lines.push(Line::from(vec![
             Span::styled("Password: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::raw(password_display),
-            Span::styled(
-                if self.show_password { " (visible)" } else { " (hidden)" },
-                Style::default().fg(Color::DarkGray),
-            ),
+            // Span::styled(
+            //     if self.show_password { " (visible)" } else { " (hidden)" },
+            //     Style::default().fg(Color::DarkGray),
+            // ),
         ]));
         lines.push(Line::from(""));
 
@@ -477,7 +477,7 @@ impl Widget for ConfirmDialog<'_> {
             for dx in 0..area.width {
                 if let Some(cell) = buf.cell_mut((area.x + dx, area.y + dy)) {
                     cell.set_symbol(" ");
-                    cell.set_style(Style::default().bg(Color::Black).fg(Color::DarkGray));
+                    cell.set_style(Style::default().bg(Color::DarkGray).fg(Color::DarkGray));
                 }
             }
         }
@@ -487,7 +487,7 @@ impl Widget for ConfirmDialog<'_> {
             .title(" Confirm ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Red))
-            .style(Style::default().bg(Color::Black));
+            .style(Style::default().bg(Color::DarkGray));
 
         let inner = block.inner(dialog_area);
         block.render(dialog_area, buf);
@@ -552,16 +552,16 @@ mod tests {
 
         // Get cursor position
         let cursor_pos = dialog.cursor_position(area);
-        
+
         // Cursor should be present
         assert!(cursor_pos.is_some());
-        
+
         let (x, y) = cursor_pos.unwrap();
-        
+
         // Cursor should be within the area bounds
         assert!(x < area.width);
         assert!(y < area.height);
-        
+
         // Cursor x should be at least at the start of the dialog (accounting for centering and borders)
         assert!(x > 0);
     }
@@ -662,7 +662,7 @@ mod tests {
         // Text line is at y=4 (middle of the 3-line block)
         // Text starts at x=12 (inner.x + 1 for border)
         let result = dialog.handle_mouse_click(area, 15, 4);
-        
+
         // Should return Some with field index 0
         assert!(result.is_some(), "Click on field should return Some");
         let (field_idx, _cursor_pos) = result.unwrap();
@@ -697,12 +697,12 @@ mod tests {
         // Using the same calculation as above:
         // Text line is at y=4, text starts at x=12
         let result = dialog.handle_mouse_click(area, 20, 4);
-        
+
         assert!(result.is_some(), "Click on field should return Some");
         let (field_idx, cursor_pos) = result.unwrap();
         assert_eq!(field_idx, 0, "Should select first field");
         assert!(cursor_pos.is_some(), "Should have cursor position");
-        
+
         // Cursor position should be within the text length
         let pos = cursor_pos.unwrap();
         assert!(pos <= title_input.value().len(), "Cursor position should be within text bounds");

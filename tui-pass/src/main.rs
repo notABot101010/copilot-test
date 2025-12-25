@@ -4,7 +4,7 @@ mod ui;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind},
+    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -173,7 +173,7 @@ impl App {
                 if idx + 1 < self.vault.len() {
                     idx + 1
                 } else {
-                    idx
+                    0
                 }
             }
             None => 0,
@@ -265,7 +265,7 @@ impl App {
             }
             KeyCode::Enter => {
                 let credential = self.input_state.to_credential();
-                
+
                 match self.mode {
                     AppMode::AddingCredential => {
                         if let Err(e) = self.vault.add_credential(credential) {
@@ -284,7 +284,7 @@ impl App {
                     }
                     _ => {}
                 }
-                
+
                 self.mode = AppMode::Normal;
             }
             KeyCode::Esc => {
@@ -305,7 +305,7 @@ impl App {
                         eprintln!("Failed to remove credential: {}", e);
                     } else {
                         self.modified = true;
-                        
+
                         // Adjust selection
                         if self.vault.is_empty() {
                             self.selected_idx = None;
@@ -325,66 +325,66 @@ impl App {
         }
     }
 
-    fn handle_mouse(&mut self, mouse: event::MouseEvent) {
-        match mouse.kind {
-            MouseEventKind::Down(MouseButton::Left) => {
-                // Check if click is in credential list area
-                if mouse.column >= self.credential_list_area.x
-                    && mouse.column < self.credential_list_area.x + self.credential_list_area.width
-                    && mouse.row >= self.credential_list_area.y
-                    && mouse.row < self.credential_list_area.y + self.credential_list_area.height
-                {
-                    // Calculate which credential was clicked (accounting for border)
-                    let relative_row = mouse.row.saturating_sub(self.credential_list_area.y + 1) as usize;
-                    let clicked_idx = self.scroll_offset + relative_row;
-                    
-                    if clicked_idx < self.vault.len() {
-                        self.selected_idx = Some(clicked_idx);
-                    }
-                }
-            }
-            MouseEventKind::ScrollUp => {
-                self.scroll_offset = self.scroll_offset.saturating_sub(1);
-            }
-            MouseEventKind::ScrollDown => {
-                let max_scroll = self.vault.len().saturating_sub(1);
-                self.scroll_offset = (self.scroll_offset + 1).min(max_scroll);
-            }
-            _ => {}
-        }
-    }
+    // fn handle_mouse(&mut self, mouse: event::MouseEvent) {
+    //     match mouse.kind {
+    //         MouseEventKind::Down(MouseButton::Left) => {
+    //             // Check if click is in credential list area
+    //             if mouse.column >= self.credential_list_area.x
+    //                 && mouse.column < self.credential_list_area.x + self.credential_list_area.width
+    //                 && mouse.row >= self.credential_list_area.y
+    //                 && mouse.row < self.credential_list_area.y + self.credential_list_area.height
+    //             {
+    //                 // Calculate which credential was clicked (accounting for border)
+    //                 let relative_row = mouse.row.saturating_sub(self.credential_list_area.y + 1) as usize;
+    //                 let clicked_idx = self.scroll_offset + relative_row;
 
-    fn handle_input_dialog_mouse(&mut self, mouse: event::MouseEvent, area: ratatui::layout::Rect) {
-        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-            // Create a temporary dialog to use its mouse click detection logic
-            // The title field is not used for click detection, so we use an empty string
-            let dialog = InputDialog {
-                title: "",
-                title_input: &self.input_state.title,
-                username_input: &self.input_state.username,
-                password_input: &self.input_state.password,
-                url_input: &self.input_state.url,
-                notes_input: &self.input_state.notes,
-                active_field: self.input_state.active_field,
-            };
+    //                 if clicked_idx < self.vault.len() {
+    //                     self.selected_idx = Some(clicked_idx);
+    //                 }
+    //             }
+    //         }
+    //         MouseEventKind::ScrollUp => {
+    //             self.scroll_offset = self.scroll_offset.saturating_sub(1);
+    //         }
+    //         MouseEventKind::ScrollDown => {
+    //             let max_scroll = self.vault.len().saturating_sub(1);
+    //             self.scroll_offset = (self.scroll_offset + 1).min(max_scroll);
+    //         }
+    //         _ => {}
+    //     }
+    // }
 
-            if let Some((field_idx, cursor_pos)) = dialog.handle_mouse_click(area, mouse.column, mouse.row) {
-                // Set the active field
-                if let Some(pos) = cursor_pos {
-                    // If cursor position was calculated, set both field and cursor position
-                    self.input_state.set_cursor_position(field_idx, pos);
-                } else {
-                    // Otherwise just set the field
-                    self.input_state.set_active_field(field_idx);
-                }
-            }
-        }
-    }
+    // fn handle_input_dialog_mouse(&mut self, mouse: event::MouseEvent, area: ratatui::layout::Rect) {
+    //     if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+    //         // Create a temporary dialog to use its mouse click detection logic
+    //         // The title field is not used for click detection, so we use an empty string
+    //         let dialog = InputDialog {
+    //             title: "",
+    //             title_input: &self.input_state.title,
+    //             username_input: &self.input_state.username,
+    //             password_input: &self.input_state.password,
+    //             url_input: &self.input_state.url,
+    //             notes_input: &self.input_state.notes,
+    //             active_field: self.input_state.active_field,
+    //         };
 
-    fn enter_copy_mode(&mut self) -> bool {
-        // Only allow copy mode if a credential is selected
-        self.selected_idx.is_some()
-    }
+    //         if let Some((field_idx, cursor_pos)) = dialog.handle_mouse_click(area, mouse.column, mouse.row) {
+    //             // Set the active field
+    //             if let Some(pos) = cursor_pos {
+    //                 // If cursor position was calculated, set both field and cursor position
+    //                 self.input_state.set_cursor_position(field_idx, pos);
+    //             } else {
+    //                 // Otherwise just set the field
+    //                 self.input_state.set_active_field(field_idx);
+    //             }
+    //         }
+    //     }
+    // }
+
+    // fn enter_copy_mode(&mut self) -> bool {
+    //     // Only allow copy mode if a credential is selected
+    //     self.selected_idx.is_some()
+    // }
 }
 
 fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<()> {
@@ -483,8 +483,9 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                         }
                         break;
                     }
-                    KeyCode::Down => app.select_next(),
+                    KeyCode::Down | KeyCode::Tab => app.select_next(),
                     KeyCode::Up => app.select_prev(),
+                    KeyCode::Esc => app.selected_idx = None,
                     KeyCode::Enter => {
                         if app.selected_idx.is_none() && !app.vault.is_empty() {
                             app.selected_idx = Some(0);
@@ -497,37 +498,37 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                     KeyCode::Char('s') => {
                         app.save_vault()?;
                     }
-                    KeyCode::Char('c') => {
-                        if app.enter_copy_mode() {
-                            // Exit terminal temporarily for text selection
-                            disable_raw_mode()?;
-                            let mut stdout = io::stdout();
-                            execute!(
-                                stdout,
-                                LeaveAlternateScreen,
-                                DisableMouseCapture
-                            )?;
+                    // KeyCode::Char('c') => {
+                    //     if app.enter_copy_mode() {
+                    //         // Exit terminal temporarily for text selection
+                    //         disable_raw_mode()?;
+                    //         let mut stdout = io::stdout();
+                    //         execute!(
+                    //             stdout,
+                    //             LeaveAlternateScreen,
+                    //             // DisableMouseCapture
+                    //         )?;
 
-                            // Display credential details for copying
-                            display_credential_for_copying(&mut app)?;
+                    //         // Display credential details for copying
+                    //         display_credential_for_copying(&mut app)?;
 
-                            // Wait for user to press a key
-                            println!("\nPress any key to return to the application...");
-                            // Temporarily enable raw mode to read a single key press
-                            enable_raw_mode()?;
-                            event::read()?;
-                            disable_raw_mode()?;
+                    //         // Wait for user to press a key
+                    //         println!("\nPress any key to return to the application...");
+                    //         // Temporarily enable raw mode to read a single key press
+                    //         enable_raw_mode()?;
+                    //         event::read()?;
+                    //         disable_raw_mode()?;
 
-                            // Re-enter terminal
-                            enable_raw_mode()?;
-                            execute!(
-                                stdout,
-                                EnterAlternateScreen,
-                                EnableMouseCapture
-                            )?;
-                            terminal.clear()?;
-                        }
-                    }
+                    //         // Re-enter terminal
+                    //         enable_raw_mode()?;
+                    //         execute!(
+                    //             stdout,
+                    //             EnterAlternateScreen,
+                    //             // EnableMouseCapture
+                    //         )?;
+                    //         terminal.clear()?;
+                    //     }
+                    // }
                     _ => {}
                 },
                 AppMode::AddingCredential | AppMode::EditingCredential(_) => {
@@ -537,15 +538,15 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
                     app.handle_confirm_delete_key(key.code);
                 }
             },
-            Event::Mouse(mouse) => match app.mode {
-                AppMode::Normal => {
-                    app.handle_mouse(mouse);
-                }
-                AppMode::AddingCredential | AppMode::EditingCredential(_) => {
-                    app.handle_input_dialog_mouse(mouse, app.terminal_area);
-                }
-                _ => {}
-            },
+            // Event::Mouse(mouse) => match app.mode {
+            //     AppMode::Normal => {
+            //         app.handle_mouse(mouse);
+            //     }
+            //     AppMode::AddingCredential | AppMode::EditingCredential(_) => {
+            //         app.handle_input_dialog_mouse(mouse, app.terminal_area);
+            //     }
+            //     _ => {}
+            // },
             _ => {}
         }
     }
@@ -553,26 +554,26 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: Ap
     Ok(())
 }
 
-fn display_credential_for_copying(app: &mut App) -> Result<()> {
-    if let Some(idx) = app.selected_idx {
-        if let Ok(cred) = app.vault.get_credential(idx) {
-            println!("\n╔══════════════════════════════════════════════════════════════╗");
-            println!("║           COPY MODE - Select text with your mouse           ║");
-            println!("║                                                              ║");
-            println!("║  ⚠️  WARNING: Password is visible in plain text!           ║");
-            println!("╚══════════════════════════════════════════════════════════════╝\n");
-            
-            println!("Title:    {}", cred.title);
-            println!("Username: {}", cred.username);
-            println!("Password: {}", cred.password);
-            println!("URL:      {}", cred.url);
-            if !cred.notes.is_empty() {
-                println!("Notes:    {}", cred.notes);
-            }
-        }
-    }
-    Ok(())
-}
+// fn display_credential_for_copying(app: &mut App) -> Result<()> {
+//     if let Some(idx) = app.selected_idx {
+//         if let Ok(cred) = app.vault.get_credential(idx) {
+//             println!("\n╔══════════════════════════════════════════════════════════════╗");
+//             println!("║           COPY MODE - Select text with your mouse           ║");
+//             println!("║                                                              ║");
+//             println!("║  ⚠️  WARNING: Password is visible in plain text!           ║");
+//             println!("╚══════════════════════════════════════════════════════════════╝\n");
+
+//             println!("Title:    {}", cred.title);
+//             println!("Username: {}", cred.username);
+//             println!("Password: {}", cred.password);
+//             println!("URL:      {}", cred.url);
+//             if !cred.notes.is_empty() {
+//                 println!("Notes:    {}", cred.notes);
+//             }
+//         }
+//     }
+//     Ok(())
+// }
 
 fn prompt_password(prompt: &str) -> Result<String> {
     print!("{}", prompt);
@@ -637,7 +638,8 @@ fn open_vault(vault_path: PathBuf) -> Result<()> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    // execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -650,7 +652,7 @@ fn open_vault(vault_path: PathBuf) -> Result<()> {
     execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,
-        DisableMouseCapture
+        // DisableMouseCapture
     )?;
     terminal.show_cursor()?;
 
