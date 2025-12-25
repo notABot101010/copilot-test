@@ -1,8 +1,22 @@
 use anyhow::{anyhow, Result};
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
 pub type CellData = String;
 pub type CellMap = HashMap<String, CellData>;
+
+// Compile regex patterns once at startup
+static RANGE_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"([A-Z]+\d+):([A-Z]+\d+)").unwrap()
+});
+
+static FUNC_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"([A-Z]+)\s*\(([^)]*)\)").unwrap()
+});
+
+static CELL_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"\b([A-Z]+)(\d+)\b").unwrap()
+});
 
 /// Convert column letter to index (A=0, B=1, ..., Z=25, AA=26, etc.)
 pub fn column_to_index(col: &str) -> usize {
@@ -375,8 +389,7 @@ fn evaluate_formula_internal(
     let mut processed = expression.to_string();
     
     // Replace range references (e.g., A1:B5) with arrays
-    let range_regex = regex::Regex::new(r"([A-Z]+\d+):([A-Z]+\d+)").unwrap();
-    while let Some(captures) = range_regex.captures(&processed.clone()) {
+    while let Some(captures) = RANGE_REGEX.captures(&processed) {
         let full_match = captures.get(0).unwrap().as_str();
         let values = get_cells_in_range(full_match, cells);
         let values_str = format!("[{}]", values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","));
@@ -384,8 +397,7 @@ fn evaluate_formula_internal(
     }
     
     // Replace function calls
-    let func_regex = regex::Regex::new(r"([A-Z]+)\s*\(([^)]*)\)").unwrap();
-    while let Some(captures) = func_regex.captures(&processed.clone()) {
+    while let Some(captures) = FUNC_REGEX.captures(&processed) {
         let func_name = captures.get(1).unwrap().as_str();
         let args_str = captures.get(2).unwrap().as_str();
         let full_match = captures.get(0).unwrap().as_str();
@@ -396,8 +408,7 @@ fn evaluate_formula_internal(
     }
     
     // Replace single cell references (e.g., A1, B2)
-    let cell_regex = regex::Regex::new(r"\b([A-Z]+)(\d+)\b").unwrap();
-    while let Some(captures) = cell_regex.captures(&processed.clone()) {
+    while let Some(captures) = CELL_REGEX.captures(&processed) {
         let full_match = captures.get(0).unwrap().as_str();
         
         if let Some((row, col)) = parse_cell_reference(full_match) {
