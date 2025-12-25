@@ -17,6 +17,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::io;
+use std::path::PathBuf;
 use tui_input::backend::crossterm::EventHandler;
 use tui_input::Input;
 
@@ -40,10 +41,13 @@ struct App {
     scroll_col: usize,
     should_quit: bool,
     numeric_multiplier: String,
+    undo_stack: Vec<CellMap>,
+    redo_stack: Vec<CellMap>,
+    csv_file: Option<PathBuf>,
 }
 
 impl App {
-    fn new() -> Self {
+    fn new(csv_file: Option<PathBuf>) -> Self {
         Self {
             cells: CellMap::new(),
             cursor_row: 0,
@@ -54,6 +58,9 @@ impl App {
             scroll_col: 0,
             should_quit: false,
             numeric_multiplier: String::new(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            csv_file,
         }
     }
 
@@ -109,6 +116,9 @@ impl App {
     }
 
     fn save_edit(&mut self) {
+        // Save current state to undo stack before making changes
+        self.push_undo_state();
+        
         let key = get_cell_key(self.cursor_row, self.cursor_col);
         let value = self.input.value().to_string();
         if value.is_empty() {
@@ -125,6 +135,88 @@ impl App {
         self.input.reset();
     }
 
+    fn push_undo_state(&mut self) {
+        self.undo_stack.push(self.cells.clone());
+        // Clear redo stack when a new action is performed
+        self.redo_stack.clear();
+    }
+
+    fn undo(&mut self) {
+        if let Some(prev_state) = self.undo_stack.pop() {
+            self.redo_stack.push(self.cells.clone());
+            self.cells = prev_state;
+        }
+    }
+
+    fn redo(&mut self) {
+        if let Some(next_state) = self.redo_stack.pop() {
+            self.undo_stack.push(self.cells.clone());
+            self.cells = next_state;
+        }
+    }
+
+    fn load_csv(&mut self) -> Result<()> {
+        if let Some(path) = &self.csv_file {
+            if path.exists() {
+                let mut reader = csv::ReaderBuilder::new()
+                    .has_headers(false)
+                    .from_path(path)?;
+
+                for (row_idx, result) in reader.records().enumerate() {
+                    if row_idx >= ROWS {
+                        break;
+                    }
+                    let record = result?;
+                    for (col_idx, field) in record.iter().enumerate() {
+                        if col_idx >= COLS {
+                            break;
+                        }
+                        if !field.is_empty() {
+                            let key = get_cell_key(row_idx, col_idx);
+                            self.cells.insert(key, field.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn save_csv(&self) -> Result<()> {
+        if let Some(path) = &self.csv_file {
+            let mut writer = csv::WriterBuilder::new()
+                .has_headers(false)
+                .from_path(path)?;
+
+            for row_idx in 0..ROWS {
+                let mut row_data = Vec::new();
+                let mut last_non_empty = 0;
+                
+                // Collect row data and track last non-empty cell
+                for col_idx in 0..COLS {
+                    let key = get_cell_key(row_idx, col_idx);
+                    let value = self.cells.get(&key).map(|s| s.as_str()).unwrap_or("");
+                    row_data.push(value);
+                    if !value.is_empty() {
+                        last_non_empty = col_idx;
+                    }
+                }
+                
+                // Only write rows that have at least one non-empty cell
+                if last_non_empty > 0 || !row_data[0].is_empty() {
+                    // Write only up to the last non-empty cell
+                    writer.write_record(&row_data[..=last_non_empty])?;
+                } else if row_idx == 0 {
+                    // Always write at least one empty row to create the file
+                    writer.write_record(&[""])?;
+                }
+            }
+            
+            writer.flush()?;
+        }
+        Ok(())
+    }
+
     fn handle_key_event(&mut self, key_code: KeyCode, modifiers: KeyModifiers) {
         match self.mode {
             Mode::View => self.handle_view_mode_key(key_code, modifiers),
@@ -137,6 +229,15 @@ impl App {
             match key_code {
                 KeyCode::Char('c') | KeyCode::Char('q') => {
                     self.should_quit = true;
+                }
+                KeyCode::Char('z') => {
+                    self.undo();
+                }
+                KeyCode::Char('y') => {
+                    self.redo();
+                }
+                KeyCode::Char('s') => {
+                    let _ = self.save_csv();
                 }
                 _ => {}
             }
@@ -166,6 +267,7 @@ impl App {
                 self.enter_edit_mode();
             }
             KeyCode::Delete | KeyCode::Backspace => {
+                self.push_undo_state();
                 let key = get_cell_key(self.cursor_row, self.cursor_col);
                 self.cells.remove(&key);
                 // Clear numeric multiplier on delete
@@ -202,6 +304,14 @@ impl App {
 }
 
 fn main() -> Result<()> {
+    // Parse command line arguments
+    let args: Vec<String> = std::env::args().collect();
+    let csv_file = if args.len() > 1 {
+        Some(PathBuf::from(&args[1]))
+    } else {
+        None
+    };
+
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -209,8 +319,11 @@ fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Create app
-    let mut app = App::new();
+    // Create app and load CSV if provided
+    let mut app = App::new(csv_file.clone());
+    if csv_file.is_some() {
+        let _ = app.load_csv();
+    }
 
     // Run app
     let result = run_app(&mut terminal, &mut app);
@@ -295,7 +408,7 @@ fn render_top_bar(f: &mut Frame, app: &App, area: Rect) -> Option<(u16, u16)> {
         if app.mode == Mode::Edit {
             "Edit Mode (Enter=Save, Esc=Cancel, Arrows=Move Cursor)"
         } else {
-            "View Mode (e/==Edit, 0-9+Arrow=Navigate with multiplier, q=Quit)"
+            "View Mode (e/==Edit, Ctrl+Z=Undo, Ctrl+Y=Redo, Ctrl+S=Save, q=Quit)"
         }
     );
 
@@ -430,10 +543,17 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
         Mode::Edit => "EDIT",
     };
 
+    let file_info = if let Some(path) = &app.csv_file {
+        format!(" | File: {}", path.display())
+    } else {
+        String::new()
+    };
+
     let status = format!(
-        " {} | Cell: {} | Functions: =SUM(A1:A10), =AVERAGE(A1:A10), =MIN, =MAX, =COUNT ",
+        " {} | Cell: {}{} | Functions: =SUM(A1:A10), =AVERAGE(A1:A10), =MIN, =MAX, =COUNT ",
         mode_text,
-        format_cell_reference(app.cursor_row, app.cursor_col)
+        format_cell_reference(app.cursor_row, app.cursor_col),
+        file_info
     );
 
     let paragraph = Paragraph::new(status)
@@ -448,7 +568,7 @@ mod tests {
 
     #[test]
     fn test_numeric_multiplier_basic() {
-        let mut app = App::new();
+        let mut app = App::new(None);
 
         // Set up initial position
         app.cursor_row = 5;
@@ -466,7 +586,7 @@ mod tests {
 
     #[test]
     fn test_numeric_multiplier_large() {
-        let mut app = App::new();
+        let mut app = App::new(None);
 
         // Set up initial position
         app.cursor_row = 10;
@@ -484,7 +604,7 @@ mod tests {
 
     #[test]
     fn test_numeric_multiplier_horizontal() {
-        let mut app = App::new();
+        let mut app = App::new(None);
 
         // Set up initial position
         app.cursor_row = 0;
@@ -502,7 +622,7 @@ mod tests {
 
     #[test]
     fn test_numeric_multiplier_boundary() {
-        let mut app = App::new();
+        let mut app = App::new(None);
 
         // Set up initial position at bottom
         app.cursor_row = 95;
@@ -520,7 +640,7 @@ mod tests {
 
     #[test]
     fn test_no_multiplier() {
-        let mut app = App::new();
+        let mut app = App::new(None);
 
         // Set up initial position
         app.cursor_row = 5;
@@ -534,7 +654,7 @@ mod tests {
 
     #[test]
     fn test_input_widget_integration() {
-        let mut app = App::new();
+        let mut app = App::new(None);
 
         // Enter edit mode
         app.enter_edit_mode();
@@ -555,7 +675,7 @@ mod tests {
 
     #[test]
     fn test_start_formula_clears_multiplier() {
-        let mut app = App::new();
+        let mut app = App::new(None);
 
         // Set numeric multiplier
         app.numeric_multiplier = "123".to_string();
@@ -570,7 +690,7 @@ mod tests {
 
     #[test]
     fn test_enter_edit_mode_clears_multiplier() {
-        let mut app = App::new();
+        let mut app = App::new(None);
 
         // Set numeric multiplier
         app.numeric_multiplier = "456".to_string();
@@ -584,7 +704,7 @@ mod tests {
 
     #[test]
     fn test_numeric_multiplier_max_value() {
-        let mut app = App::new();
+        let mut app = App::new(None);
 
         // Set up initial position
         app.cursor_row = 0;
@@ -602,7 +722,7 @@ mod tests {
     
     #[test]
     fn test_cursor_position_in_edit_mode() {
-        let mut app = App::new();
+        let mut app = App::new(None);
         
         // Enter edit mode
         app.enter_edit_mode();
@@ -622,7 +742,7 @@ mod tests {
     
     #[test]
     fn test_cursor_position_with_long_text() {
-        let mut app = App::new();
+        let mut app = App::new(None);
         
         // Enter edit mode properly
         app.enter_edit_mode();
@@ -642,5 +762,122 @@ mod tests {
         // The visible cursor position should be within the width
         let visible_cursor = cursor_pos.saturating_sub(scroll);
         assert!(visible_cursor <= 20);
+    }
+
+    #[test]
+    fn test_undo_redo() {
+        let mut app = App::new(None);
+        
+        // Initially, undo and redo should do nothing
+        app.undo();
+        assert_eq!(app.cells.len(), 0);
+        app.redo();
+        assert_eq!(app.cells.len(), 0);
+        
+        // Save initial empty state
+        app.push_undo_state();
+        
+        // Add a value
+        let key1 = get_cell_key(0, 0);
+        app.cells.insert(key1.clone(), "10".to_string());
+        app.push_undo_state();
+        
+        // Add another value
+        let key2 = get_cell_key(1, 1);
+        app.cells.insert(key2.clone(), "20".to_string());
+        
+        // Current state: cells = [key1, key2]
+        // Undo stack: [empty, [key1]]
+        // Redo stack: []
+        
+        // Undo should restore previous state (with just key1)
+        app.undo();
+        // Now: cells = [key1], undo_stack = [empty], redo_stack = [[key1, key2]]
+        assert_eq!(app.cells.len(), 1);
+        assert_eq!(app.cells.get(&key1).unwrap(), "10");
+        assert!(!app.cells.contains_key(&key2));
+        
+        // Undo again should restore initial empty state
+        app.undo();
+        // Now: cells = empty, undo_stack = [], redo_stack = [[key1, key2], [key1]]
+        assert_eq!(app.cells.len(), 0);
+        
+        // Redo should restore [key1]
+        app.redo();
+        // Now: cells = [key1], undo_stack = [empty], redo_stack = [[key1, key2]]
+        assert_eq!(app.cells.len(), 1);
+        assert_eq!(app.cells.get(&key1).unwrap(), "10");
+        assert!(!app.cells.contains_key(&key2));
+        
+        // Redo again should restore [key1, key2]
+        app.redo();
+        // Now: cells = [key1, key2], undo_stack = [empty, [key1]], redo_stack = []
+        assert_eq!(app.cells.len(), 2);
+        assert_eq!(app.cells.get(&key1).unwrap(), "10");
+        assert_eq!(app.cells.get(&key2).unwrap(), "20");
+    }
+
+    #[test]
+    fn test_undo_clears_redo_stack() {
+        let mut app = App::new(None);
+        
+        // Add a value
+        let key1 = get_cell_key(0, 0);
+        app.cells.insert(key1.clone(), "10".to_string());
+        app.push_undo_state();
+        
+        // Add another value
+        let key2 = get_cell_key(1, 1);
+        app.cells.insert(key2.clone(), "20".to_string());
+        app.push_undo_state();
+        
+        // Undo once
+        app.undo();
+        assert_eq!(app.redo_stack.len(), 1);
+        
+        // Make a new change - should clear redo stack
+        let key3 = get_cell_key(2, 2);
+        app.cells.insert(key3, "30".to_string());
+        app.push_undo_state();
+        
+        assert_eq!(app.redo_stack.len(), 0);
+    }
+
+    #[test]
+    fn test_csv_save_load() {
+        use std::fs;
+        
+        let temp_file = PathBuf::from("/tmp/test_spreadsheet.csv");
+        
+        // Clean up if file exists
+        let _ = fs::remove_file(&temp_file);
+        
+        // Create app with CSV file
+        let mut app = App::new(Some(temp_file.clone()));
+        
+        // Add some data
+        app.cells.insert(get_cell_key(0, 0), "10".to_string());
+        app.cells.insert(get_cell_key(0, 1), "20".to_string());
+        app.cells.insert(get_cell_key(1, 0), "30".to_string());
+        app.cells.insert(get_cell_key(1, 1), "=A1+B1".to_string());
+        
+        // Save CSV
+        let result = app.save_csv();
+        assert!(result.is_ok());
+        assert!(temp_file.exists());
+        
+        // Create a new app and load the CSV
+        let mut app2 = App::new(Some(temp_file.clone()));
+        let load_result = app2.load_csv();
+        assert!(load_result.is_ok());
+        
+        // Verify data was loaded correctly
+        assert_eq!(app2.cells.get(&get_cell_key(0, 0)).unwrap(), "10");
+        assert_eq!(app2.cells.get(&get_cell_key(0, 1)).unwrap(), "20");
+        assert_eq!(app2.cells.get(&get_cell_key(1, 0)).unwrap(), "30");
+        assert_eq!(app2.cells.get(&get_cell_key(1, 1)).unwrap(), "=A1+B1");
+        
+        // Clean up
+        let _ = fs::remove_file(&temp_file);
     }
 }
