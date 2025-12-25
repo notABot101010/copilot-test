@@ -1,9 +1,23 @@
 mod calc;
 
-use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
+use std::env;
+
+use rustyline::{error::ReadlineError, DefaultEditor};
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    if args.len() > 1 {
+        match calc::evaluate(args[1..].join(" ").as_str()) {
+            Ok(result) => {
+                println!("{}", result);
+            }
+            Err(err) => {
+                eprintln!("Error: {}", err);
+            }
+        }
+        return;
+    }
+
     println!("Terminal Calculator");
     println!("Supports: +, -, *, /, %, ^ (power), and parentheses");
     println!("Use arrow keys to navigate history. Press Ctrl+C or Ctrl+D to exit.\n");
@@ -15,7 +29,7 @@ fn main() {
         match readline {
             Ok(line) => {
                 let line = line.trim();
-                
+
                 if line.is_empty() {
                     continue;
                 }
@@ -33,11 +47,9 @@ fn main() {
                 }
             }
             Err(ReadlineError::Interrupted) => {
-                println!("Interrupted (Ctrl+C)");
                 break;
             }
             Err(ReadlineError::Eof) => {
-                println!("EOF (Ctrl+D)");
                 break;
             }
             Err(err) => {

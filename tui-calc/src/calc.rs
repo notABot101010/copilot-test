@@ -74,7 +74,9 @@ impl Lexer {
                 break;
             }
 
-            let ch = self.current().ok_or_else(|| anyhow!("Unexpected end of input"))?;
+            let ch = self
+                .current()
+                .ok_or_else(|| anyhow!("Unexpected end of input"))?;
 
             match ch {
                 '0'..='9' => {
@@ -207,11 +209,12 @@ impl Parser {
         if let Some(Token::Power) = self.current() {
             self.advance();
             let right = self.parse_power()?; // Right associative
-            
+
             // Convert BigInt to u32 for exponentiation
-            let exp_u32: u32 = right.try_into()
+            let exp_u32: u32 = right
+                .try_into()
                 .map_err(|_| anyhow!("Exponent must be a non-negative integer that fits in u32"))?;
-            
+
             left = left.pow(exp_u32);
         }
 
