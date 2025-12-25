@@ -330,9 +330,9 @@ fn render_top_bar(f: &mut Frame, app: &App, area: Rect) -> Option<(u16, u16)> {
         let cursor_offset = app.input.visual_cursor();
         let prefix_len = prefix.len() as u16;
         
-        // The cursor position is: inner.x + prefix_len + (cursor_offset - scroll)
-        // But we need to account for the scroll affecting the entire text
-        let cursor_x = inner.x + prefix_len + (cursor_offset.saturating_sub(scroll)) as u16;
+        // The cursor position accounts for scroll affecting the entire text (prefix + input)
+        // When scroll > 0, both prefix and input are shifted left
+        let cursor_x = inner.x + (prefix_len + cursor_offset as u16).saturating_sub(scroll as u16);
         let cursor_y = inner.y;
         
         // Make sure cursor is within bounds
@@ -619,8 +619,10 @@ mod tests {
     fn test_cursor_position_with_long_text() {
         let mut app = App::new();
         
-        // Enter edit mode with long text
-        app.mode = Mode::Edit;
+        // Enter edit mode properly
+        app.enter_edit_mode();
+        
+        // Set long text
         let long_text = "This is a very long text that will require scrolling";
         app.input = Input::new(long_text.to_string());
         
