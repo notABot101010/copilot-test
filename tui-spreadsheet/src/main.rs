@@ -267,8 +267,13 @@ fn ui(f: &mut Frame, app: &mut App) {
     // Adjust scroll position
     app.adjust_scroll(visible_rows, visible_cols);
 
-    // Render top bar
-    render_top_bar(f, app, chunks[0]);
+    // Render top bar and get cursor position if in edit mode
+    let cursor_pos = render_top_bar(f, app, chunks[0]);
+    
+    // Set cursor position if in edit mode
+    if let Some((x, y)) = cursor_pos {
+        f.set_cursor_position((x, y));
+    }
 
     // Render grid
     render_grid(f, app, chunks[1], visible_rows, visible_cols);
@@ -277,15 +282,8 @@ fn ui(f: &mut Frame, app: &mut App) {
     render_status_bar(f, app, chunks[2]);
 }
 
-fn render_top_bar(f: &mut Frame, app: &App, area: Rect) {
+fn render_top_bar(f: &mut Frame, app: &App, area: Rect) -> Option<(u16, u16)> {
     let cell_ref = format_cell_reference(app.cursor_row, app.cursor_col);
-
-    let display_value = if app.mode == Mode::Edit {
-        app.input.value()
-    } else {
-        let key = get_cell_key(app.cursor_row, app.cursor_col);
-        app.cells.get(&key).map(|s| s.as_str()).unwrap_or("")
-    };
 
     let multiplier_text = if !app.numeric_multiplier.is_empty() {
         format!(" [{}x]", app.numeric_multiplier)
@@ -293,25 +291,67 @@ fn render_top_bar(f: &mut Frame, app: &App, area: Rect) {
         String::new()
     };
 
-    let text = format!("{}{} | fx: {}", cell_ref, multiplier_text, display_value);
+    let block = Block::default().borders(Borders::ALL).title(
+        if app.mode == Mode::Edit {
+            "Edit Mode (Enter=Save, Esc=Cancel, Arrows=Move Cursor)"
+        } else {
+            "View Mode (e/==Edit, 0-9+Arrow=Navigate with multiplier, q=Quit)"
+        }
+    );
 
-    let style = if app.mode == Mode::Edit {
-        Style::default().fg(Color::Yellow)
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    // Render the prefix and input value
+    let prefix = format!("{}{} | fx: ", cell_ref, multiplier_text);
+    
+    if app.mode == Mode::Edit {
+        // In edit mode, render with cursor position calculation
+        let input_value = app.input.value();
+        let text = format!("{}{}", prefix, input_value);
+        
+        let style = Style::default().fg(Color::Yellow);
+        
+        // Calculate scroll for the input portion
+        let available_width = inner.width.saturating_sub(prefix.len() as u16) as usize;
+        let scroll = if available_width > 0 {
+            app.input.visual_scroll(available_width)
+        } else {
+            0
+        };
+        
+        let paragraph = Paragraph::new(text)
+            .style(style)
+            .scroll((0, scroll as u16));
+        
+        f.render_widget(paragraph, inner);
+        
+        // Calculate cursor position
+        let cursor_offset = app.input.visual_cursor();
+        let prefix_len = prefix.len() as u16;
+        
+        // The cursor position is: inner.x + prefix_len + (cursor_offset - scroll)
+        // But we need to account for the scroll affecting the entire text
+        let cursor_x = inner.x + prefix_len + (cursor_offset.saturating_sub(scroll)) as u16;
+        let cursor_y = inner.y;
+        
+        // Make sure cursor is within bounds
+        if cursor_x < inner.x + inner.width && cursor_y < inner.y + inner.height {
+            return Some((cursor_x, cursor_y));
+        }
     } else {
-        Style::default().fg(Color::White)
-    };
-
-    let paragraph = Paragraph::new(text)
-        .style(style)
-        .block(Block::default().borders(Borders::ALL).title(
-            if app.mode == Mode::Edit {
-                "Edit Mode (Enter=Save, Esc=Cancel, Arrows=Move Cursor)"
-            } else {
-                "View Mode (e/==Edit, 0-9+Arrow=Navigate with multiplier, q=Quit)"
-            }
-        ));
-
-    f.render_widget(paragraph, area);
+        // In view mode, just render the text normally
+        let key = get_cell_key(app.cursor_row, app.cursor_col);
+        let display_value = app.cells.get(&key).map(|s| s.as_str()).unwrap_or("");
+        let text = format!("{}{}", prefix, display_value);
+        
+        let style = Style::default().fg(Color::White);
+        let paragraph = Paragraph::new(text).style(style);
+        
+        f.render_widget(paragraph, inner);
+    }
+    
+    None
 }
 
 fn render_grid(f: &mut Frame, app: &App, area: Rect, visible_rows: usize, visible_cols: usize) {
