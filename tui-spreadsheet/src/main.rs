@@ -60,7 +60,8 @@ impl App {
     fn move_cursor(&mut self, row_delta: i32, col_delta: i32) {
         // Apply numeric multiplier if present
         let multiplier = if !self.numeric_multiplier.is_empty() {
-            self.numeric_multiplier.parse::<i32>().unwrap_or(1)
+            // Parse multiplier, clamping to reasonable values
+            self.numeric_multiplier.parse::<i32>().unwrap_or(1).clamp(1, 1000)
         } else {
             1
         };
@@ -171,8 +172,10 @@ impl App {
                 self.numeric_multiplier.clear();
             }
             KeyCode::Char(c) if c.is_ascii_digit() => {
-                // Accumulate numeric multiplier
-                self.numeric_multiplier.push(c);
+                // Accumulate numeric multiplier (limit to 4 digits to prevent overflow)
+                if self.numeric_multiplier.len() < 4 {
+                    self.numeric_multiplier.push(c);
+                }
             }
             _ => {
                 // Clear numeric multiplier on any other key
@@ -532,5 +535,23 @@ mod tests {
         
         assert_eq!(app.mode, Mode::Edit);
         assert_eq!(app.numeric_multiplier, ""); // Should be cleared
+    }
+
+    #[test]
+    fn test_numeric_multiplier_max_value() {
+        let mut app = App::new();
+        
+        // Set up initial position
+        app.cursor_row = 0;
+        app.cursor_col = 0;
+        
+        // Type a very large numeric multiplier (should be clamped to 1000)
+        app.numeric_multiplier = "5000".to_string();
+        
+        // Move down with multiplier
+        app.move_cursor(1, 0);
+        
+        // Should move by max 1000 cells, clamped to ROWS-1
+        assert_eq!(app.cursor_row, ROWS - 1);
     }
 }
