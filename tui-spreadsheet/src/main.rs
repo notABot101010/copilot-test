@@ -65,13 +65,13 @@ impl App {
         } else {
             1
         };
-        
+
         let new_row = (self.cursor_row as i32 + row_delta * multiplier).clamp(0, ROWS as i32 - 1) as usize;
         let new_col = (self.cursor_col as i32 + col_delta * multiplier).clamp(0, COLS as i32 - 1) as usize;
-        
+
         self.cursor_row = new_row;
         self.cursor_col = new_col;
-        
+
         // Clear the numeric multiplier after use
         self.numeric_multiplier.clear();
     }
@@ -83,7 +83,7 @@ impl App {
         } else if self.cursor_row >= self.scroll_row + visible_rows {
             self.scroll_row = self.cursor_row - visible_rows + 1;
         }
-        
+
         // Adjust horizontal scroll
         if self.cursor_col < self.scroll_col {
             self.scroll_col = self.cursor_col;
@@ -162,7 +162,7 @@ impl App {
             KeyCode::Char('=') => {
                 self.start_formula();
             }
-            KeyCode::Char('e') | KeyCode::Enter => {
+            KeyCode::Char('e') | KeyCode::Char('i') | KeyCode::Enter => {
                 self.enter_edit_mode();
             }
             KeyCode::Delete | KeyCode::Backspace => {
@@ -279,7 +279,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 
 fn render_top_bar(f: &mut Frame, app: &App, area: Rect) {
     let cell_ref = format_cell_reference(app.cursor_row, app.cursor_col);
-    
+
     let display_value = if app.mode == Mode::Edit {
         app.input.value()
     } else {
@@ -294,7 +294,7 @@ fn render_top_bar(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let text = format!("{}{} | fx: {}", cell_ref, multiplier_text, display_value);
-    
+
     let style = if app.mode == Mode::Edit {
         Style::default().fg(Color::Yellow)
     } else {
@@ -334,22 +334,22 @@ fn render_grid(f: &mut Frame, app: &App, area: Rect, visible_rows: usize, visibl
 
     // Create data rows
     let mut rows = vec![header];
-    
+
     for row_idx in app.scroll_row..(app.scroll_row + visible_rows).min(ROWS) {
         let mut row_cells = vec![
             Cell::from((row_idx + 1).to_string())
                 .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
         ];
-        
+
         for col_idx in app.scroll_col..(app.scroll_col + visible_cols).min(COLS) {
             let is_cursor = row_idx == app.cursor_row && col_idx == app.cursor_col;
-            
+
             let display_value = if is_cursor && app.mode == Mode::Edit {
                 app.input.value().to_string()
             } else {
                 get_computed_value(row_idx, col_idx, &app.cells)
             };
-            
+
             let style = if is_cursor {
                 Style::default()
                     .bg(Color::Blue)
@@ -360,10 +360,10 @@ fn render_grid(f: &mut Frame, app: &App, area: Rect, visible_rows: usize, visibl
             } else {
                 Style::default().fg(Color::White)
             };
-            
+
             row_cells.push(Cell::from(display_value).style(style));
         }
-        
+
         rows.push(Row::new(row_cells).height(1));
     }
 
@@ -384,7 +384,7 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
         Mode::View => "VIEW",
         Mode::Edit => "EDIT",
     };
-    
+
     let status = format!(
         " {} | Cell: {} | Functions: =SUM(A1:A10), =AVERAGE(A1:A10), =MIN, =MAX, =COUNT ",
         mode_text,
@@ -404,17 +404,17 @@ mod tests {
     #[test]
     fn test_numeric_multiplier_basic() {
         let mut app = App::new();
-        
+
         // Set up initial position
         app.cursor_row = 5;
         app.cursor_col = 5;
-        
+
         // Type numeric multiplier
         app.numeric_multiplier = "3".to_string();
-        
+
         // Move down with multiplier
         app.move_cursor(1, 0);
-        
+
         assert_eq!(app.cursor_row, 8); // 5 + 3*1 = 8
         assert_eq!(app.numeric_multiplier, ""); // Should be cleared
     }
@@ -422,17 +422,17 @@ mod tests {
     #[test]
     fn test_numeric_multiplier_large() {
         let mut app = App::new();
-        
+
         // Set up initial position
         app.cursor_row = 10;
         app.cursor_col = 0;
-        
+
         // Type large numeric multiplier
         app.numeric_multiplier = "50".to_string();
-        
+
         // Move down with multiplier
         app.move_cursor(1, 0);
-        
+
         assert_eq!(app.cursor_row, 60); // 10 + 50*1 = 60
         assert_eq!(app.numeric_multiplier, ""); // Should be cleared
     }
@@ -440,17 +440,17 @@ mod tests {
     #[test]
     fn test_numeric_multiplier_horizontal() {
         let mut app = App::new();
-        
+
         // Set up initial position
         app.cursor_row = 0;
         app.cursor_col = 2;
-        
+
         // Type numeric multiplier
         app.numeric_multiplier = "10".to_string();
-        
+
         // Move right with multiplier
         app.move_cursor(0, 1);
-        
+
         assert_eq!(app.cursor_col, 12); // 2 + 10*1 = 12
         assert_eq!(app.numeric_multiplier, ""); // Should be cleared
     }
@@ -458,17 +458,17 @@ mod tests {
     #[test]
     fn test_numeric_multiplier_boundary() {
         let mut app = App::new();
-        
+
         // Set up initial position at bottom
         app.cursor_row = 95;
         app.cursor_col = 20;
-        
+
         // Type numeric multiplier that would exceed bounds
         app.numeric_multiplier = "100".to_string();
-        
+
         // Move down with multiplier - should clamp to max
         app.move_cursor(1, 0);
-        
+
         assert_eq!(app.cursor_row, ROWS - 1); // Should be clamped to max
         assert_eq!(app.numeric_multiplier, ""); // Should be cleared
     }
@@ -476,33 +476,33 @@ mod tests {
     #[test]
     fn test_no_multiplier() {
         let mut app = App::new();
-        
+
         // Set up initial position
         app.cursor_row = 5;
         app.cursor_col = 5;
-        
+
         // Move without multiplier
         app.move_cursor(1, 0);
-        
+
         assert_eq!(app.cursor_row, 6); // 5 + 1*1 = 6
     }
 
     #[test]
     fn test_input_widget_integration() {
         let mut app = App::new();
-        
+
         // Enter edit mode
         app.enter_edit_mode();
-        
+
         assert_eq!(app.mode, Mode::Edit);
         assert_eq!(app.input.value(), "");
-        
+
         // Set a value in input
         app.input = Input::new("test value".to_string());
-        
+
         // Save edit
         app.save_edit();
-        
+
         assert_eq!(app.mode, Mode::View);
         let key = get_cell_key(0, 0);
         assert_eq!(app.cells.get(&key).unwrap(), "test value");
@@ -511,13 +511,13 @@ mod tests {
     #[test]
     fn test_start_formula_clears_multiplier() {
         let mut app = App::new();
-        
+
         // Set numeric multiplier
         app.numeric_multiplier = "123".to_string();
-        
+
         // Start formula
         app.start_formula();
-        
+
         assert_eq!(app.mode, Mode::Edit);
         assert_eq!(app.input.value(), "=");
         assert_eq!(app.numeric_multiplier, ""); // Should be cleared
@@ -526,13 +526,13 @@ mod tests {
     #[test]
     fn test_enter_edit_mode_clears_multiplier() {
         let mut app = App::new();
-        
+
         // Set numeric multiplier
         app.numeric_multiplier = "456".to_string();
-        
+
         // Enter edit mode
         app.enter_edit_mode();
-        
+
         assert_eq!(app.mode, Mode::Edit);
         assert_eq!(app.numeric_multiplier, ""); // Should be cleared
     }
@@ -540,17 +540,17 @@ mod tests {
     #[test]
     fn test_numeric_multiplier_max_value() {
         let mut app = App::new();
-        
+
         // Set up initial position
         app.cursor_row = 0;
         app.cursor_col = 0;
-        
+
         // Type a very large numeric multiplier (should be clamped to 1000)
         app.numeric_multiplier = "5000".to_string();
-        
+
         // Move down with multiplier
         app.move_cursor(1, 0);
-        
+
         // Should move by max 1000 cells, clamped to ROWS-1
         assert_eq!(app.cursor_row, ROWS - 1);
     }
