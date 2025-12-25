@@ -1,12 +1,13 @@
 # TUI Calculator
 
-A terminal-based calculator written in Rust that supports arbitrary large numbers and expression evaluation.
+A terminal-based calculator written in Rust that supports floating-point arithmetic and expression evaluation.
 
 ## Features
 
 - **REPL Interface**: Interactive command-line interface with a `> ` prompt
 - **History Navigation**: Use arrow keys (↑/↓) to navigate through expression history
-- **Arbitrary Large Numbers**: Handles arbitrarily large integers using BigInt
+- **Floating-Point Support**: Handles decimal numbers with standard f64 precision
+- **Smart Formatting**: Displays integers without decimal points (e.g., `1 + 2 = 3`) and floats with decimals (e.g., `1.5 + 1.5 = 3.0`)
 - **Comprehensive Operations**:
   - Addition (`+`)
   - Subtraction (`-`)
@@ -47,8 +48,14 @@ cargo run
 > (2 + 3) * 4
 20
 
-> 999999999999999999 + 1
-1000000000000000000
+> 1.5 + 1.5
+3.0
+
+> 5 / 2
+2.5
+
+> 10.5 - 5.5
+5.0
 
 > 5 / 0
 Error: Division by zero
@@ -88,6 +95,6 @@ The project is divided into two main files:
 - `calc.rs`: Contains the expression evaluator with lexer and parser
 
 The expression evaluator uses:
-- **Lexer**: Tokenizes the input string into tokens
+- **Lexer**: Tokenizes the input string into tokens (including decimal numbers)
 - **Recursive Descent Parser**: Parses tokens respecting operator precedence
-- **BigInt Evaluation**: Evaluates the parsed expression using arbitrary precision integers
+- **f64 Evaluation**: Evaluates the parsed expression using 64-bit floating-point arithmetic
