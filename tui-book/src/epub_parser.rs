@@ -75,6 +75,10 @@ pub fn parse_epub<P: AsRef<Path>>(path: P) -> Result<BookContent> {
     })
 }
 
+fn is_block_element(tag_name: &str) -> bool {
+    matches!(tag_name, "p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
+}
+
 fn strip_html_tags(html: &str) -> String {
     let mut result = String::new();
     let mut inside_script_or_style = false;
@@ -99,9 +103,7 @@ fn strip_html_tags(html: &str) -> String {
                 }
                 if tag_name == "script" || tag_name == "style" {
                     inside_script_or_style = false;
-                } else if tag_name == "p" || tag_name == "div" || 
-                          tag_name == "h1" || tag_name == "h2" || tag_name == "h3" || 
-                          tag_name == "h4" || tag_name == "h5" || tag_name == "h6" {
+                } else if is_block_element(&tag_name) {
                     // Add paragraph break after block element closes
                     if !result.ends_with("\n\n") && !result.ends_with('\n') {
                         result.push_str("\n\n");
@@ -122,9 +124,7 @@ fn strip_html_tags(html: &str) -> String {
                 // Handle line breaks and block elements
                 if tag_name == "br" {
                     result.push('\n');
-                } else if tag_name == "p" || tag_name == "div" || tag_name == "h1" || 
-                          tag_name == "h2" || tag_name == "h3" || tag_name == "h4" || 
-                          tag_name == "h5" || tag_name == "h6" {
+                } else if is_block_element(&tag_name) {
                     // Add paragraph break before block element
                     if !result.is_empty() && !result.ends_with("\n\n") {
                         result.push_str("\n\n");
