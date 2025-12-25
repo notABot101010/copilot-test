@@ -1,0 +1,16 @@
+[package]
+name = "tui-book"
+version = "0.1.0"
+edition = "2021"
+description = "A terminal-based EPUB book reader using ratatui"
+license = "MIT"
+
+[[bin]]
+name = "tui-book"
+path = "src/main.rs"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+anyhow = "1.0"
+epub = "2.1"
