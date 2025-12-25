@@ -17,24 +17,35 @@ pub struct BookContent {
 pub fn parse_epub<P: AsRef<Path>>(path: P) -> Result<BookContent> {
     let mut doc = EpubDoc::new(path).context("Failed to open EPUB file")?;
 
+    // Extract title, handling metadata properly
     let title = doc.mdata("title")
-        .map(|item| format!("{:?}", item))
+        .and_then(|item| {
+            // MetadataItem may have multiple formats, try to extract cleanly
+            let debug_str = format!("{:?}", item);
+            // Strip debug formatting artifacts like quotes
+            Some(debug_str.trim_matches('"').to_string())
+        })
         .unwrap_or_else(|| "Unknown Title".to_string());
 
     // Extract table of contents
     let mut toc = Vec::new();
     let toc_data = doc.toc.clone();
+    let num_chapters = doc.get_num_chapters();
     
     for (index, nav_point) in toc_data.iter().enumerate() {
         toc.push(TocEntry {
             title: nav_point.label.clone(),
-            section_index: index.min(doc.get_num_chapters() - 1),
+            section_index: if num_chapters > 0 {
+                index.min(num_chapters - 1)
+            } else {
+                0
+            },
         });
     }
 
     // If TOC is empty, create default entries based on spine
-    if toc.is_empty() {
-        for i in 0..doc.get_num_chapters() {
+    if toc.is_empty() && num_chapters > 0 {
+        for i in 0..num_chapters {
             toc.push(TocEntry {
                 title: format!("Section {}", i + 1),
                 section_index: i,
@@ -44,9 +55,8 @@ pub fn parse_epub<P: AsRef<Path>>(path: P) -> Result<BookContent> {
 
     // Extract content from all sections
     let mut sections = Vec::new();
-    let num_pages = doc.get_num_chapters();
     
-    for i in 0..num_pages {
+    for i in 0..num_chapters {
         doc.set_current_chapter(i);
         
         if let Some((content_bytes, _mime)) = doc.get_current_str() {
