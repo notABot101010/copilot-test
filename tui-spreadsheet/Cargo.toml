@@ -1,0 +1,16 @@
+[package]
+name = "tui-spreadsheet"
+version = "0.1.0"
+edition = "2021"
+description = "A terminal-based spreadsheet application using ratatui"
+license = "MIT"
+
+[[bin]]
+name = "tui-spreadsheet"
+path = "src/main.rs"
+
+[dependencies]
+ratatui = "0.29"
+crossterm = "0.28"
+anyhow = "1.0"
+regex = "1.11"
