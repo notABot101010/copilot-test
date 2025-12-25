@@ -2,7 +2,7 @@ mod formula;
 
 use anyhow::Result;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{self, DisableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -118,7 +118,7 @@ impl App {
     fn save_edit(&mut self) {
         // Save current state to undo stack before making changes
         self.push_undo_state();
-        
+
         let key = get_cell_key(self.cursor_row, self.cursor_col);
         let value = self.input.value().to_string();
         if value.is_empty() {
@@ -191,11 +191,11 @@ impl App {
                 .from_path(path)?;
 
             let mut has_any_data = false;
-            
+
             for row_idx in 0..ROWS {
                 let mut row_data = Vec::new();
                 let mut last_non_empty_col = None;
-                
+
                 // Collect row data and track last non-empty cell
                 for col_idx in 0..COLS {
                     let key = get_cell_key(row_idx, col_idx);
@@ -205,7 +205,7 @@ impl App {
                         last_non_empty_col = Some(col_idx);
                     }
                 }
-                
+
                 // Only write rows that have at least one non-empty cell
                 if let Some(last_col) = last_non_empty_col {
                     // Write only up to the last non-empty cell
@@ -213,12 +213,12 @@ impl App {
                     has_any_data = true;
                 }
             }
-            
+
             // If no data was written at all, write an empty row to create a valid CSV file
             if !has_any_data {
                 writer.write_record(&[""])?;
             }
-            
+
             writer.flush()?;
         }
         Ok(())
@@ -322,7 +322,7 @@ fn main() -> Result<()> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -389,7 +389,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     // Render top bar and get cursor position if in edit mode
     let cursor_pos = render_top_bar(f, app, chunks[0]);
-    
+
     // Set cursor position if in edit mode
     if let Some((x, y)) = cursor_pos {
         f.set_cursor_position((x, y));
@@ -424,14 +424,14 @@ fn render_top_bar(f: &mut Frame, app: &App, area: Rect) -> Option<(u16, u16)> {
 
     // Render the prefix and input value
     let prefix = format!("{}{} | fx: ", cell_ref, multiplier_text);
-    
+
     if app.mode == Mode::Edit {
         // In edit mode, render with cursor position calculation
         let input_value = app.input.value();
         let text = format!("{}{}", prefix, input_value);
-        
+
         let style = Style::default().fg(Color::Yellow);
-        
+
         // Calculate scroll for the input portion
         // Note: prefix is always short (cell ref + multiplier + " | fx: "), so casting is safe
         let prefix_len_u16 = prefix.len() as u16;
@@ -445,21 +445,21 @@ fn render_top_bar(f: &mut Frame, app: &App, area: Rect) -> Option<(u16, u16)> {
         } else {
             0
         };
-        
+
         let paragraph = Paragraph::new(text)
             .style(style)
             .scroll((0, scroll as u16));
-        
+
         f.render_widget(paragraph, inner);
-        
+
         // Calculate cursor position
         let cursor_offset = app.input.visual_cursor();
-        
+
         // The cursor position accounts for scroll affecting the entire text (prefix + input)
         // When scroll > 0, both prefix and input are shifted left
         let cursor_x = inner.x + (prefix_len_u16 + cursor_offset as u16).saturating_sub(scroll as u16);
         let cursor_y = inner.y;
-        
+
         // Make sure cursor is within bounds (only need to check x-coordinate)
         if cursor_x >= inner.x && cursor_x < inner.x + inner.width {
             return Some((cursor_x, cursor_y));
@@ -469,13 +469,13 @@ fn render_top_bar(f: &mut Frame, app: &App, area: Rect) -> Option<(u16, u16)> {
         let key = get_cell_key(app.cursor_row, app.cursor_col);
         let display_value = app.cells.get(&key).map(|s| s.as_str()).unwrap_or("");
         let text = format!("{}{}", prefix, display_value);
-        
+
         let style = Style::default().fg(Color::White);
         let paragraph = Paragraph::new(text).style(style);
-        
+
         f.render_widget(paragraph, inner);
     }
-    
+
     None
 }
 
@@ -726,46 +726,46 @@ mod tests {
         // Should move by max 1000 cells, clamped to ROWS-1
         assert_eq!(app.cursor_row, ROWS - 1);
     }
-    
+
     #[test]
     fn test_cursor_position_in_edit_mode() {
         let mut app = App::new(None);
-        
+
         // Enter edit mode
         app.enter_edit_mode();
         assert_eq!(app.mode, Mode::Edit);
-        
+
         // Type some text
         app.input = Input::new("Hello".to_string());
-        
+
         // The cursor should be at the end of the text
         let cursor_pos = app.input.visual_cursor();
         assert_eq!(cursor_pos, 5); // "Hello" has 5 characters
-        
+
         // Test that visual_scroll returns 0 for short text
         let scroll = app.input.visual_scroll(50);
         assert_eq!(scroll, 0);
     }
-    
+
     #[test]
     fn test_cursor_position_with_long_text() {
         let mut app = App::new(None);
-        
+
         // Enter edit mode properly
         app.enter_edit_mode();
-        
+
         // Set long text
         let long_text = "This is a very long text that will require scrolling";
         app.input = Input::new(long_text.to_string());
-        
+
         // The cursor should be at the end
         let cursor_pos = app.input.visual_cursor();
         assert_eq!(cursor_pos, long_text.len());
-        
+
         // With a narrow width, it should scroll
         let scroll = app.input.visual_scroll(20);
         assert!(scroll > 0);
-        
+
         // The visible cursor position should be within the width
         let visible_cursor = cursor_pos.saturating_sub(scroll);
         assert!(visible_cursor <= 20);
@@ -774,48 +774,48 @@ mod tests {
     #[test]
     fn test_undo_redo() {
         let mut app = App::new(None);
-        
+
         // Initially, undo and redo should do nothing
         app.undo();
         assert_eq!(app.cells.len(), 0);
         app.redo();
         assert_eq!(app.cells.len(), 0);
-        
+
         // Save initial empty state
         app.push_undo_state();
-        
+
         // Add a value
         let key1 = get_cell_key(0, 0);
         app.cells.insert(key1.clone(), "10".to_string());
         app.push_undo_state();
-        
+
         // Add another value
         let key2 = get_cell_key(1, 1);
         app.cells.insert(key2.clone(), "20".to_string());
-        
+
         // Current state: cells = [key1, key2]
         // Undo stack: [empty, [key1]]
         // Redo stack: []
-        
+
         // Undo should restore previous state (with just key1)
         app.undo();
         // Now: cells = [key1], undo_stack = [empty], redo_stack = [[key1, key2]]
         assert_eq!(app.cells.len(), 1);
         assert_eq!(app.cells.get(&key1).unwrap(), "10");
         assert!(!app.cells.contains_key(&key2));
-        
+
         // Undo again should restore initial empty state
         app.undo();
         // Now: cells = empty, undo_stack = [], redo_stack = [[key1, key2], [key1]]
         assert_eq!(app.cells.len(), 0);
-        
+
         // Redo should restore [key1]
         app.redo();
         // Now: cells = [key1], undo_stack = [empty], redo_stack = [[key1, key2]]
         assert_eq!(app.cells.len(), 1);
         assert_eq!(app.cells.get(&key1).unwrap(), "10");
         assert!(!app.cells.contains_key(&key2));
-        
+
         // Redo again should restore [key1, key2]
         app.redo();
         // Now: cells = [key1, key2], undo_stack = [empty, [key1]], redo_stack = []
@@ -827,26 +827,26 @@ mod tests {
     #[test]
     fn test_undo_clears_redo_stack() {
         let mut app = App::new(None);
-        
+
         // Add a value
         let key1 = get_cell_key(0, 0);
         app.cells.insert(key1.clone(), "10".to_string());
         app.push_undo_state();
-        
+
         // Add another value
         let key2 = get_cell_key(1, 1);
         app.cells.insert(key2.clone(), "20".to_string());
         app.push_undo_state();
-        
+
         // Undo once
         app.undo();
         assert_eq!(app.redo_stack.len(), 1);
-        
+
         // Make a new change - should clear redo stack
         let key3 = get_cell_key(2, 2);
         app.cells.insert(key3, "30".to_string());
         app.push_undo_state();
-        
+
         assert_eq!(app.redo_stack.len(), 0);
     }
 
@@ -854,38 +854,38 @@ mod tests {
     fn test_csv_save_load() {
         use std::env;
         use std::fs;
-        
+
         let temp_dir = env::temp_dir();
         let temp_file = temp_dir.join("test_spreadsheet.csv");
-        
+
         // Clean up if file exists
         let _ = fs::remove_file(&temp_file);
-        
+
         // Create app with CSV file
         let mut app = App::new(Some(temp_file.clone()));
-        
+
         // Add some data
         app.cells.insert(get_cell_key(0, 0), "10".to_string());
         app.cells.insert(get_cell_key(0, 1), "20".to_string());
         app.cells.insert(get_cell_key(1, 0), "30".to_string());
         app.cells.insert(get_cell_key(1, 1), "=A1+B1".to_string());
-        
+
         // Save CSV
         let result = app.save_csv();
         assert!(result.is_ok());
         assert!(temp_file.exists());
-        
+
         // Create a new app and load the CSV
         let mut app2 = App::new(Some(temp_file.clone()));
         let load_result = app2.load_csv();
         assert!(load_result.is_ok());
-        
+
         // Verify data was loaded correctly
         assert_eq!(app2.cells.get(&get_cell_key(0, 0)).unwrap(), "10");
         assert_eq!(app2.cells.get(&get_cell_key(0, 1)).unwrap(), "20");
         assert_eq!(app2.cells.get(&get_cell_key(1, 0)).unwrap(), "30");
         assert_eq!(app2.cells.get(&get_cell_key(1, 1)).unwrap(), "=A1+B1");
-        
+
         // Clean up
         let _ = fs::remove_file(&temp_file);
     }
@@ -894,33 +894,33 @@ mod tests {
     fn test_csv_save_sparse_rows() {
         use std::env;
         use std::fs;
-        
+
         let temp_dir = env::temp_dir();
         let temp_file = temp_dir.join("test_sparse.csv");
-        
+
         // Clean up if file exists
         let _ = fs::remove_file(&temp_file);
-        
+
         // Create app with sparse data (empty first cell, data in middle)
         let mut app = App::new(Some(temp_file.clone()));
         app.cells.insert(get_cell_key(0, 1), "B1".to_string()); // Empty A1, data in B1
         app.cells.insert(get_cell_key(1, 0), "A2".to_string()); // Data in A2
         app.cells.insert(get_cell_key(2, 2), "C3".to_string()); // Empty A3, B3, data in C3
-        
+
         // Save CSV
         let result = app.save_csv();
         if let Err(err) = &result {
             eprintln!("Save error: {}", err);
         }
         assert!(result.is_ok());
-        
+
         // Verify the file was created
         assert!(temp_file.exists());
-        
+
         // Read the CSV file content
         let content = fs::read_to_string(&temp_file).unwrap();
         eprintln!("CSV content:\n{}", content);
-        
+
         // Load it back
         let mut app2 = App::new(Some(temp_file.clone()));
         let load_result = app2.load_csv();
@@ -928,14 +928,14 @@ mod tests {
             eprintln!("Load error: {}", err);
         }
         assert!(load_result.is_ok());
-        
+
         // Verify sparse data was preserved correctly
         // Note: CSV format doesn't distinguish between empty string and missing cell,
         // so we check that the non-empty cells are loaded correctly
         assert_eq!(app2.cells.get(&get_cell_key(0, 1)).unwrap(), "B1");
         assert_eq!(app2.cells.get(&get_cell_key(1, 0)).unwrap(), "A2");
         assert_eq!(app2.cells.get(&get_cell_key(2, 2)).unwrap(), "C3");
-        
+
         // Clean up
         let _ = fs::remove_file(&temp_file);
     }
