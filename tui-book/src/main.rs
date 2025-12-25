@@ -83,6 +83,7 @@ impl App {
             // At the end of current chapter, move to next chapter
             self.current_section_index += 1;
             self.content_scroll_offset = 0;
+            self.sync_toc_with_current_section();
         }
     }
 
@@ -95,6 +96,7 @@ impl App {
             // Set scroll to maximum value - will be clamped to actual max in render
             // This ensures we start at the bottom of the previous chapter
             self.content_scroll_offset = usize::MAX;
+            self.sync_toc_with_current_section();
         }
     }
 
@@ -120,6 +122,20 @@ impl App {
                 Focus::Content => Focus::Toc,
             };
         }
+    }
+
+    fn sync_toc_with_current_section(&mut self) {
+        // Find the TOC entry that corresponds to the current section
+        // We look for the TOC entry with the highest section_index that is <= current_section_index
+        let mut best_match = 0;
+        for (i, entry) in self.book_content.toc.iter().enumerate() {
+            if entry.section_index <= self.current_section_index {
+                best_match = i;
+            } else {
+                break;
+            }
+        }
+        self.selected_toc_index = best_match;
     }
 }
 
