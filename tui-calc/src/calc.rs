@@ -598,7 +598,7 @@ mod tests {
         // BigFloat uses scientific notation for some values
         let result = evaluate("0.1 + 0.2").unwrap();
         // Just check it evaluates without error and contains expected digits
-        assert!(result.contains("3") && result.contains("e-1") || result == "0.3");
+        assert!((result.contains("3") && result.contains("e-1")) || result == "0.3");
         assert_eq!(evaluate("1.234 * 2").unwrap(), "2.468");
     }
 
@@ -619,6 +619,6 @@ mod tests {
         
         // BigFloat maintains higher precision than f64
         let result = evaluate("1.0 / 3.0").unwrap();
-        assert!(result.contains("0.3333") || result.contains("3.333") && result.contains("e-1"));
+        assert!(result.contains("0.3333") || (result.contains("3.333") && result.contains("e-1")));
     }
 }
