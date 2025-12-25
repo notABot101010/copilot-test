@@ -10,7 +10,5 @@ name = "tui-calc"
 path = "src/main.rs"
 
 [dependencies]
-num-bigint = "0.4"
-num-traits = "0.2"
 rustyline = "15.0"
 anyhow = "1.0"
