@@ -210,7 +210,7 @@ impl Parser {
             
             // Convert BigInt to u32 for exponentiation
             let exp_u32: u32 = right.try_into()
-                .map_err(|_| anyhow!("Exponent too large or negative"))?;
+                .map_err(|_| anyhow!("Exponent must be a non-negative integer that fits in u32"))?;
             
             left = left.pow(exp_u32);
         }
