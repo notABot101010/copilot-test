@@ -110,3 +110,141 @@ impl TableOfContents {
         self.selected_index = Some(best_match_idx);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sync_with_cursor_selects_first_heading() {
+        let mut toc = TableOfContents::new();
+        let content = r#"# First Heading
+Some content here
+## Second Heading
+More content
+### Third Heading
+Even more content"#;
+        
+        toc.update_from_content(content);
+        
+        // Cursor at line 0 (the first heading) - should select first heading
+        toc.sync_with_cursor(0);
+        assert_eq!(toc.selected_index(), Some(0));
+        
+        // Cursor at line 1 (after first heading, before second) - should select first heading
+        toc.sync_with_cursor(1);
+        assert_eq!(toc.selected_index(), Some(0));
+    }
+
+    #[test]
+    fn test_sync_with_cursor_selects_current_section() {
+        let mut toc = TableOfContents::new();
+        let content = r#"# First Heading
+Line 1
+Line 2
+## Second Heading
+Line 4
+Line 5
+### Third Heading
+Line 7
+Line 8"#;
+        
+        toc.update_from_content(content);
+        
+        // Cursor at line 2 (within first section) - should select first heading
+        toc.sync_with_cursor(2);
+        assert_eq!(toc.selected_index(), Some(0));
+        
+        // Cursor at line 3 (the second heading itself) - should select second heading
+        toc.sync_with_cursor(3);
+        assert_eq!(toc.selected_index(), Some(1));
+        
+        // Cursor at line 5 (within second section) - should select second heading
+        toc.sync_with_cursor(5);
+        assert_eq!(toc.selected_index(), Some(1));
+        
+        // Cursor at line 6 (the third heading) - should select third heading
+        toc.sync_with_cursor(6);
+        assert_eq!(toc.selected_index(), Some(2));
+        
+        // Cursor at line 8 (within third section) - should select third heading
+        toc.sync_with_cursor(8);
+        assert_eq!(toc.selected_index(), Some(2));
+    }
+
+    #[test]
+    fn test_sync_with_cursor_beyond_last_heading() {
+        let mut toc = TableOfContents::new();
+        let content = r#"# First Heading
+## Second Heading
+Some content
+More content
+Even more content"#;
+        
+        toc.update_from_content(content);
+        
+        // Cursor at line 10 (way beyond all headings) - should select last heading
+        toc.sync_with_cursor(10);
+        assert_eq!(toc.selected_index(), Some(1));
+        
+        // Cursor at line 100 - should still select last heading
+        toc.sync_with_cursor(100);
+        assert_eq!(toc.selected_index(), Some(1));
+    }
+
+    #[test]
+    fn test_sync_with_cursor_empty_toc() {
+        let mut toc = TableOfContents::new();
+        let content = "No headings here\nJust plain text";
+        
+        toc.update_from_content(content);
+        
+        // Should have no selection when there are no headings
+        toc.sync_with_cursor(0);
+        assert_eq!(toc.selected_index(), None);
+        
+        toc.sync_with_cursor(5);
+        assert_eq!(toc.selected_index(), None);
+    }
+
+    #[test]
+    fn test_sync_preserves_manual_selection() {
+        let mut toc = TableOfContents::new();
+        let content = r#"# First Heading
+Content
+## Second Heading
+Content
+### Third Heading"#;
+        
+        toc.update_from_content(content);
+        
+        // Manually select second heading
+        toc.next();
+        assert_eq!(toc.selected_index(), Some(1));
+        
+        // Now sync with cursor at line 0 - should change to first heading
+        toc.sync_with_cursor(0);
+        assert_eq!(toc.selected_index(), Some(0));
+    }
+
+    #[test]
+    fn test_sync_with_multiple_headings_same_line() {
+        // This shouldn't happen in practice, but let's test it
+        let mut toc = TableOfContents::new();
+        let content = r#"# First Heading
+## Second Heading
+### Third Heading"#;
+        
+        toc.update_from_content(content);
+        
+        // All headings are on consecutive lines
+        toc.sync_with_cursor(0);
+        assert_eq!(toc.selected_index(), Some(0));
+        
+        toc.sync_with_cursor(1);
+        assert_eq!(toc.selected_index(), Some(1));
+        
+        toc.sync_with_cursor(2);
+        assert_eq!(toc.selected_index(), Some(2));
+    }
+}
