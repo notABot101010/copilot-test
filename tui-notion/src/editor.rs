@@ -144,21 +144,42 @@ impl Editor {
 
     pub fn scroll_up(&mut self) {
         self.scroll_offset = self.scroll_offset.saturating_sub(1);
+        // Move cursor up if it's below the visible area
+        if self.cursor_line >= self.scroll_offset + self.viewport_height {
+            self.cursor_line = (self.scroll_offset + self.viewport_height - 1).min(self.lines.len().saturating_sub(1));
+        }
     }
 
     pub fn scroll_down(&mut self) {
         if self.scroll_offset + 1 < self.lines.len() {
             self.scroll_offset += 1;
+            // Move cursor down if it's above the visible area
+            if self.cursor_line < self.scroll_offset {
+                self.cursor_line = self.scroll_offset;
+            }
         }
     }
 
     pub fn page_up(&mut self) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(10);
+        let scroll_amount = self.viewport_height.min(10);
+        self.scroll_offset = self.scroll_offset.saturating_sub(scroll_amount);
+        // Move cursor up if it's below the visible area
+        if self.cursor_line >= self.scroll_offset + self.viewport_height {
+            self.cursor_line = (self.scroll_offset + self.viewport_height - 1).min(self.lines.len().saturating_sub(1));
+        }
     }
 
     pub fn page_down(&mut self) {
-        if self.scroll_offset + 10 < self.lines.len() {
-            self.scroll_offset += 10;
+        let scroll_amount = self.viewport_height.min(10);
+        let max_scroll = self.lines.len().saturating_sub(1);
+        if self.scroll_offset + scroll_amount < max_scroll {
+            self.scroll_offset += scroll_amount;
+        } else {
+            self.scroll_offset = max_scroll.saturating_sub(self.viewport_height.saturating_sub(1));
+        }
+        // Move cursor down if it's above the visible area
+        if self.cursor_line < self.scroll_offset {
+            self.cursor_line = self.scroll_offset;
         }
     }
 
