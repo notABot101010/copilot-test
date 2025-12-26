@@ -55,6 +55,18 @@ impl Storage {
         .execute(&pool)
         .await?;
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS document_access (
+                document_id TEXT NOT NULL,
+                accessed_at INTEGER NOT NULL,
+                PRIMARY KEY (document_id, accessed_at)
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
         Ok(Self { pool })
     }
 
@@ -183,5 +195,47 @@ impl Storage {
             }
             None => Ok(None),
         }
+    }
+
+    pub async fn record_document_access(&self, doc_id: Uuid) -> Result<()> {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs() as i64;
+
+        sqlx::query(
+            r#"
+            INSERT INTO document_access (document_id, accessed_at)
+            VALUES (?, ?)
+            "#,
+        )
+        .bind(doc_id.to_string())
+        .bind(timestamp)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_recently_accessed_documents(&self, limit: usize) -> Result<Vec<Uuid>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT document_id, MAX(accessed_at) as last_access
+            FROM document_access
+            GROUP BY document_id
+            ORDER BY last_access DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut doc_ids = Vec::new();
+        for row in rows {
+            let doc_id = Uuid::parse_str(row.get::<String, _>("document_id").as_str())?;
+            doc_ids.push(doc_id);
+        }
+
+        Ok(doc_ids)
     }
 }
