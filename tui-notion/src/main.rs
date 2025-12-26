@@ -405,14 +405,24 @@ Happy note-taking!
             }
             KeyCode::Left | KeyCode::Char('h') => {
                 let count = self.get_count();
-                for _ in 0..count {
+                // Use non-wrapping movement when count > 1 to prevent going beyond line boundaries
+                if count > 1 {
+                    for _ in 0..count {
+                        self.editor.move_cursor_left_no_wrap();
+                    }
+                } else {
                     self.editor.move_cursor_left();
                 }
                 self.number_buffer.clear();
             }
             KeyCode::Right | KeyCode::Char('l') => {
                 let count = self.get_count();
-                for _ in 0..count {
+                // Use non-wrapping movement when count > 1 to prevent going beyond line boundaries
+                if count > 1 {
+                    for _ in 0..count {
+                        self.editor.move_cursor_right_no_wrap();
+                    }
+                } else {
                     self.editor.move_cursor_right();
                 }
                 self.number_buffer.clear();
