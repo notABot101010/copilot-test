@@ -229,8 +229,17 @@ Happy note-taking!
                 self.cycle_focus();
             }
             KeyCode::Enter => {
-                if matches!(self.focused_panel, FocusedPanel::Editor) {
-                    self.mode = AppMode::Insert;
+                match self.focused_panel {
+                    FocusedPanel::Editor => {
+                        self.mode = AppMode::Insert;
+                    }
+                    FocusedPanel::Toc => {
+                        if let Some(line) = self.toc.selected_line() {
+                            self.editor.jump_to_line(line);
+                            self.focused_panel = FocusedPanel::Editor;
+                        }
+                    }
+                    FocusedPanel::Search => {}
                 }
             }
             _ => {
@@ -444,12 +453,6 @@ Happy note-taking!
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 self.toc.previous();
-            }
-            KeyCode::Enter => {
-                if let Some(line) = self.toc.selected_line() {
-                    self.editor.jump_to_line(line);
-                    self.focused_panel = FocusedPanel::Editor;
-                }
             }
             _ => {}
         }
