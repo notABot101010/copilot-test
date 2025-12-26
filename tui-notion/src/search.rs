@@ -32,24 +32,7 @@ impl SearchDialog {
     }
 
     pub fn update_results(&mut self, tree: &DocumentTree) {
-        self.results.clear();
-        
-        let query = self.input.value();
-        
-        if query.is_empty() {
-            // Show all documents when query is empty
-            self.results = tree.documents().iter().map(|doc| doc.id).collect();
-        } else {
-            // Search for matching documents
-            let matches = tree.search(query);
-            self.results = matches.iter().map(|doc| doc.id).collect();
-        }
-        
-        if !self.results.is_empty() {
-            self.selected_index = Some(0);
-        } else {
-            self.selected_index = None;
-        }
+        self.update_results_with_recent(tree, &[]);
     }
 
     pub fn update_results_with_recent(&mut self, tree: &DocumentTree, recent_doc_ids: &[Uuid]) {

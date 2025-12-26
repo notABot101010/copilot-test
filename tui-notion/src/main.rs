@@ -126,7 +126,13 @@ Happy note-taking!
         let search = SearchDialog::new();
 
         // Load recently accessed documents (limit to 100)
-        let recently_accessed_docs = storage.get_recently_accessed_documents(100).await.unwrap_or_default();
+        let recently_accessed_docs = storage
+            .get_recently_accessed_documents(100)
+            .await
+            .unwrap_or_else(|err| {
+                eprintln!("Warning: Failed to load recently accessed documents: {}", err);
+                Vec::new()
+            });
 
         let mut app = Self {
             tree,
@@ -155,7 +161,10 @@ Happy note-taking!
                 app.toc.update_from_content(&doc.content);
                 // Record this as an access
                 let _ = app.storage.record_document_access(doc_id).await;
-                app.recently_accessed_docs = app.storage.get_recently_accessed_documents(100).await.unwrap_or_default();
+                match app.storage.get_recently_accessed_documents(100).await {
+                    Ok(docs) => app.recently_accessed_docs = docs,
+                    Err(err) => eprintln!("Warning: Failed to refresh recently accessed documents: {}", err),
+                }
             }
         }
 
@@ -410,7 +419,16 @@ Happy note-taking!
     }
 
     async fn refresh_recently_accessed_docs(&mut self) -> Result<()> {
-        self.recently_accessed_docs = self.storage.get_recently_accessed_documents(100).await.unwrap_or_default();
+        match self.storage.get_recently_accessed_documents(100).await {
+            Ok(docs) => {
+                self.recently_accessed_docs = docs;
+            }
+            Err(err) => {
+                // Log error but don't fail - fall back to empty list
+                eprintln!("Warning: Failed to refresh recently accessed documents: {}", err);
+                self.recently_accessed_docs.clear();
+            }
+        }
         Ok(())
     }
 }

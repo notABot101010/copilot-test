@@ -213,6 +213,23 @@ impl Storage {
         .execute(&self.pool)
         .await?;
 
+        // Clean up old access records periodically (keep only the last 200 per document)
+        // This prevents unbounded table growth
+        sqlx::query(
+            r#"
+            DELETE FROM document_access
+            WHERE rowid IN (
+                SELECT rowid FROM document_access
+                WHERE document_id = ?
+                ORDER BY accessed_at DESC
+                LIMIT -1 OFFSET 200
+            )
+            "#,
+        )
+        .bind(doc_id.to_string())
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
 
