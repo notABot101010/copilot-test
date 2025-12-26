@@ -424,7 +424,6 @@ async fn run_app<B: ratatui::backend::Backend>(
 
             // Render editor (right panel - now takes more space)
             let editor_focused = matches!(app.focused_panel, FocusedPanel::Editor);
-            let is_insert_mode = matches!(app.mode, AppMode::Insert);
             let editor_mode = match app.mode {
                 AppMode::Insert => "INSERT",
                 AppMode::Normal => "NORMAL",
@@ -437,7 +436,6 @@ async fn run_app<B: ratatui::backend::Backend>(
                 &app.editor,
                 editor_focused,
                 editor_mode,
-                is_insert_mode,
             );
 
             // Render search dialog if in search mode

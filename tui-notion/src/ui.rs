@@ -16,7 +16,6 @@ pub fn render_editor(
     editor: &Editor,
     focused: bool,
     mode: &str,
-    _is_insert_mode: bool,
 ) {
     let border_style = if focused {
         Style::default().fg(Color::Cyan)
