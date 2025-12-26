@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use uuid::Uuid;
 
+const LAST_OPENED_DOCUMENT_KEY: &str = "last_opened_document";
+
 pub struct Storage {
     pool: SqlitePool,
 }
@@ -153,9 +155,10 @@ impl Storage {
         sqlx::query(
             r#"
             INSERT OR REPLACE INTO settings (key, value)
-            VALUES ('last_opened_document', ?)
+            VALUES (?, ?)
             "#,
         )
+        .bind(LAST_OPENED_DOCUMENT_KEY)
         .bind(doc_id.to_string())
         .execute(&self.pool)
         .await?;
@@ -166,9 +169,10 @@ impl Storage {
     pub async fn get_last_opened_document(&self) -> Result<Option<Uuid>> {
         let row = sqlx::query(
             r#"
-            SELECT value FROM settings WHERE key = 'last_opened_document'
+            SELECT value FROM settings WHERE key = ?
             "#,
         )
+        .bind(LAST_OPENED_DOCUMENT_KEY)
         .fetch_optional(&self.pool)
         .await?;
 
