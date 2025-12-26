@@ -120,9 +120,12 @@ impl Editor {
 
     /// Move cursor right without wrapping to next line
     pub fn move_cursor_right_no_wrap(&mut self) {
-        let line_len = self.lines[self.cursor_line].len();
-        if self.cursor_col < line_len {
-            self.cursor_col += 1;
+        // Safety check: ensure cursor_line is within bounds
+        if self.cursor_line < self.lines.len() {
+            let line_len = self.lines[self.cursor_line].len();
+            if self.cursor_col < line_len {
+                self.cursor_col += 1;
+            }
         }
     }
 
