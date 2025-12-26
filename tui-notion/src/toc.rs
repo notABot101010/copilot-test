@@ -85,4 +85,28 @@ impl TableOfContents {
     pub fn selected_index(&self) -> Option<usize> {
         self.selected_index
     }
+
+    /// Synchronize TOC selection based on the current cursor line in the editor
+    /// Selects the heading that the cursor is currently at or below
+    pub fn sync_with_cursor(&mut self, cursor_line: usize) {
+        if self.entries.is_empty() {
+            self.selected_index = None;
+            return;
+        }
+
+        // Find the heading that the cursor is currently at or below
+        // We want the last heading that starts before or at the cursor position
+        let mut best_match_idx = 0;
+        
+        for (idx, entry) in self.entries.iter().enumerate() {
+            if entry.line <= cursor_line {
+                best_match_idx = idx;
+            } else {
+                // We've found a heading after the cursor, stop here
+                break;
+            }
+        }
+        
+        self.selected_index = Some(best_match_idx);
+    }
 }

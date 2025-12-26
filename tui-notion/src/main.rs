@@ -236,6 +236,7 @@ Happy note-taking!
                     FocusedPanel::Toc => {
                         if let Some(line) = self.toc.selected_line() {
                             self.editor.jump_to_line(line);
+                            self.sync_toc_with_cursor();
                             self.focused_panel = FocusedPanel::Editor;
                         }
                     }
@@ -260,6 +261,7 @@ Happy note-taking!
                 KeyCode::Char('z') => {
                     if self.editor.undo() {
                         self.update_toc();
+                        self.sync_toc_with_cursor();
                         self.auto_save_current_document().await?;
                     }
                     return Ok(());
@@ -267,6 +269,7 @@ Happy note-taking!
                 KeyCode::Char('y') => {
                     if self.editor.redo() {
                         self.update_toc();
+                        self.sync_toc_with_cursor();
                         self.auto_save_current_document().await?;
                     }
                     return Ok(());
@@ -296,6 +299,7 @@ Happy note-taking!
                 self.editor.save_state();
                 self.editor.insert_newline();
                 self.update_toc();
+                self.sync_toc_with_cursor();
                 self.auto_save_current_document().await?;
             }
             KeyCode::Left => {
@@ -306,9 +310,11 @@ Happy note-taking!
             }
             KeyCode::Up => {
                 self.editor.move_cursor_up();
+                self.sync_toc_with_cursor();
             }
             KeyCode::Down => {
                 self.editor.move_cursor_down();
+                self.sync_toc_with_cursor();
             }
             KeyCode::Home => {
                 self.editor.move_cursor_to_line_start();
@@ -394,6 +400,7 @@ Happy note-taking!
                 for _ in 0..count {
                     self.editor.move_cursor_down();
                 }
+                self.sync_toc_with_cursor();
                 self.number_buffer.clear();
             }
             KeyCode::Up | KeyCode::Char('k') => {
@@ -401,6 +408,7 @@ Happy note-taking!
                 for _ in 0..count {
                     self.editor.move_cursor_up();
                 }
+                self.sync_toc_with_cursor();
                 self.number_buffer.clear();
             }
             KeyCode::Left | KeyCode::Char('h') => {
@@ -437,10 +445,12 @@ Happy note-taking!
             }
             KeyCode::PageDown => {
                 self.editor.page_down();
+                self.sync_toc_with_cursor();
                 self.number_buffer.clear();
             }
             KeyCode::PageUp => {
                 self.editor.page_up();
+                self.sync_toc_with_cursor();
                 self.number_buffer.clear();
             }
             _ => {
@@ -487,6 +497,7 @@ Happy note-taking!
                 self.editor.set_content(doc.content.clone());
                 self.editor.clear_history(); // Clear undo/redo history when switching documents
                 self.update_toc();
+                self.sync_toc_with_cursor();
                 // Save the last opened document
                 self.storage.set_last_opened_document(doc_id).await?;
                 // Record document access
@@ -514,6 +525,12 @@ Happy note-taking!
     fn update_toc(&mut self) {
         let content = self.editor.get_content();
         self.toc.update_from_content(&content);
+    }
+
+    /// Synchronize TOC selection with the current cursor position in the editor
+    fn sync_toc_with_cursor(&mut self) {
+        let (cursor_line, _) = self.editor.cursor_position();
+        self.toc.sync_with_cursor(cursor_line);
     }
 
     async fn refresh_recently_accessed_docs(&mut self) -> Result<()> {
