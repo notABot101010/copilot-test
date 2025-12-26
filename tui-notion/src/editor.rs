@@ -111,6 +111,21 @@ impl Editor {
         }
     }
 
+    /// Move cursor left without wrapping to previous line
+    pub fn move_cursor_left_no_wrap(&mut self) {
+        if self.cursor_col > 0 {
+            self.cursor_col -= 1;
+        }
+    }
+
+    /// Move cursor right without wrapping to next line
+    pub fn move_cursor_right_no_wrap(&mut self) {
+        let line_len = self.lines[self.cursor_line].len();
+        if self.cursor_col < line_len {
+            self.cursor_col += 1;
+        }
+    }
+
     pub fn move_cursor_up(&mut self) {
         if self.cursor_line > 0 {
             self.cursor_line -= 1;
@@ -675,4 +690,59 @@ mod tests {
         editor.move_cursor_right();
         assert_eq!(editor.cursor_position(), (2, 0));
     }
+
+    #[test]
+    fn test_cursor_left_no_wrap_stops_at_line_start() {
+        let mut editor = Editor::new();
+        editor.set_content("hello\nworld".to_string());
+        editor.cursor_line = 1;
+        editor.cursor_col = 3;
+        
+        // Move left 10 times with no_wrap - should stop at beginning of current line
+        for _ in 0..10 {
+            editor.move_cursor_left_no_wrap();
+        }
+        
+        // Should be at start of line 1, NOT wrapped to previous line
+        assert_eq!(editor.cursor_position(), (1, 0));
+    }
+
+    #[test]
+    fn test_cursor_right_no_wrap_stops_at_line_end() {
+        let mut editor = Editor::new();
+        editor.set_content("hello\nworld".to_string());
+        editor.cursor_line = 0;
+        editor.cursor_col = 0;
+        
+        // Move right 10 times with no_wrap - should stop at end of current line
+        for _ in 0..10 {
+            editor.move_cursor_right_no_wrap();
+        }
+        
+        // Should be at end of line 0 (5 chars), NOT wrapped to next line
+        assert_eq!(editor.cursor_position(), (0, 5));
+    }
+
+    #[test]
+    fn test_numeric_prefix_movements_dont_cross_lines() {
+        let mut editor = Editor::new();
+        editor.set_content("Line one\nLine two\nLine three".to_string());
+        
+        // Start at line 1, column 2
+        editor.cursor_line = 1;
+        editor.cursor_col = 2;
+        
+        // Move left 5 times with no wrap - should stop at column 0
+        for _ in 0..5 {
+            editor.move_cursor_left_no_wrap();
+        }
+        assert_eq!(editor.cursor_position(), (1, 0));
+        
+        // Move right 100 times with no wrap - should stop at end of line
+        for _ in 0..100 {
+            editor.move_cursor_right_no_wrap();
+        }
+        assert_eq!(editor.cursor_position(), (1, 8)); // "Line two" has 8 chars
+    }
+
 }
