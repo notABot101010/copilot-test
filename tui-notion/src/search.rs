@@ -1,8 +1,9 @@
 use crate::tree::DocumentTree;
+use tui_input::Input;
 use uuid::Uuid;
 
 pub struct SearchDialog {
-    query: String,
+    input: Input,
     results: Vec<Uuid>,
     selected_index: Option<usize>,
 }
@@ -10,36 +11,39 @@ pub struct SearchDialog {
 impl SearchDialog {
     pub fn new() -> Self {
         Self {
-            query: String::new(),
+            input: Input::default(),
             results: Vec::new(),
             selected_index: None,
         }
     }
 
     pub fn reset(&mut self) {
-        self.query.clear();
+        self.input.reset();
         self.results.clear();
         self.selected_index = None;
     }
 
-    pub fn add_char(&mut self, c: char) {
-        self.query.push(c);
+    pub fn input(&self) -> &Input {
+        &self.input
     }
 
-    pub fn delete_char(&mut self) {
-        self.query.pop();
+    pub fn input_mut(&mut self) -> &mut Input {
+        &mut self.input
     }
 
     pub fn update_results(&mut self, tree: &DocumentTree) {
         self.results.clear();
         
-        if self.query.is_empty() {
-            self.selected_index = None;
-            return;
+        let query = self.input.value();
+        
+        if query.is_empty() {
+            // Show all documents when query is empty
+            self.results = tree.documents().iter().map(|doc| doc.id).collect();
+        } else {
+            // Search for matching documents
+            let matches = tree.search(query);
+            self.results = matches.iter().map(|doc| doc.id).collect();
         }
-
-        let matches = tree.search(&self.query);
-        self.results = matches.iter().map(|doc| doc.id).collect();
         
         if !self.results.is_empty() {
             self.selected_index = Some(0);
@@ -71,7 +75,7 @@ impl SearchDialog {
     }
 
     pub fn query(&self) -> &str {
-        &self.query
+        self.input.value()
     }
 
     pub fn results(&self) -> &[Uuid] {

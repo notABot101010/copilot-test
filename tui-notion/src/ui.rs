@@ -10,50 +10,13 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Widget, Wrap},
 };
 
-pub fn render_tree(area: Rect, buf: &mut Buffer, tree: &DocumentTree, focused: bool) {
-    let border_style = if focused {
-        Style::default().fg(Color::Cyan)
-    } else {
-        Style::default()
-    };
-
-    let block = Block::default()
-        .title("Documents")
-        .borders(Borders::ALL)
-        .border_style(border_style);
-
-    let inner = block.inner(area);
-    block.render(area, buf);
-
-    let documents = tree.documents();
-    let items: Vec<ListItem> = documents
-        .iter()
-        .enumerate()
-        .map(|(idx, doc)| {
-            let style = if Some(idx) == tree.selected_index() {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
-
-            let content = format!("📄 {}", doc.title);
-            ListItem::new(content).style(style)
-        })
-        .collect();
-
-    let list = List::new(items);
-    list.render(inner, buf);
-}
-
 pub fn render_editor(
     area: Rect,
     buf: &mut Buffer,
     editor: &Editor,
     focused: bool,
     mode: &str,
+    is_insert_mode: bool,
 ) {
     let border_style = if focused {
         Style::default().fg(Color::Cyan)
@@ -88,6 +51,20 @@ pub fn render_editor(
 
     let paragraph = Paragraph::new(visible_lines).wrap(Wrap { trim: false });
     paragraph.render(inner, buf);
+
+    // Show cursor in insert mode
+    if is_insert_mode && focused {
+        let relative_cursor_line = cursor_line.saturating_sub(scroll_offset);
+        if relative_cursor_line < visible_height {
+            let cursor_x = inner.x + cursor_col as u16;
+            let cursor_y = inner.y + relative_cursor_line as u16;
+            if cursor_x < inner.x + inner.width && cursor_y < inner.y + inner.height {
+                if let Some(cell) = buf.cell_mut((cursor_x, cursor_y)) {
+                    cell.set_style(Style::default().bg(Color::White).fg(Color::Black));
+                }
+            }
+        }
+    }
 
     // Show cursor position indicator at the bottom
     if focused {
@@ -190,9 +167,20 @@ pub fn render_search_dialog(area: Rect, buf: &mut Buffer, search: &SearchDialog,
     let input_inner = input_block.inner(chunks[0]);
     input_block.render(chunks[0], buf);
 
-    let input_text = Paragraph::new(search.query())
-        .style(Style::default().fg(Color::White));
+    let width = input_inner.width.max(1) as usize;
+    let scroll = search.input().visual_scroll(width);
+    let input_text = Paragraph::new(search.input().value())
+        .style(Style::default().fg(Color::White))
+        .scroll((0, scroll as u16));
     input_text.render(input_inner, buf);
+    
+    // Render cursor
+    let cursor_pos = search.input().visual_cursor().max(scroll) - scroll;
+    if cursor_pos < width {
+        if let Some(cell) = buf.cell_mut((input_inner.x + cursor_pos as u16, input_inner.y)) {
+            cell.set_style(Style::default().bg(Color::White).fg(Color::Black));
+        }
+    }
 
     // Render results (placeholder - needs tree reference to show document titles)
     let results_block = Block::default()
@@ -229,7 +217,7 @@ pub fn render_search_dialog(area: Rect, buf: &mut Buffer, search: &SearchDialog,
             .style(Style::default().fg(Color::DarkGray))
             .alignment(Alignment::Center);
         empty_msg.render(results_inner, buf);
-    } else if !results.is_empty() {
+    } else {
         let list = List::new(results);
         list.render(results_inner, buf);
     }
