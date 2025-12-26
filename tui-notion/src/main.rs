@@ -1,5 +1,6 @@
 mod document;
 mod editor;
+mod history;
 mod search;
 mod storage;
 mod toc;
@@ -240,22 +241,46 @@ Happy note-taking!
     }
 
     async fn handle_insert_mode(&mut self, key: event::KeyEvent) -> Result<()> {
+        // Handle Ctrl+Z (undo) and Ctrl+Y (redo)
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Char('z') => {
+                    if self.editor.undo() {
+                        self.update_toc();
+                        self.auto_save_current_document().await?;
+                    }
+                    return Ok(());
+                }
+                KeyCode::Char('y') => {
+                    if self.editor.redo() {
+                        self.update_toc();
+                        self.auto_save_current_document().await?;
+                    }
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
         match key.code {
             KeyCode::Esc => {
                 self.mode = AppMode::Normal;
                 self.auto_save_current_document().await?;
             }
             KeyCode::Char(c) => {
+                self.editor.save_state();
                 self.editor.insert_char(c);
                 self.update_toc();
                 self.auto_save_current_document().await?;
             }
             KeyCode::Backspace => {
+                self.editor.save_state();
                 self.editor.delete_char();
                 self.update_toc();
                 self.auto_save_current_document().await?;
             }
             KeyCode::Enter => {
+                self.editor.save_state();
                 self.editor.insert_newline();
                 self.update_toc();
                 self.auto_save_current_document().await?;
@@ -404,6 +429,7 @@ Happy note-taking!
         if let Some(doc_id) = self.tree.selected_document() {
             if let Some(doc) = self.tree.get_document(doc_id) {
                 self.editor.set_content(doc.content.clone());
+                self.editor.clear_history(); // Clear undo/redo history when switching documents
                 self.update_toc();
                 // Save the last opened document
                 self.storage.set_last_opened_document(doc_id).await?;

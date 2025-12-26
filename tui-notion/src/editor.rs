@@ -1,9 +1,12 @@
+use crate::history::{EditorState, History};
+
 pub struct Editor {
     lines: Vec<String>,
     cursor_line: usize,
     cursor_col: usize,
     scroll_offset: usize,
     viewport_height: usize,
+    history: History,
 }
 
 impl Editor {
@@ -14,6 +17,7 @@ impl Editor {
             cursor_col: 0,
             scroll_offset: 0,
             viewport_height: 20, // Default viewport height
+            history: History::new(),
         }
     }
 
@@ -203,6 +207,71 @@ impl Editor {
     pub fn scroll_offset(&self) -> usize {
         self.scroll_offset
     }
+
+    /// Save current state to history before making changes
+    pub fn save_state(&mut self) {
+        let state = EditorState {
+            lines: self.lines.clone(),
+            cursor_line: self.cursor_line,
+            cursor_col: self.cursor_col,
+        };
+        self.history.push(state);
+    }
+
+    /// Restore editor state from a saved state
+    fn restore_state(&mut self, state: EditorState) {
+        self.lines = state.lines;
+        self.cursor_line = state.cursor_line;
+        self.cursor_col = state.cursor_col;
+        self.ensure_cursor_visible();
+    }
+
+    /// Undo the last change
+    pub fn undo(&mut self) -> bool {
+        let current_state = EditorState {
+            lines: self.lines.clone(),
+            cursor_line: self.cursor_line,
+            cursor_col: self.cursor_col,
+        };
+        
+        if let Some(previous_state) = self.history.undo(current_state) {
+            self.restore_state(previous_state);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Redo a previously undone change
+    pub fn redo(&mut self) -> bool {
+        let current_state = EditorState {
+            lines: self.lines.clone(),
+            cursor_line: self.cursor_line,
+            cursor_col: self.cursor_col,
+        };
+        
+        if let Some(next_state) = self.history.redo(current_state) {
+            self.restore_state(next_state);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check if undo is available
+    pub fn can_undo(&self) -> bool {
+        self.history.can_undo()
+    }
+
+    /// Check if redo is available
+    pub fn can_redo(&self) -> bool {
+        self.history.can_redo()
+    }
+
+    /// Clear undo/redo history (useful when loading a new document)
+    pub fn clear_history(&mut self) {
+        self.history.clear();
+    }
 }
 
 #[cfg(test)]
@@ -371,5 +440,133 @@ mod tests {
         assert!(editor.scroll_offset > 0);
         assert!(editor.cursor_line >= editor.scroll_offset);
         assert!(editor.cursor_line < editor.scroll_offset + editor.viewport_height);
+    }
+
+    #[test]
+    fn test_undo_redo_insert_char() {
+        let mut editor = Editor::new();
+        editor.set_content("hello".to_string());
+        editor.cursor_col = 5;
+
+        // Save state and insert a character
+        editor.save_state();
+        editor.insert_char('!');
+        assert_eq!(editor.get_content(), "hello!");
+
+        // Undo should restore previous state
+        assert!(editor.undo());
+        assert_eq!(editor.get_content(), "hello");
+        assert_eq!(editor.cursor_col, 5);
+
+        // Redo should restore the change
+        assert!(editor.redo());
+        assert_eq!(editor.get_content(), "hello!");
+        assert_eq!(editor.cursor_col, 6);
+    }
+
+    #[test]
+    fn test_undo_redo_delete_char() {
+        let mut editor = Editor::new();
+        editor.set_content("hello!".to_string());
+        editor.cursor_col = 6;
+
+        // Save state and delete a character
+        editor.save_state();
+        editor.delete_char();
+        assert_eq!(editor.get_content(), "hello");
+
+        // Undo should restore the deleted character
+        assert!(editor.undo());
+        assert_eq!(editor.get_content(), "hello!");
+        assert_eq!(editor.cursor_col, 6);
+
+        // Redo should delete again
+        assert!(editor.redo());
+        assert_eq!(editor.get_content(), "hello");
+    }
+
+    #[test]
+    fn test_undo_redo_multiple_changes() {
+        let mut editor = Editor::new();
+        editor.set_content("".to_string());
+
+        // Make several changes
+        editor.save_state();
+        editor.insert_char('h');
+        
+        editor.save_state();
+        editor.insert_char('i');
+        
+        editor.save_state();
+        editor.insert_char('!');
+        
+        assert_eq!(editor.get_content(), "hi!");
+
+        // Undo all changes
+        assert!(editor.undo());
+        assert_eq!(editor.get_content(), "hi");
+        
+        assert!(editor.undo());
+        assert_eq!(editor.get_content(), "h");
+        
+        assert!(editor.undo());
+        assert_eq!(editor.get_content(), "");
+
+        // Can't undo anymore
+        assert!(!editor.undo());
+
+        // Redo all changes
+        assert!(editor.redo());
+        assert_eq!(editor.get_content(), "h");
+        
+        assert!(editor.redo());
+        assert_eq!(editor.get_content(), "hi");
+        
+        assert!(editor.redo());
+        assert_eq!(editor.get_content(), "hi!");
+
+        // Can't redo anymore
+        assert!(!editor.redo());
+    }
+
+    #[test]
+    fn test_new_change_clears_redo() {
+        let mut editor = Editor::new();
+        editor.set_content("hello".to_string());
+        editor.cursor_col = 5;
+
+        // Make a change
+        editor.save_state();
+        editor.insert_char('!');
+        
+        // Undo it
+        assert!(editor.undo());
+        assert_eq!(editor.get_content(), "hello");
+        
+        // Make a different change
+        editor.save_state();
+        editor.insert_char('?');
+        
+        // Now redo should not bring back the '!'
+        assert!(!editor.redo());
+        assert_eq!(editor.get_content(), "hello?");
+    }
+
+    #[test]
+    fn test_clear_history() {
+        let mut editor = Editor::new();
+        editor.set_content("hello".to_string());
+        editor.cursor_col = 5;
+
+        // Make some changes
+        editor.save_state();
+        editor.insert_char('!');
+        
+        // Clear history
+        editor.clear_history();
+        
+        // Undo should not work
+        assert!(!editor.undo());
+        assert_eq!(editor.get_content(), "hello!");
     }
 }
