@@ -65,6 +65,11 @@ impl SearchDialog {
                 .filter(|id| tree.get_document(**id).is_some())
                 .copied()
                 .collect();
+            
+            // If no recently accessed documents, show all documents
+            if self.results.is_empty() {
+                self.results = tree.documents().iter().map(|doc| doc.id).collect();
+            }
         } else {
             // Search for matching documents
             let matches = tree.search(query);
