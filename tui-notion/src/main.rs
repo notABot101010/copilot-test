@@ -90,6 +90,8 @@ A terminal-based Notion clone built with Rust!
 - **Ctrl+K**: Quick search across all documents
 - **Ctrl+N**: Create new document
 - **Ctrl+D**: Delete current document (with confirmation)
+- **Ctrl+Z**: Undo last change (in INSERT mode)
+- **Ctrl+Y**: Redo last undone change (in INSERT mode)
 - **q**: Quit application
 
 ### Navigation

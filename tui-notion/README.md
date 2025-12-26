@@ -19,6 +19,7 @@ A terminal-based Notion clone built with Rust and ratatui. Create, edit, and org
   - Delete documents (Ctrl+D)
   - Auto-save on mode change (Ctrl+S)
   - Navigate between documents with quick search (Ctrl+K)
+  - Undo/Redo support (Ctrl+Z / Ctrl+Y) in insert mode
 
 - **Quick Search**:
   - Ctrl+K to open search dialog
@@ -87,6 +88,8 @@ Or run the built binary:
 ### Insert Mode (Editor)
 
 - `Esc` - Exit insert mode (auto-saves)
+- `Ctrl+Z` - Undo last change
+- `Ctrl+Y` - Redo last undone change
 - Arrow keys - Move cursor (content scrolls automatically)
 - `Home` - Move to line start
 - `End` - Move to line end
@@ -148,6 +151,7 @@ The editor highlights:
 - `document.rs` - Document data model
 - `tree.rs` - Document tree management
 - `editor.rs` - Text editor logic
+- `history.rs` - Undo/redo history management
 - `toc.rs` - Table of contents extraction
 - `search.rs` - Search functionality
 - `storage.rs` - File persistence
@@ -157,7 +161,6 @@ The editor highlights:
 
 - Hierarchical document tree (nested documents)
 - Copy/paste support
-- Undo/redo
 - More markdown syntax highlighting (bold, italic, links)
 - Export to HTML/PDF
 - Tags and filtering
