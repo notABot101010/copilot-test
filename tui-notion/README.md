@@ -75,8 +75,12 @@ Or run the built binary:
 ### Normal Mode (Editor)
 
 - `i` - Enter insert mode
-- `j` / `↓` - Scroll down
-- `k` / `↑` - Scroll up
+- `j` / `↓` - Move cursor down
+- `k` / `↑` - Move cursor up
+- `h` / `←` - Move cursor left
+- `l` / `→` - Move cursor right
+- `Home` - Move to line start
+- `End` - Move to line end
 - `PageDown` - Scroll down one page
 - `PageUp` - Scroll up one page
 
