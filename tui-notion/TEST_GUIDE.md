@@ -24,6 +24,8 @@ To test the TUI Notion application, follow these steps:
 
 4. TEST EDITOR (CENTER PANEL):
    - Press Tab to focus on the editor
+   - In NORMAL mode, use j/k/h/l or arrow keys to move cursor
+   - Observe cursor moving as expected
    - Press 'i' to enter INSERT mode
    - Type some markdown content:
      # My First Heading
@@ -32,6 +34,7 @@ To test the TUI Notion application, follow these steps:
      - List item 1
      - List item 2
    - Press Esc to return to NORMAL mode
+   - Test cursor movement in NORMAL mode again
    - Observe syntax highlighting (headings in blue/cyan/green)
 
 5. TEST TABLE OF CONTENTS (RIGHT PANEL):
@@ -95,7 +98,8 @@ GLOBAL:
 EDITOR:
   i       - Enter INSERT mode
   Esc     - Exit INSERT mode
-  j/k ↓/↑ - Scroll (NORMAL mode)
+  j/k/h/l ↓/↑/←/→ - Move cursor (NORMAL mode)
+  Home/End   - Line start/end (NORMAL mode)
   PgUp/Dn - Page scroll
 
 INSERT MODE:
