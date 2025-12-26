@@ -171,11 +171,11 @@ impl Editor {
 
     pub fn page_down(&mut self) {
         let scroll_amount = self.viewport_height.min(10);
-        let max_scroll = self.lines.len().saturating_sub(1);
-        if self.scroll_offset + scroll_amount < max_scroll {
-            self.scroll_offset += scroll_amount;
+        let new_offset = self.scroll_offset + scroll_amount;
+        if new_offset < self.lines.len() {
+            self.scroll_offset = new_offset;
         } else {
-            self.scroll_offset = max_scroll.saturating_sub(self.viewport_height.saturating_sub(1));
+            self.scroll_offset = self.lines.len().saturating_sub(1);
         }
         // Move cursor down if it's above the visible area
         if self.cursor_line < self.scroll_offset {
