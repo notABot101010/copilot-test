@@ -569,4 +569,110 @@ mod tests {
         assert!(!editor.undo());
         assert_eq!(editor.get_content(), "hello!");
     }
+
+    #[test]
+    fn test_cursor_right_stops_at_line_end() {
+        let mut editor = Editor::new();
+        editor.set_content("hello".to_string());
+        
+        // Try to move right 10 times, should stop at end of line (position 5)
+        for _ in 0..10 {
+            editor.move_cursor_right();
+        }
+        
+        assert_eq!(editor.cursor_position(), (0, 5));
+        
+        // Verify we can't go beyond the end
+        editor.move_cursor_right();
+        assert_eq!(editor.cursor_position(), (0, 5));
+    }
+
+    #[test]
+    fn test_cursor_down_stops_at_last_line() {
+        let mut editor = Editor::new();
+        editor.set_content("Line 1\nLine 2\nLine 3".to_string());
+        
+        // Try to move down 10 times, should stop at last line
+        for _ in 0..10 {
+            editor.move_cursor_down();
+        }
+        
+        assert_eq!(editor.cursor_position().0, 2); // Line 2 is the last (0-indexed)
+    }
+
+    #[test]
+    fn test_cursor_left_stops_at_line_start() {
+        let mut editor = Editor::new();
+        editor.set_content("hello".to_string());
+        editor.cursor_col = 3;
+        
+        // Try to move left 10 times, should stop at beginning
+        for _ in 0..10 {
+            editor.move_cursor_left();
+        }
+        
+        assert_eq!(editor.cursor_position().1, 0); // Column should be 0
+    }
+
+    #[test]
+    fn test_cursor_up_stops_at_first_line() {
+        let mut editor = Editor::new();
+        editor.set_content("Line 1\nLine 2\nLine 3".to_string());
+        editor.cursor_line = 2;
+        
+        // Try to move up 10 times, should stop at first line
+        for _ in 0..10 {
+            editor.move_cursor_up();
+        }
+        
+        assert_eq!(editor.cursor_position().0, 0); // Line should be 0
+    }
+
+    #[test]
+    fn test_cursor_right_wraps_to_next_line() {
+        let mut editor = Editor::new();
+        editor.set_content("Line 1\nLine 2".to_string());
+        editor.cursor_col = 6; // At end of first line
+        
+        // Move right should wrap to next line
+        editor.move_cursor_right();
+        assert_eq!(editor.cursor_position(), (1, 0));
+    }
+
+    #[test]
+    fn test_cursor_left_wraps_to_previous_line() {
+        let mut editor = Editor::new();
+        editor.set_content("Line 1\nLine 2".to_string());
+        editor.cursor_line = 1;
+        editor.cursor_col = 0;
+        
+        // Move left should wrap to end of previous line
+        editor.move_cursor_left();
+        assert_eq!(editor.cursor_position(), (0, 6));
+    }
+
+    #[test]
+    fn test_multiple_cursor_movements_respect_line_boundaries() {
+        let mut editor = Editor::new();
+        editor.set_content("Short\nThis is a longer line\nShort".to_string());
+        
+        // Start at beginning
+        assert_eq!(editor.cursor_position(), (0, 0));
+        
+        // Move down to longer line
+        editor.move_cursor_down();
+        assert_eq!(editor.cursor_position(), (1, 0));
+        
+        // Move right 21 times to reach end of line
+        for _ in 0..21 {
+            editor.move_cursor_right();
+        }
+        
+        // Should be at end of line (21 chars)
+        assert_eq!(editor.cursor_position(), (1, 21));
+        
+        // One more right movement should wrap to next line
+        editor.move_cursor_right();
+        assert_eq!(editor.cursor_position(), (2, 0));
+    }
 }
