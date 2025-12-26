@@ -16,7 +16,7 @@ pub fn render_editor(
     editor: &Editor,
     focused: bool,
     mode: &str,
-    is_insert_mode: bool,
+    _is_insert_mode: bool,
 ) {
     let border_style = if focused {
         Style::default().fg(Color::Cyan)
@@ -42,9 +42,8 @@ pub fn render_editor(
         .skip(scroll_offset)
         .take(visible_height)
         .enumerate()
-        .map(|(idx, line)| {
-            let actual_line = scroll_offset + idx;
-            let styled_line = highlight_markdown(line, actual_line == cursor_line);
+        .map(|(_idx, line)| {
+            let styled_line = highlight_markdown(line, false);
             styled_line
         })
         .collect();
@@ -52,8 +51,8 @@ pub fn render_editor(
     let paragraph = Paragraph::new(visible_lines).wrap(Wrap { trim: false });
     paragraph.render(inner, buf);
 
-    // Show cursor in insert mode
-    if is_insert_mode && focused {
+    // Show cursor in both insert and normal mode
+    if focused {
         let relative_cursor_line = cursor_line.saturating_sub(scroll_offset);
         if relative_cursor_line < visible_height {
             let cursor_x = inner.x + cursor_col as u16;
@@ -223,12 +222,41 @@ pub fn render_search_dialog(area: Rect, buf: &mut Buffer, search: &SearchDialog,
     }
 }
 
-fn highlight_markdown(line: &str, is_cursor_line: bool) -> Line<'_> {
-    let base_style = if is_cursor_line {
-        Style::default().bg(Color::DarkGray)
-    } else {
-        Style::default()
+pub fn render_confirm_dialog(area: Rect, buf: &mut Buffer, message: &str) {
+    // Create a centered dialog
+    let dialog_width = area.width.min(50);
+    let dialog_height = 7;
+    let dialog_x = (area.width - dialog_width) / 2;
+    let dialog_y = (area.height - dialog_height) / 2;
+
+    let dialog_area = Rect {
+        x: area.x + dialog_x,
+        y: area.y + dialog_y,
+        width: dialog_width,
+        height: dialog_height,
     };
+
+    // Clear the area behind the dialog
+    Clear.render(dialog_area, buf);
+
+    let block = Block::default()
+        .title("Confirmation")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Red));
+
+    let inner = block.inner(dialog_area);
+    block.render(dialog_area, buf);
+
+    // Render message
+    let message_para = Paragraph::new(message)
+        .style(Style::default().fg(Color::White))
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: true });
+    message_para.render(inner, buf);
+}
+
+fn highlight_markdown(line: &str, _is_cursor_line: bool) -> Line<'_> {
+    let base_style = Style::default();
 
     // Simple markdown highlighting
     if line.trim_start().starts_with('#') {

@@ -36,6 +36,7 @@ enum AppMode {
     Normal,
     Insert,
     Search,
+    ConfirmDelete,
 }
 
 struct App {
@@ -47,15 +48,16 @@ struct App {
     focused_panel: FocusedPanel,
     mode: AppMode,
     should_quit: bool,
+    pending_delete_doc_id: Option<uuid::Uuid>,
 }
 
 impl App {
-    fn new() -> Result<Self> {
-        let storage = Storage::new()?;
+    async fn new() -> Result<Self> {
+        let storage = Storage::new().await?;
         let mut tree = DocumentTree::new();
         
         // Load existing documents
-        let documents = storage.load_all_documents()?;
+        let documents = storage.load_all_documents().await?;
         for doc in documents {
             tree.add_document(doc);
         }
@@ -78,15 +80,14 @@ A terminal-based Notion clone built with Rust!
 
 1. Press `i` to enter INSERT mode
 2. Type your markdown content
-3. Press `Esc` to save and return to NORMAL mode
+3. Press `Esc` to return to NORMAL mode (auto-saves)
 4. Use `Tab` to cycle between panels
 
 ### Keyboard Shortcuts
 
 - **Ctrl+K**: Quick search across all documents
 - **Ctrl+N**: Create new document
-- **Ctrl+S**: Save current document
-- **Ctrl+D**: Delete current document
+- **Ctrl+D**: Delete current document (with confirmation)
 - **q**: Quit application
 
 ### Navigation
@@ -111,9 +112,11 @@ The editor highlights:
 - Create multiple documents with Ctrl+N
 - Switch between them using the tree on the left
 - Use Ctrl+K for quick navigation
+- Documents are auto-saved as you edit!
 
 Happy note-taking!
 "#.to_string();
+            storage.save_document(&welcome_doc).await?;
             tree.add_document(welcome_doc);
         }
 
@@ -130,7 +133,15 @@ Happy note-taking!
             focused_panel: FocusedPanel::Editor,
             mode: AppMode::Normal,
             should_quit: false,
+            pending_delete_doc_id: None,
         };
+
+        // Try to load the last opened document
+        if let Ok(Some(last_doc_id)) = app.storage.get_last_opened_document().await {
+            if app.tree.get_document(last_doc_id).is_some() {
+                app.tree.select_document(last_doc_id);
+            }
+        }
 
         // Load the first document if available
         if let Some(doc_id) = app.tree.selected_document() {
@@ -143,16 +154,17 @@ Happy note-taking!
         Ok(app)
     }
 
-    fn handle_key_event(&mut self, key: event::KeyEvent) -> Result<()> {
+    async fn handle_key_event(&mut self, key: event::KeyEvent) -> Result<()> {
         match self.mode {
-            AppMode::Normal => self.handle_normal_mode(key)?,
-            AppMode::Insert => self.handle_insert_mode(key)?,
-            AppMode::Search => self.handle_search_mode(key)?,
+            AppMode::Normal => self.handle_normal_mode(key).await?,
+            AppMode::Insert => self.handle_insert_mode(key).await?,
+            AppMode::Search => self.handle_search_mode(key).await?,
+            AppMode::ConfirmDelete => self.handle_confirm_delete_mode(key).await?,
         }
         Ok(())
     }
 
-    fn handle_normal_mode(&mut self, key: event::KeyEvent) -> Result<()> {
+    async fn handle_normal_mode(&mut self, key: event::KeyEvent) -> Result<()> {
         // Global shortcuts
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
@@ -167,23 +179,17 @@ Happy note-taking!
                     // Create new document
                     let new_doc = Document::new("New Document".to_string());
                     let doc_id = new_doc.id;
+                    self.storage.save_document(&new_doc).await?;
                     self.tree.add_document(new_doc);
                     self.tree.select_document(doc_id);
-                    self.load_selected_document()?;
-                    return Ok(());
-                }
-                KeyCode::Char('s') => {
-                    // Save current document
-                    self.save_current_document()?;
+                    self.load_selected_document().await?;
                     return Ok(());
                 }
                 KeyCode::Char('d') => {
-                    // Delete current document
+                    // Show delete confirmation dialog
                     if let Some(doc_id) = self.tree.selected_document() {
-                        self.tree.delete_document(doc_id);
-                        self.storage.delete_document(doc_id)?;
-                        self.editor.clear();
-                        self.toc.clear();
+                        self.pending_delete_doc_id = Some(doc_id);
+                        self.mode = AppMode::ConfirmDelete;
                     }
                     return Ok(());
                 }
@@ -206,7 +212,7 @@ Happy note-taking!
             _ => {
                 match self.focused_panel {
                     FocusedPanel::Editor => self.handle_editor_navigation(key)?,
-                    FocusedPanel::Toc => self.handle_toc_navigation(key)?,
+                    FocusedPanel::Toc => self.handle_toc_navigation(key).await?,
                     FocusedPanel::Search => {}
                 }
             }
@@ -214,23 +220,26 @@ Happy note-taking!
         Ok(())
     }
 
-    fn handle_insert_mode(&mut self, key: event::KeyEvent) -> Result<()> {
+    async fn handle_insert_mode(&mut self, key: event::KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Esc => {
                 self.mode = AppMode::Normal;
-                self.save_current_document()?;
+                self.auto_save_current_document().await?;
             }
             KeyCode::Char(c) => {
                 self.editor.insert_char(c);
                 self.update_toc();
+                self.auto_save_current_document().await?;
             }
             KeyCode::Backspace => {
                 self.editor.delete_char();
                 self.update_toc();
+                self.auto_save_current_document().await?;
             }
             KeyCode::Enter => {
                 self.editor.insert_newline();
                 self.update_toc();
+                self.auto_save_current_document().await?;
             }
             KeyCode::Left => {
                 self.editor.move_cursor_left();
@@ -255,7 +264,7 @@ Happy note-taking!
         Ok(())
     }
 
-    fn handle_search_mode(&mut self, key: event::KeyEvent) -> Result<()> {
+    async fn handle_search_mode(&mut self, key: event::KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Esc => {
                 self.mode = AppMode::Normal;
@@ -264,7 +273,7 @@ Happy note-taking!
             KeyCode::Enter => {
                 if let Some(doc_id) = self.search.selected_document() {
                     self.tree.select_document(doc_id);
-                    self.load_selected_document()?;
+                    self.load_selected_document().await?;
                     self.mode = AppMode::Normal;
                     self.focused_panel = FocusedPanel::Editor;
                 }
@@ -282,6 +291,34 @@ Happy note-taking!
                 self.search.input_mut().handle_event(&input_event);
                 self.search.update_results(&self.tree);
             }
+        }
+        Ok(())
+    }
+
+    async fn handle_confirm_delete_mode(&mut self, key: event::KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                // Confirm deletion
+                if let Some(doc_id) = self.pending_delete_doc_id {
+                    self.tree.delete_document(doc_id);
+                    self.storage.delete_document(doc_id).await?;
+                    self.editor.clear();
+                    self.toc.clear();
+                    
+                    // Load the next available document
+                    if self.tree.selected_document().is_some() {
+                        self.load_selected_document().await?;
+                    }
+                }
+                self.pending_delete_doc_id = None;
+                self.mode = AppMode::Normal;
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                // Cancel deletion
+                self.pending_delete_doc_id = None;
+                self.mode = AppMode::Normal;
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -305,7 +342,7 @@ Happy note-taking!
         Ok(())
     }
 
-    fn handle_toc_navigation(&mut self, key: event::KeyEvent) -> Result<()> {
+    async fn handle_toc_navigation(&mut self, key: event::KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Down | KeyCode::Char('j') => {
                 self.toc.next();
@@ -332,22 +369,24 @@ Happy note-taking!
         };
     }
 
-    fn load_selected_document(&mut self) -> Result<()> {
+    async fn load_selected_document(&mut self) -> Result<()> {
         if let Some(doc_id) = self.tree.selected_document() {
             if let Some(doc) = self.tree.get_document(doc_id) {
                 self.editor.set_content(doc.content.clone());
                 self.update_toc();
+                // Save the last opened document
+                self.storage.set_last_opened_document(doc_id).await?;
             }
         }
         Ok(())
     }
 
-    fn save_current_document(&mut self) -> Result<()> {
+    async fn auto_save_current_document(&mut self) -> Result<()> {
         if let Some(doc_id) = self.tree.selected_document() {
             let content = self.editor.get_content();
             if let Some(doc) = self.tree.get_document_mut(doc_id) {
                 doc.content = content;
-                self.storage.save_document(doc)?;
+                self.storage.save_document(doc).await?;
             }
         }
         Ok(())
@@ -359,7 +398,7 @@ Happy note-taking!
     }
 }
 
-fn run_app<B: ratatui::backend::Backend>(
+async fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     mut app: App,
 ) -> Result<()> {
@@ -390,6 +429,7 @@ fn run_app<B: ratatui::backend::Backend>(
                 AppMode::Insert => "INSERT",
                 AppMode::Normal => "NORMAL",
                 AppMode::Search => "SEARCH",
+                AppMode::ConfirmDelete => "CONFIRM DELETE",
             };
             ui::render_editor(
                 chunks[1],
@@ -404,6 +444,11 @@ fn run_app<B: ratatui::backend::Backend>(
             if matches!(app.mode, AppMode::Search) {
                 ui::render_search_dialog(f.area(), f.buffer_mut(), &app.search, &app.tree);
             }
+
+            // Render confirmation dialog if in confirm delete mode
+            if matches!(app.mode, AppMode::ConfirmDelete) {
+                ui::render_confirm_dialog(f.area(), f.buffer_mut(), "Delete this document? (y/n)");
+            }
         })?;
 
         if app.should_quit {
@@ -411,12 +456,13 @@ fn run_app<B: ratatui::backend::Backend>(
         }
 
         if let Event::Key(key) = event::read()? {
-            app.handle_key_event(key)?;
+            app.handle_key_event(key).await?;
         }
     }
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -425,8 +471,8 @@ fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Create app and run it
-    let app = App::new()?;
-    let res = run_app(&mut terminal, app);
+    let app = App::new().await?;
+    let res = run_app(&mut terminal, app).await;
 
     // Restore terminal
     disable_raw_mode()?;
