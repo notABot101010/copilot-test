@@ -78,13 +78,13 @@ pub fn render_book_content(
     frame.render_widget(block, area);
 
     // Calculate centered content area (60% width centered)
-    let margin_percent = 20; // 20% on each side, 60% in the middle
-    
+    let margin_percent = 25; // 20% on each side, 60% in the middle
+
     let centered_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Percentage(margin_percent),
-            Constraint::Percentage(60),
+            Constraint::Percentage(50),
             Constraint::Percentage(margin_percent),
         ])
         .split(inner_area);
@@ -93,7 +93,7 @@ pub fn render_book_content(
 
     // Wrap text to fit the content area
     let wrapped_lines = wrap_text(content, content_area.width as usize);
-    
+
     // Calculate visible lines
     let visible_height = content_area.height as usize;
     let total_lines = wrapped_lines.len();
@@ -120,7 +120,7 @@ pub fn render_book_content(
 
 fn wrap_text(text: &str, width: usize) -> Vec<String> {
     let mut wrapped = Vec::new();
-    
+
     for paragraph in text.split('\n') {
         if paragraph.is_empty() {
             wrapped.push(String::new());
@@ -132,7 +132,7 @@ fn wrap_text(text: &str, width: usize) -> Vec<String> {
 
         for word in paragraph.split_whitespace() {
             let word_len = word.chars().count();
-            
+
             if current_length == 0 {
                 // First word in line
                 current_line = word.to_string();
