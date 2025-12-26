@@ -49,6 +49,7 @@ struct App {
     mode: AppMode,
     should_quit: bool,
     pending_delete_doc_id: Option<uuid::Uuid>,
+    recently_accessed_docs: Vec<uuid::Uuid>,
 }
 
 impl App {
@@ -124,6 +125,9 @@ Happy note-taking!
         let toc = TableOfContents::new();
         let search = SearchDialog::new();
 
+        // Load recently accessed documents (limit to 100)
+        let recently_accessed_docs = storage.get_recently_accessed_documents(100).await.unwrap_or_default();
+
         let mut app = Self {
             tree,
             editor,
@@ -134,6 +138,7 @@ Happy note-taking!
             mode: AppMode::Normal,
             should_quit: false,
             pending_delete_doc_id: None,
+            recently_accessed_docs,
         };
 
         // Try to load the last opened document
@@ -172,7 +177,7 @@ Happy note-taking!
                     self.mode = AppMode::Search;
                     self.focused_panel = FocusedPanel::Search;
                     self.search.reset();
-                    self.search.update_results(&self.tree);
+                    self.search.update_results_with_recent(&self.tree, &self.recently_accessed_docs);
                     return Ok(());
                 }
                 KeyCode::Char('n') => {
@@ -289,7 +294,7 @@ Happy note-taking!
                 use crossterm::event::Event;
                 let input_event = Event::Key(key);
                 self.search.input_mut().handle_event(&input_event);
-                self.search.update_results(&self.tree);
+                self.search.update_results_with_recent(&self.tree, &self.recently_accessed_docs);
             }
         }
         Ok(())
@@ -376,6 +381,10 @@ Happy note-taking!
                 self.update_toc();
                 // Save the last opened document
                 self.storage.set_last_opened_document(doc_id).await?;
+                // Record document access
+                self.storage.record_document_access(doc_id).await?;
+                // Update recently accessed documents list
+                self.refresh_recently_accessed_docs().await?;
             }
         }
         Ok(())
@@ -395,6 +404,11 @@ Happy note-taking!
     fn update_toc(&mut self) {
         let content = self.editor.get_content();
         self.toc.update_from_content(&content);
+    }
+
+    async fn refresh_recently_accessed_docs(&mut self) -> Result<()> {
+        self.recently_accessed_docs = self.storage.get_recently_accessed_documents(100).await.unwrap_or_default();
+        Ok(())
     }
 }
 

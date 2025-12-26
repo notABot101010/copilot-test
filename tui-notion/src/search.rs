@@ -52,6 +52,32 @@ impl SearchDialog {
         }
     }
 
+    pub fn update_results_with_recent(&mut self, tree: &DocumentTree, recent_doc_ids: &[Uuid]) {
+        self.results.clear();
+        
+        let query = self.input.value();
+        
+        if query.is_empty() {
+            // Show recently accessed documents when query is empty
+            // Only include documents that still exist in the tree
+            self.results = recent_doc_ids
+                .iter()
+                .filter(|id| tree.get_document(**id).is_some())
+                .copied()
+                .collect();
+        } else {
+            // Search for matching documents
+            let matches = tree.search(query);
+            self.results = matches.iter().map(|doc| doc.id).collect();
+        }
+        
+        if !self.results.is_empty() {
+            self.selected_index = Some(0);
+        } else {
+            self.selected_index = None;
+        }
+    }
+
     pub fn next_result(&mut self) {
         if let Some(index) = self.selected_index {
             if index < self.results.len() - 1 {
