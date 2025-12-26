@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use std::io;
 use uuid::Uuid;
 
+const CARD_HEIGHT: u16 = 4;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Card {
     id: Uuid,
@@ -462,7 +464,7 @@ fn render_column(
             break;
         }
 
-        let card_height = 4.min(inner.height.saturating_sub(current_y - inner.y));
+        let card_height = CARD_HEIGHT.min(inner.height.saturating_sub(current_y - inner.y));
         let card_area = Rect {
             x: inner.x,
             y: current_y,
@@ -596,7 +598,7 @@ fn run_app<B: ratatui::backend::Backend>(
 
             // Split main area into columns
             let num_columns = app.columns.len();
-            let constraints = vec![Constraint::Percentage((100 / num_columns) as u16); num_columns];
+            let constraints = vec![Constraint::Ratio(1, num_columns as u32); num_columns];
             
             let columns_layout = Layout::default()
                 .direction(Direction::Horizontal)
