@@ -25,9 +25,11 @@ impl Player {
     }
 
     pub fn play(&self, path: &Path) -> Result<()> {
-        // Create a new sink
-        let (_stream, stream_handle) = OutputStream::try_default()?;
-        let sink = Sink::try_new(&stream_handle)?;
+        // Use the existing stream handle from the struct
+        let stream_handle = self._stream_handle.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No audio output stream available"))?;
+        
+        let sink = Sink::try_new(stream_handle)?;
 
         // Load the audio file
         let file = File::open(path)?;
