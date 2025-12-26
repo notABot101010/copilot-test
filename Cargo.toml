@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["base64", "hex", "base32", "digital_ocean", "scaleway", "git-server", "spreadsheet-server", "s3server", "customer-support/server", "offline-office/server", "e2ee-chat/backend", "encrypted-chat/server", "e2ee-crdt/server",  "ai-coding-agent/server", "duckduckai-rs", "quic-vpn", "realtime-docs/server", "chesssite/server", "mls-chat/server", "tvflix/server", "duplex", "turboshake", "keccak", "securewebrtc/server", "chacha", "chacha-browser", "wasm-hash-bench", "tui-chat", "tui-pass", "tui-calc", "tui-spreadsheet", "tui-book", "tui-kaban", "tui-notion"]
+members = ["base64", "hex", "base32", "digital_ocean", "scaleway", "git-server", "spreadsheet-server", "s3server", "customer-support/server", "offline-office/server", "e2ee-chat/backend", "encrypted-chat/server", "e2ee-crdt/server",  "ai-coding-agent/server", "duckduckai-rs", "quic-vpn", "realtime-docs/server", "chesssite/server", "mls-chat/server", "tvflix/server", "duplex", "turboshake", "keccak", "securewebrtc/server", "chacha", "chacha-browser", "wasm-hash-bench", "tui-chat", "tui-pass", "tui-calc", "tui-spreadsheet", "tui-book", "tui-kaban", "tui-notion", "tui-music"]
 
 [workspace.dependencies]
 criterion = { version = "0.7", features = ["html_reports"] }
