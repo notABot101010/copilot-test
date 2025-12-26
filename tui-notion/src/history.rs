@@ -1,6 +1,8 @@
 /// History module for undo/redo functionality
 /// Stores editor state snapshots for in-memory undo/redo operations
 
+use std::collections::VecDeque;
+
 #[derive(Debug, Clone)]
 pub struct EditorState {
     pub lines: Vec<String>,
@@ -9,16 +11,16 @@ pub struct EditorState {
 }
 
 pub struct History {
-    undo_stack: Vec<EditorState>,
-    redo_stack: Vec<EditorState>,
+    undo_stack: VecDeque<EditorState>,
+    redo_stack: VecDeque<EditorState>,
     max_history_size: usize,
 }
 
 impl History {
     pub fn new() -> Self {
         Self {
-            undo_stack: Vec::new(),
-            redo_stack: Vec::new(),
+            undo_stack: VecDeque::new(),
+            redo_stack: VecDeque::new(),
             max_history_size: 100, // Keep last 100 states
         }
     }
@@ -26,11 +28,11 @@ impl History {
     /// Push a new state onto the undo stack
     /// This clears the redo stack as new changes invalidate redo history
     pub fn push(&mut self, state: EditorState) {
-        self.undo_stack.push(state);
+        self.undo_stack.push_back(state);
         
         // Limit history size to prevent unbounded memory growth
         if self.undo_stack.len() > self.max_history_size {
-            self.undo_stack.remove(0);
+            self.undo_stack.pop_front();
         }
         
         // Clear redo stack when new changes are made
@@ -40,8 +42,8 @@ impl History {
     /// Undo the last change
     /// Returns the previous state if available
     pub fn undo(&mut self, current_state: EditorState) -> Option<EditorState> {
-        if let Some(previous_state) = self.undo_stack.pop() {
-            self.redo_stack.push(current_state);
+        if let Some(previous_state) = self.undo_stack.pop_back() {
+            self.redo_stack.push_back(current_state);
             Some(previous_state)
         } else {
             None
@@ -51,8 +53,8 @@ impl History {
     /// Redo a previously undone change
     /// Returns the next state if available
     pub fn redo(&mut self, current_state: EditorState) -> Option<EditorState> {
-        if let Some(next_state) = self.redo_stack.pop() {
-            self.undo_stack.push(current_state);
+        if let Some(next_state) = self.redo_stack.pop_back() {
+            self.undo_stack.push_back(current_state);
             Some(next_state)
         } else {
             None
