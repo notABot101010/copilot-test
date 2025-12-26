@@ -369,6 +369,12 @@ fn run_app<B: ratatui::backend::Backend>(
     mut app: App,
 ) -> Result<()> {
     loop {
+        // Update viewport height before rendering
+        let terminal_height = terminal.size()?.height;
+        let editor_height = (terminal_height as f32 * 0.8) as u16;
+        let inner_height = editor_height.saturating_sub(2) as usize;
+        app.editor.set_viewport_height(inner_height);
+        
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Horizontal)
@@ -398,10 +404,6 @@ fn run_app<B: ratatui::backend::Backend>(
                 editor_mode,
                 is_insert_mode,
             );
-            
-            // Update editor viewport height for cursor scrolling
-            let inner_height = chunks[1].height.saturating_sub(2) as usize;
-            app.editor.set_viewport_height(inner_height);
 
             // Render search dialog if in search mode
             if matches!(app.mode, AppMode::Search) {
