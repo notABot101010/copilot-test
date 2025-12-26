@@ -24,9 +24,9 @@ use std::io;
 use storage::Storage;
 use toc::TableOfContents;
 use tree::DocumentTree;
+use tui_input::backend::crossterm::EventHandler;
 
 enum FocusedPanel {
-    Tree,
     Editor,
     Toc,
     Search,
@@ -127,7 +127,7 @@ Happy note-taking!
             toc,
             search,
             storage,
-            focused_panel: FocusedPanel::Tree,
+            focused_panel: FocusedPanel::Editor,
             mode: AppMode::Normal,
             should_quit: false,
         };
@@ -160,6 +160,7 @@ Happy note-taking!
                     self.mode = AppMode::Search;
                     self.focused_panel = FocusedPanel::Search;
                     self.search.reset();
+                    self.search.update_results(&self.tree);
                     return Ok(());
                 }
                 KeyCode::Char('n') => {
@@ -204,7 +205,6 @@ Happy note-taking!
             }
             _ => {
                 match self.focused_panel {
-                    FocusedPanel::Tree => self.handle_tree_navigation(key)?,
                     FocusedPanel::Editor => self.handle_editor_navigation(key)?,
                     FocusedPanel::Toc => self.handle_toc_navigation(key)?,
                     FocusedPanel::Search => {}
@@ -259,7 +259,7 @@ Happy note-taking!
         match key.code {
             KeyCode::Esc => {
                 self.mode = AppMode::Normal;
-                self.focused_panel = FocusedPanel::Tree;
+                self.focused_panel = FocusedPanel::Editor;
             }
             KeyCode::Enter => {
                 if let Some(doc_id) = self.search.selected_document() {
@@ -269,39 +269,25 @@ Happy note-taking!
                     self.focused_panel = FocusedPanel::Editor;
                 }
             }
-            KeyCode::Char(c) => {
-                self.search.add_char(c);
-                self.search.update_results(&self.tree);
-            }
-            KeyCode::Backspace => {
-                self.search.delete_char();
-                self.search.update_results(&self.tree);
-            }
             KeyCode::Down => {
                 self.search.next_result();
             }
             KeyCode::Up => {
                 self.search.previous_result();
             }
-            _ => {}
+            _ => {
+                // Handle input using tui-input
+                use crossterm::event::Event;
+                let input_event = Event::Key(key);
+                self.search.input_mut().handle_event(&input_event);
+                self.search.update_results(&self.tree);
+            }
         }
         Ok(())
     }
 
-    fn handle_tree_navigation(&mut self, key: event::KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.tree.next();
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.tree.previous();
-            }
-            KeyCode::Enter => {
-                self.load_selected_document()?;
-                self.focused_panel = FocusedPanel::Editor;
-            }
-            _ => {}
-        }
+    fn handle_tree_navigation(&mut self, _key: event::KeyEvent) -> Result<()> {
+        // Tree navigation removed - use search dialog instead
         Ok(())
     }
 
@@ -345,10 +331,9 @@ Happy note-taking!
 
     fn cycle_focus(&mut self) {
         self.focused_panel = match self.focused_panel {
-            FocusedPanel::Tree => FocusedPanel::Editor,
             FocusedPanel::Editor => FocusedPanel::Toc,
-            FocusedPanel::Toc => FocusedPanel::Tree,
-            FocusedPanel::Search => FocusedPanel::Tree,
+            FocusedPanel::Toc => FocusedPanel::Editor,
+            FocusedPanel::Search => FocusedPanel::Editor,
         };
     }
 
@@ -389,17 +374,17 @@ fn run_app<B: ratatui::backend::Backend>(
                 .direction(Direction::Horizontal)
                 .constraints([
                     Constraint::Percentage(20),
-                    Constraint::Percentage(60),
-                    Constraint::Percentage(20),
+                    Constraint::Percentage(80),
                 ])
                 .split(f.area());
 
-            // Render document tree (left panel)
-            let tree_focused = matches!(app.focused_panel, FocusedPanel::Tree);
-            ui::render_tree(chunks[0], f.buffer_mut(), &app.tree, tree_focused);
+            // Render table of contents (left panel - moved from right)
+            let toc_focused = matches!(app.focused_panel, FocusedPanel::Toc);
+            ui::render_toc(chunks[0], f.buffer_mut(), &app.toc, toc_focused);
 
-            // Render editor (center panel)
+            // Render editor (right panel - now takes more space)
             let editor_focused = matches!(app.focused_panel, FocusedPanel::Editor);
+            let is_insert_mode = matches!(app.mode, AppMode::Insert);
             let editor_mode = match app.mode {
                 AppMode::Insert => "INSERT",
                 AppMode::Normal => "NORMAL",
@@ -411,11 +396,12 @@ fn run_app<B: ratatui::backend::Backend>(
                 &app.editor,
                 editor_focused,
                 editor_mode,
+                is_insert_mode,
             );
-
-            // Render table of contents (right panel)
-            let toc_focused = matches!(app.focused_panel, FocusedPanel::Toc);
-            ui::render_toc(chunks[2], f.buffer_mut(), &app.toc, toc_focused);
+            
+            // Update editor viewport height for cursor scrolling
+            let inner_height = chunks[1].height.saturating_sub(2) as usize;
+            app.editor.set_viewport_height(inner_height);
 
             // Render search dialog if in search mode
             if matches!(app.mode, AppMode::Search) {
