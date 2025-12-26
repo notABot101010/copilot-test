@@ -4,10 +4,9 @@ A terminal-based Notion clone built with Rust and ratatui. Create, edit, and org
 
 ## Features
 
-- **Three-Panel Layout**:
-  - Left: Document tree for navigation
-  - Center: Markdown editor with syntax highlighting
-  - Right: Live table of contents (outline)
+- **Two-Panel Layout**:
+  - Left: Live table of contents (outline) for quick navigation
+  - Right: Markdown editor with syntax highlighting and visible cursor in insert mode
 
 - **Keyboard-First Navigation**:
   - Vi-style keybindings (j/k) and arrow keys
@@ -19,10 +18,12 @@ A terminal-based Notion clone built with Rust and ratatui. Create, edit, and org
   - Edit documents (press 'i' in editor)
   - Delete documents (Ctrl+D)
   - Auto-save on mode change (Ctrl+S)
+  - Navigate between documents with quick search (Ctrl+K)
 
 - **Quick Search**:
   - Ctrl+K to open search dialog
-  - Live search across all documents
+  - Shows all documents when search is empty
+  - Live search across all documents with real input cursor
   - Jump to any document instantly
 
 - **Live Table of Contents**:
@@ -36,6 +37,8 @@ A terminal-based Notion clone built with Rust and ratatui. Create, edit, and org
     - Code blocks (\`\`\`)
     - Lists (- *)
   - Edit in plain markdown
+  - Visible cursor in insert mode
+  - Content scrolls with cursor automatically
 
 ## Installation
 
@@ -63,7 +66,7 @@ Or run the built binary:
 ### Global
 
 - `q` - Quit application
-- `Tab` - Cycle between panels (Tree → Editor → TOC)
+- `Tab` - Cycle between panels (Outline ↔ Editor)
 - `Ctrl+K` - Open search dialog
 - `Ctrl+N` - Create new document
 - `Ctrl+S` - Save current document
@@ -80,17 +83,11 @@ Or run the built binary:
 ### Insert Mode (Editor)
 
 - `Esc` - Exit insert mode (auto-saves)
-- Arrow keys - Move cursor
+- Arrow keys - Move cursor (content scrolls automatically)
 - `Home` - Move to line start
 - `End` - Move to line end
 - `Enter` - New line
 - `Backspace` - Delete character
-
-### Document Tree
-
-- `j` / `↓` - Next document
-- `k` / `↑` - Previous document
-- `Enter` - Open selected document
 
 ### Table of Contents
 
@@ -100,11 +97,9 @@ Or run the built binary:
 
 ### Search Dialog
 
-- Type to search
-- `↓` - Next result
-- `↑` - Previous result
-- `Enter` - Open selected document
-- `Esc` - Close search dialog
+- `j` / `↓` - Next heading
+- `k` / `↑` - Previous heading
+- `Enter` - Jump to heading in editor
 
 ## Data Storage
 
@@ -119,14 +114,15 @@ Each document has:
 ## Example Workflow
 
 1. Start the application: `cargo run`
-2. Create a new document: `Ctrl+N`
-3. Enter insert mode: `i`
-4. Type your markdown content with headings
-5. Exit insert mode: `Esc` (auto-saves)
-6. Navigate to TOC: `Tab` twice
-7. Jump to a heading: `Enter`
-8. Search for documents: `Ctrl+K`
-9. Type to filter, select with arrows, open with `Enter`
+2. Press `Ctrl+K` to open search (shows all documents)
+3. Select a document or create a new one with `Ctrl+N`
+4. Enter insert mode: `i`
+5. Type your markdown content with headings
+6. Exit insert mode: `Esc` (auto-saves)
+7. Navigate to Outline: `Tab`
+8. Jump to a heading: `Enter`
+9. Search for documents: `Ctrl+K`
+10. Type to filter, select with arrows, open with `Enter`
 
 ## Markdown Syntax Highlighting
 

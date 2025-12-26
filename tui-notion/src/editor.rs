@@ -3,6 +3,7 @@ pub struct Editor {
     cursor_line: usize,
     cursor_col: usize,
     scroll_offset: usize,
+    viewport_height: usize,
 }
 
 impl Editor {
@@ -12,6 +13,7 @@ impl Editor {
             cursor_line: 0,
             cursor_col: 0,
             scroll_offset: 0,
+            viewport_height: 20, // Default viewport height
         }
     }
 
@@ -81,6 +83,8 @@ impl Editor {
         // Adjust scroll offset to keep cursor visible
         if self.cursor_line < self.scroll_offset {
             self.scroll_offset = self.cursor_line;
+        } else if self.cursor_line >= self.scroll_offset + self.viewport_height {
+            self.scroll_offset = self.cursor_line.saturating_sub(self.viewport_height - 1);
         }
     }
 
@@ -121,23 +125,13 @@ impl Editor {
             if self.cursor_col > line_len {
                 self.cursor_col = line_len;
             }
-            self.ensure_cursor_visible_with_height(None);
-        }
-    }
-    
-    fn ensure_cursor_visible_with_height(&mut self, viewport_height: Option<usize>) {
-        // Adjust scroll to keep cursor in view
-        if self.cursor_line < self.scroll_offset {
-            self.scroll_offset = self.cursor_line;
-        } else if let Some(height) = viewport_height {
-            if self.cursor_line >= self.scroll_offset + height {
-                self.scroll_offset = self.cursor_line.saturating_sub(height - 1);
-            }
+            self.ensure_cursor_visible();
         }
     }
     
     pub fn set_viewport_height(&mut self, height: usize) {
-        self.ensure_cursor_visible_with_height(Some(height));
+        self.viewport_height = height.max(1);
+        self.ensure_cursor_visible();
     }
 
     pub fn move_cursor_to_line_start(&mut self) {
