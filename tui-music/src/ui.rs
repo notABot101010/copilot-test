@@ -1,4 +1,4 @@
-use crate::library::{Library, ViewMode};
+use crate::library::{Library, ViewMode, UNKNOWN_ARTIST, UNKNOWN_TITLE, UNKNOWN_ALBUM};
 use crate::player::Player;
 use ratatui::{
     Frame,
@@ -7,8 +7,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
-
-const UNKNOWN_ARTIST: &str = "Unknown Artist";
 
 pub fn render(
     f: &mut Frame,
@@ -165,14 +163,14 @@ fn render_content(
             let line = match view_mode {
                 ViewMode::Tracks => {
                     let artist = track.artist.as_deref().unwrap_or(UNKNOWN_ARTIST);
-                    let title = track.title.as_deref().unwrap_or("Unknown Title");
+                    let title = track.title.as_deref().unwrap_or(UNKNOWN_TITLE);
                     Line::from(vec![
                         Span::styled(format!("{} ", title), style),
                         Span::styled(format!("- {}", artist), Style::default().fg(Color::Gray)),
                     ])
                 }
                 ViewMode::Albums => {
-                    let album = track.album.as_deref().unwrap_or("Unknown Album");
+                    let album = track.album.as_deref().unwrap_or(UNKNOWN_ALBUM);
                     let artist = track.artist.as_deref().unwrap_or(UNKNOWN_ARTIST);
                     Line::from(vec![
                         Span::styled(format!("{} ", album), style),
@@ -237,7 +235,7 @@ fn render_player_bar(
         };
 
         let track_info = if let Some(track) = current_track {
-            format!(" {} - {}", track, UNKNOWN_ARTIST)
+            format!(" {} - {}", track.title, track.artist)
         } else {
             " No track playing".to_string()
         };

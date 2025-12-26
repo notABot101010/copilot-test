@@ -5,11 +5,17 @@ use std::io::BufReader;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+#[derive(Clone, Debug)]
+pub struct TrackInfo {
+    pub title: String,
+    pub artist: String,
+}
+
 pub struct Player {
     sink: Arc<Mutex<Option<Sink>>>,
     _stream: Option<OutputStream>,
     _stream_handle: Option<OutputStreamHandle>,
-    current_track: Arc<Mutex<Option<String>>>,
+    current_track: Arc<Mutex<Option<TrackInfo>>>,
 }
 
 impl Player {
@@ -24,7 +30,7 @@ impl Player {
         }
     }
 
-    pub fn play(&self, path: &Path) -> Result<()> {
+    pub fn play(&self, path: &Path, title: String, artist: String) -> Result<()> {
         // Use the existing stream handle from the struct
         let stream_handle = self._stream_handle.as_ref()
             .ok_or_else(|| anyhow::anyhow!("No audio output stream available"))?;
@@ -43,12 +49,9 @@ impl Player {
             *guard = Some(sink);
         }
 
-        // Store current track name
+        // Store current track info
         if let Ok(mut track) = self.current_track.lock() {
-            *track = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_string());
+            *track = Some(TrackInfo { title, artist });
         }
 
         Ok(())
@@ -87,7 +90,7 @@ impl Player {
         false
     }
 
-    pub fn current_track(&self) -> Option<String> {
+    pub fn current_track(&self) -> Option<TrackInfo> {
         if let Ok(track) = self.current_track.lock() {
             track.clone()
         } else {

@@ -3,6 +3,10 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+pub const UNKNOWN_ARTIST: &str = "Unknown Artist";
+pub const UNKNOWN_TITLE: &str = "Unknown Title";
+pub const UNKNOWN_ALBUM: &str = "Unknown Album";
+
 #[derive(Debug, Clone)]
 pub struct Track {
     pub path: PathBuf,
@@ -158,7 +162,7 @@ impl Library {
                 self.tracks
                     .iter()
                     .filter(|t| {
-                        let album = t.album.as_ref().map(|s| s.as_str()).unwrap_or("Unknown Album");
+                        let album = t.album.as_ref().map(|s| s.as_str()).unwrap_or(UNKNOWN_ALBUM);
                         seen.insert(album.to_string())
                     })
                     .cloned()
@@ -170,7 +174,7 @@ impl Library {
                 self.tracks
                     .iter()
                     .filter(|t| {
-                        let artist = t.artist.as_ref().map(|s| s.as_str()).unwrap_or("Unknown Artist");
+                        let artist = t.artist.as_ref().map(|s| s.as_str()).unwrap_or(UNKNOWN_ARTIST);
                         seen.insert(artist.to_string())
                     })
                     .cloned()

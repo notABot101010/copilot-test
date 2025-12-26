@@ -89,10 +89,15 @@ impl App {
     }
 
     fn play_selected(&mut self) {
+        use library::{UNKNOWN_ARTIST, UNKNOWN_TITLE};
+        
         if let Some(idx) = self.selected_track_index {
             let tracks = self.library.get_current_tracks();
             if let Some(track) = tracks.get(idx) {
-                if let Err(err) = self.player.play(&track.path) {
+                let title = track.title.clone().unwrap_or_else(|| UNKNOWN_TITLE.to_string());
+                let artist = track.artist.clone().unwrap_or_else(|| UNKNOWN_ARTIST.to_string());
+                
+                if let Err(err) = self.player.play(&track.path, title, artist) {
                     eprintln!("Failed to play track: {:?}", err);
                 }
             }
