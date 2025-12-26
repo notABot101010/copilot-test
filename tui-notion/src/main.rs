@@ -51,6 +51,7 @@ struct App {
     should_quit: bool,
     pending_delete_doc_id: Option<uuid::Uuid>,
     recently_accessed_docs: Vec<uuid::Uuid>,
+    number_buffer: String,
 }
 
 impl App {
@@ -149,6 +150,7 @@ Happy note-taking!
             should_quit: false,
             pending_delete_doc_id: None,
             recently_accessed_docs,
+            number_buffer: String::new(),
         };
 
         // Try to load the last opened document
@@ -371,33 +373,68 @@ Happy note-taking!
 
     fn handle_editor_navigation(&mut self, key: event::KeyEvent) -> Result<()> {
         match key.code {
+            KeyCode::Char(c) if c.is_ascii_digit() => {
+                // Build up number buffer for vim-style numeric prefixes
+                self.number_buffer.push(c);
+            }
             KeyCode::Down | KeyCode::Char('j') => {
-                self.editor.move_cursor_down();
+                let count = self.get_count();
+                for _ in 0..count {
+                    self.editor.move_cursor_down();
+                }
+                self.number_buffer.clear();
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                self.editor.move_cursor_up();
+                let count = self.get_count();
+                for _ in 0..count {
+                    self.editor.move_cursor_up();
+                }
+                self.number_buffer.clear();
             }
             KeyCode::Left | KeyCode::Char('h') => {
-                self.editor.move_cursor_left();
+                let count = self.get_count();
+                for _ in 0..count {
+                    self.editor.move_cursor_left();
+                }
+                self.number_buffer.clear();
             }
             KeyCode::Right | KeyCode::Char('l') => {
-                self.editor.move_cursor_right();
+                let count = self.get_count();
+                for _ in 0..count {
+                    self.editor.move_cursor_right();
+                }
+                self.number_buffer.clear();
             }
             KeyCode::Home => {
                 self.editor.move_cursor_to_line_start();
+                self.number_buffer.clear();
             }
             KeyCode::End => {
                 self.editor.move_cursor_to_line_end();
+                self.number_buffer.clear();
             }
             KeyCode::PageDown => {
                 self.editor.page_down();
+                self.number_buffer.clear();
             }
             KeyCode::PageUp => {
                 self.editor.page_up();
+                self.number_buffer.clear();
             }
-            _ => {}
+            _ => {
+                // Clear number buffer on any other key
+                self.number_buffer.clear();
+            }
         }
         Ok(())
+    }
+
+    fn get_count(&self) -> usize {
+        if self.number_buffer.is_empty() {
+            1
+        } else {
+            self.number_buffer.parse().unwrap_or(1).max(1)
+        }
     }
 
     async fn handle_toc_navigation(&mut self, key: event::KeyEvent) -> Result<()> {
@@ -449,6 +486,8 @@ Happy note-taking!
             let content = self.editor.get_content();
             if let Some(doc) = self.tree.get_document_mut(doc_id) {
                 doc.content = content;
+                // Update title from first heading in content
+                doc.update_title_from_content();
                 self.storage.save_document(doc).await?;
             }
         }
