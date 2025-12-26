@@ -384,7 +384,10 @@ Happy note-taking!
         match key.code {
             KeyCode::Char(c) if c.is_ascii_digit() => {
                 // Build up number buffer for vim-style numeric prefixes
-                self.number_buffer.push(c);
+                // Limit to 4 digits to prevent overflow and memory issues
+                if self.number_buffer.len() < 4 {
+                    self.number_buffer.push(c);
+                }
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 let count = self.get_count();
@@ -442,7 +445,8 @@ Happy note-taking!
         if self.number_buffer.is_empty() {
             1
         } else {
-            self.number_buffer.parse().unwrap_or(1).max(1)
+            // Cap at 9999 to prevent performance issues with very large numbers
+            self.number_buffer.parse().unwrap_or(1).max(1).min(9999)
         }
     }
 
