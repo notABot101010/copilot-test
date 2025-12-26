@@ -204,3 +204,107 @@ impl Editor {
         self.scroll_offset
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scroll_down_moves_cursor() {
+        let mut editor = Editor::new();
+        editor.set_viewport_height(10);
+        
+        // Create a document with many lines
+        let content = (0..50).map(|i| format!("Line {}", i)).collect::<Vec<_>>().join("\n");
+        editor.set_content(content);
+        
+        // Initial state: cursor at line 0, scroll at 0
+        assert_eq!(editor.cursor_line, 0);
+        assert_eq!(editor.scroll_offset, 0);
+        
+        // Scroll down 5 times - cursor should move to stay visible
+        for _ in 0..5 {
+            editor.scroll_down();
+        }
+        assert_eq!(editor.scroll_offset, 5);
+        assert_eq!(editor.cursor_line, 5); // Moved to stay at top of viewport
+        
+        // Scroll down 10 more times - cursor should now move to stay visible
+        for _ in 0..10 {
+            editor.scroll_down();
+        }
+        assert_eq!(editor.scroll_offset, 15);
+        // Cursor should have moved to at least scroll_offset (15)
+        assert!(editor.cursor_line >= editor.scroll_offset);
+    }
+
+    #[test]
+    fn test_scroll_up_moves_cursor() {
+        let mut editor = Editor::new();
+        editor.set_viewport_height(10);
+        
+        // Create a document with many lines
+        let content = (0..50).map(|i| format!("Line {}", i)).collect::<Vec<_>>().join("\n");
+        editor.set_content(content);
+        
+        // Position cursor and scroll at line 30
+        editor.cursor_line = 30;
+        editor.scroll_offset = 25;
+        
+        // Scroll up - cursor should stay at 30 (still within viewport 25-34)
+        editor.scroll_up();
+        assert_eq!(editor.scroll_offset, 24);
+        assert_eq!(editor.cursor_line, 30);
+        
+        // Scroll up 10 more times
+        for _ in 0..10 {
+            editor.scroll_up();
+        }
+        assert_eq!(editor.scroll_offset, 14);
+        // Cursor should be within visible range
+        assert!(editor.cursor_line >= editor.scroll_offset);
+        assert!(editor.cursor_line < editor.scroll_offset + editor.viewport_height);
+    }
+
+    #[test]
+    fn test_page_down_keeps_cursor_visible() {
+        let mut editor = Editor::new();
+        editor.set_viewport_height(10);
+        
+        // Create a document with many lines
+        let content = (0..50).map(|i| format!("Line {}", i)).collect::<Vec<_>>().join("\n");
+        editor.set_content(content);
+        
+        // Initial state
+        assert_eq!(editor.cursor_line, 0);
+        assert_eq!(editor.scroll_offset, 0);
+        
+        // Page down once
+        editor.page_down();
+        
+        // Cursor should be visible
+        assert!(editor.cursor_line >= editor.scroll_offset);
+        assert!(editor.cursor_line < editor.scroll_offset + editor.viewport_height);
+    }
+
+    #[test]
+    fn test_page_up_keeps_cursor_visible() {
+        let mut editor = Editor::new();
+        editor.set_viewport_height(10);
+        
+        // Create a document with many lines
+        let content = (0..50).map(|i| format!("Line {}", i)).collect::<Vec<_>>().join("\n");
+        editor.set_content(content);
+        
+        // Position cursor and scroll far down
+        editor.cursor_line = 40;
+        editor.scroll_offset = 35;
+        
+        // Page up
+        editor.page_up();
+        
+        // Cursor should be visible
+        assert!(editor.cursor_line >= editor.scroll_offset);
+        assert!(editor.cursor_line < editor.scroll_offset + editor.viewport_height);
+    }
+}
