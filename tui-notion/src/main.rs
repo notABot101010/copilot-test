@@ -62,7 +62,58 @@ impl App {
         
         // If no documents exist, create a welcome document
         if tree.is_empty() {
-            let welcome_doc = Document::new("Welcome".to_string());
+            let mut welcome_doc = Document::new("Welcome to TUI Notion".to_string());
+            welcome_doc.content = r#"# Welcome to TUI Notion
+
+A terminal-based Notion clone built with Rust!
+
+## Features
+
+- **Three-Panel Layout**: Navigate documents, edit content, view outline
+- **Markdown Support**: Full markdown editing with syntax highlighting
+- **Live Table of Contents**: Auto-generated from your headings
+- **Keyboard Navigation**: Vi-style keybindings (j/k) and arrow keys
+
+## Quick Start
+
+1. Press `i` to enter INSERT mode
+2. Type your markdown content
+3. Press `Esc` to save and return to NORMAL mode
+4. Use `Tab` to cycle between panels
+
+### Keyboard Shortcuts
+
+- **Ctrl+K**: Quick search across all documents
+- **Ctrl+N**: Create new document
+- **Ctrl+S**: Save current document
+- **Ctrl+D**: Delete current document
+- **q**: Quit application
+
+### Navigation
+
+- **Arrow keys** or **j/k**: Navigate lists and scroll
+- **Enter**: Open document or jump to heading
+- **Tab**: Switch between panels
+
+## Try It Out
+
+Create headings with `#` symbols and watch them appear in the outline panel on the right!
+
+### Markdown Syntax
+
+The editor highlights:
+- `# Headings` at different levels
+- ``` Code blocks ```
+- `- Lists` and bullet points
+
+### Document Management
+
+- Create multiple documents with Ctrl+N
+- Switch between them using the tree on the left
+- Use Ctrl+K for quick navigation
+
+Happy note-taking!
+"#.to_string();
             tree.add_document(welcome_doc);
         }
 
@@ -70,7 +121,7 @@ impl App {
         let toc = TableOfContents::new();
         let search = SearchDialog::new();
 
-        Ok(Self {
+        let mut app = Self {
             tree,
             editor,
             toc,
@@ -79,7 +130,17 @@ impl App {
             focused_panel: FocusedPanel::Tree,
             mode: AppMode::Normal,
             should_quit: false,
-        })
+        };
+
+        // Load the first document if available
+        if let Some(doc_id) = app.tree.selected_document() {
+            if let Some(doc) = app.tree.get_document(doc_id) {
+                app.editor.set_content(doc.content.clone());
+                app.toc.update_from_content(&doc.content);
+            }
+        }
+
+        Ok(app)
     }
 
     fn handle_key_event(&mut self, key: event::KeyEvent) -> Result<()> {
