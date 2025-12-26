@@ -38,6 +38,13 @@ impl Editor {
     }
 
     pub fn insert_char(&mut self, c: char) {
+        // Ensure we have at least one line
+        if self.lines.is_empty() {
+            self.lines.push(String::new());
+            self.cursor_line = 0;
+            self.cursor_col = 0;
+        }
+        
         if self.cursor_line >= self.lines.len() {
             self.cursor_line = self.lines.len().saturating_sub(1);
         }
