@@ -345,10 +345,22 @@ Happy note-taking!
     fn handle_editor_navigation(&mut self, key: event::KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Down | KeyCode::Char('j') => {
-                self.editor.scroll_down();
+                self.editor.move_cursor_down();
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                self.editor.scroll_up();
+                self.editor.move_cursor_up();
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                self.editor.move_cursor_left();
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                self.editor.move_cursor_right();
+            }
+            KeyCode::Home => {
+                self.editor.move_cursor_to_line_start();
+            }
+            KeyCode::End => {
+                self.editor.move_cursor_to_line_end();
             }
             KeyCode::PageDown => {
                 self.editor.page_down();
