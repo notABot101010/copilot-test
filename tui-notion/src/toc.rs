@@ -94,18 +94,25 @@ impl TableOfContents {
             return;
         }
 
-        // Find the heading that the cursor is currently at or below
+        // Use binary search to find the appropriate heading efficiently
         // We want the last heading that starts before or at the cursor position
-        let mut best_match_idx = 0;
+        let result = self.entries.binary_search_by_key(&cursor_line, |entry| entry.line);
         
-        for (idx, entry) in self.entries.iter().enumerate() {
-            if entry.line <= cursor_line {
-                best_match_idx = idx;
-            } else {
-                // We've found a heading after the cursor, stop here
-                break;
+        let best_match_idx = match result {
+            // Exact match: cursor is on a heading line
+            Ok(idx) => idx,
+            // No exact match: cursor is between headings
+            // binary_search returns the index where the element would be inserted
+            Err(insert_idx) => {
+                if insert_idx == 0 {
+                    // Cursor is before the first heading, select first heading
+                    0
+                } else {
+                    // Select the heading before the insert position
+                    insert_idx - 1
+                }
             }
-        }
+        };
         
         self.selected_index = Some(best_match_idx);
     }

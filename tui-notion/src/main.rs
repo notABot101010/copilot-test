@@ -527,7 +527,11 @@ Happy note-taking!
         self.toc.update_from_content(&content);
     }
 
-    /// Synchronize TOC selection with the current cursor position in the editor
+    /// Synchronize the TOC (Table of Contents) selection with the current cursor position in the editor.
+    /// 
+    /// This method ensures the outline panel highlights the heading corresponding to the section
+    /// where the cursor is currently positioned. It should be called whenever the cursor moves
+    /// vertically (up/down), during page scrolling, or when jumping to a different location.
     fn sync_toc_with_cursor(&mut self) {
         let (cursor_line, _) = self.editor.cursor_position();
         self.toc.sync_with_cursor(cursor_line);
