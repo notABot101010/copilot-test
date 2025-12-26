@@ -256,3 +256,122 @@ impl Storage {
         Ok(doc_ids)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::Document;
+
+    async fn create_test_storage() -> Result<Storage> {
+        // Use an in-memory database for tests
+        let connection_string = "sqlite::memory:";
+        let options = SqliteConnectOptions::from_str(connection_string)?;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await?;
+
+        // Create tables
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS documents (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                parent_id TEXT
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS document_access (
+                document_id TEXT NOT NULL,
+                accessed_at INTEGER NOT NULL,
+                PRIMARY KEY (document_id, accessed_at)
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        Ok(Storage { pool })
+    }
+
+    #[tokio::test]
+    async fn test_recently_accessed_documents_ordering() {
+        let storage = create_test_storage().await.unwrap();
+        
+        // Create and save test documents
+        let doc1 = Document::new("Document 1".to_string());
+        let doc2 = Document::new("Document 2".to_string());
+        let doc3 = Document::new("Document 3".to_string());
+        
+        let id1 = doc1.id;
+        let id2 = doc2.id;
+        let id3 = doc3.id;
+        
+        storage.save_document(&doc1).await.unwrap();
+        storage.save_document(&doc2).await.unwrap();
+        storage.save_document(&doc3).await.unwrap();
+        
+        // Access documents in order with delays
+        storage.record_document_access(id1).await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        
+        storage.record_document_access(id2).await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        
+        storage.record_document_access(id3).await.unwrap();
+        
+        // Get recently accessed - should be in reverse order (most recent first)
+        let recent = storage.get_recently_accessed_documents(10).await.unwrap();
+        
+        assert_eq!(recent.len(), 3);
+        assert_eq!(recent[0], id3); // Most recent
+        assert_eq!(recent[1], id2);
+        assert_eq!(recent[2], id1); // Least recent
+    }
+
+    #[tokio::test]
+    async fn test_recently_accessed_documents_limit() {
+        let storage = create_test_storage().await.unwrap();
+        
+        // Create 5 documents
+        let mut doc_ids = Vec::new();
+        for i in 0..5 {
+            let doc = Document::new(format!("Document {}", i));
+            let id = doc.id;
+            storage.save_document(&doc).await.unwrap();
+            doc_ids.push(id);
+        }
+        
+        // Access them in order with delays
+        for id in &doc_ids {
+            storage.record_document_access(*id).await.unwrap();
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        }
+        
+        // Request only 3 most recent
+        let recent = storage.get_recently_accessed_documents(3).await.unwrap();
+        
+        assert_eq!(recent.len(), 3);
+        assert_eq!(recent[0], doc_ids[4]); // Most recent
+        assert_eq!(recent[1], doc_ids[3]);
+        assert_eq!(recent[2], doc_ids[2]);
+    }
+}
