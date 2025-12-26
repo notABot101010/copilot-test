@@ -153,6 +153,9 @@ Happy note-taking!
             if let Some(doc) = app.tree.get_document(doc_id) {
                 app.editor.set_content(doc.content.clone());
                 app.toc.update_from_content(&doc.content);
+                // Record this as an access
+                let _ = app.storage.record_document_access(doc_id).await;
+                app.recently_accessed_docs = app.storage.get_recently_accessed_documents(100).await.unwrap_or_default();
             }
         }
 
