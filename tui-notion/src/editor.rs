@@ -307,4 +307,69 @@ mod tests {
         assert!(editor.cursor_line >= editor.scroll_offset);
         assert!(editor.cursor_line < editor.scroll_offset + editor.viewport_height);
     }
+
+    #[test]
+    fn test_cursor_movement_in_normal_mode() {
+        let mut editor = Editor::new();
+        editor.set_viewport_height(10);
+        
+        // Create a simple document
+        let content = "Line 0\nLine 1\nLine 2\nLine 3\nLine 4".to_string();
+        editor.set_content(content);
+        
+        // Start at (0, 0)
+        assert_eq!(editor.cursor_position(), (0, 0));
+        
+        // Move down
+        editor.move_cursor_down();
+        assert_eq!(editor.cursor_position(), (1, 0));
+        
+        // Move right
+        editor.move_cursor_right();
+        editor.move_cursor_right();
+        assert_eq!(editor.cursor_position(), (1, 2));
+        
+        // Move up
+        editor.move_cursor_up();
+        assert_eq!(editor.cursor_position(), (0, 2));
+        
+        // Move left
+        editor.move_cursor_left();
+        assert_eq!(editor.cursor_position(), (0, 1));
+        
+        // Move to line end
+        editor.move_cursor_to_line_end();
+        assert_eq!(editor.cursor_position(), (0, 6)); // "Line 0" has 6 chars
+        
+        // Move to line start
+        editor.move_cursor_to_line_start();
+        assert_eq!(editor.cursor_position(), (0, 0));
+    }
+
+    #[test]
+    fn test_cursor_movement_scrolls_viewport() {
+        let mut editor = Editor::new();
+        editor.set_viewport_height(5);
+        
+        // Create a document with many lines
+        let content = (0..20).map(|i| format!("Line {}", i)).collect::<Vec<_>>().join("\n");
+        editor.set_content(content);
+        
+        // Initial state
+        assert_eq!(editor.cursor_line, 0);
+        assert_eq!(editor.scroll_offset, 0);
+        
+        // Move cursor down beyond viewport
+        for _ in 0..10 {
+            editor.move_cursor_down();
+        }
+        
+        // Cursor should be at line 10
+        assert_eq!(editor.cursor_line, 10);
+        
+        // Scroll offset should have adjusted to keep cursor visible
+        assert!(editor.scroll_offset > 0);
+        assert!(editor.cursor_line >= editor.scroll_offset);
+        assert!(editor.cursor_line < editor.scroll_offset + editor.viewport_height);
+    }
 }
