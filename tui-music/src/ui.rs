@@ -8,6 +8,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
+const UNKNOWN_ARTIST: &str = "Unknown Artist";
+
 pub fn render(
     f: &mut Frame,
     library: &Library,
@@ -162,7 +164,7 @@ fn render_content(
 
             let line = match view_mode {
                 ViewMode::Tracks => {
-                    let artist = track.artist.as_deref().unwrap_or("Unknown Artist");
+                    let artist = track.artist.as_deref().unwrap_or(UNKNOWN_ARTIST);
                     let title = track.title.as_deref().unwrap_or("Unknown Title");
                     Line::from(vec![
                         Span::styled(format!("{} ", title), style),
@@ -171,14 +173,14 @@ fn render_content(
                 }
                 ViewMode::Albums => {
                     let album = track.album.as_deref().unwrap_or("Unknown Album");
-                    let artist = track.artist.as_deref().unwrap_or("Unknown Artist");
+                    let artist = track.artist.as_deref().unwrap_or(UNKNOWN_ARTIST);
                     Line::from(vec![
                         Span::styled(format!("{} ", album), style),
                         Span::styled(format!("- {}", artist), Style::default().fg(Color::Gray)),
                     ])
                 }
                 ViewMode::Artists => {
-                    let artist = track.artist.as_deref().unwrap_or("Unknown Artist");
+                    let artist = track.artist.as_deref().unwrap_or(UNKNOWN_ARTIST);
                     let track_count = tracks.iter().filter(|t| t.artist.as_deref() == Some(artist)).count();
                     Line::from(vec![
                         Span::styled(format!("{} ", artist), style),
@@ -235,7 +237,7 @@ fn render_player_bar(
         };
 
         let track_info = if let Some(track) = current_track {
-            format!(" {} - {}", track, "Unknown Artist")
+            format!(" {} - {}", track, UNKNOWN_ARTIST)
         } else {
             " No track playing".to_string()
         };
