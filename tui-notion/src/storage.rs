@@ -7,6 +7,8 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 const LAST_OPENED_DOCUMENT_KEY: &str = "last_opened_document";
+const RECENTLY_ACCESSED_LIMIT: usize = 100;
+const ACCESS_HISTORY_CLEANUP_THRESHOLD: usize = 200;
 
 pub struct Storage {
     pool: SqlitePool,
@@ -213,7 +215,7 @@ impl Storage {
         .execute(&self.pool)
         .await?;
 
-        // Clean up old access records periodically (keep only the last 200 per document)
+        // Clean up old access records periodically (keep only the last N per document)
         // This prevents unbounded table growth
         sqlx::query(
             r#"
@@ -222,11 +224,12 @@ impl Storage {
                 SELECT rowid FROM document_access
                 WHERE document_id = ?
                 ORDER BY accessed_at DESC
-                LIMIT -1 OFFSET 200
+                LIMIT -1 OFFSET ?
             )
             "#,
         )
         .bind(doc_id.to_string())
+        .bind(ACCESS_HISTORY_CLEANUP_THRESHOLD as i64)
         .execute(&self.pool)
         .await?;
 
@@ -254,6 +257,11 @@ impl Storage {
         }
 
         Ok(doc_ids)
+    }
+
+    /// Returns the default limit for recently accessed documents
+    pub fn default_recently_accessed_limit() -> usize {
+        RECENTLY_ACCESSED_LIMIT
     }
 }
 
@@ -329,7 +337,7 @@ mod tests {
         storage.save_document(&doc2).await.unwrap();
         storage.save_document(&doc3).await.unwrap();
         
-        // Access documents in order with delays
+        // Access documents in order with delays to ensure different timestamps
         storage.record_document_access(id1).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         
@@ -360,7 +368,7 @@ mod tests {
             doc_ids.push(id);
         }
         
-        // Access them in order with delays
+        // Access them in order with delays to ensure different timestamps
         for id in &doc_ids {
             storage.record_document_access(*id).await.unwrap();
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
