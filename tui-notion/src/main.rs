@@ -116,8 +116,8 @@ The editor highlights:
 
 Happy note-taking!
 "#.to_string();
+            tree.add_document(welcome_doc.clone());
             storage.save_document(&welcome_doc).await?;
-            tree.add_document(welcome_doc);
         }
 
         let editor = Editor::new();
