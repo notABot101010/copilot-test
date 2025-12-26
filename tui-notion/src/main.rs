@@ -56,13 +56,13 @@ impl App {
     async fn new() -> Result<Self> {
         let storage = Storage::new().await?;
         let mut tree = DocumentTree::new();
-        
+
         // Load existing documents
         let documents = storage.load_all_documents().await?;
         for doc in documents {
             tree.add_document(doc);
         }
-        
+
         // If no documents exist, create a welcome document
         if tree.is_empty() {
             let mut welcome_doc = Document::new("Welcome to TUI Notion".to_string());
@@ -223,7 +223,7 @@ Happy note-taking!
             KeyCode::Tab => {
                 self.cycle_focus();
             }
-            KeyCode::Char('i') => {
+            KeyCode::Enter => {
                 if matches!(self.focused_panel, FocusedPanel::Editor) {
                     self.mode = AppMode::Insert;
                 }
@@ -323,7 +323,7 @@ Happy note-taking!
                     self.storage.delete_document(doc_id).await?;
                     self.editor.clear();
                     self.toc.clear();
-                    
+
                     // Load the next available document
                     if self.tree.selected_document().is_some() {
                         self.load_selected_document().await?;
@@ -446,7 +446,7 @@ async fn run_app<B: ratatui::backend::Backend>(
         let editor_height = (terminal_height as f32 * 0.8) as u16;
         let inner_height = editor_height.saturating_sub(2) as usize;
         app.editor.set_viewport_height(inner_height);
-        
+
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Horizontal)
