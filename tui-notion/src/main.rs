@@ -286,11 +286,6 @@ Happy note-taking!
         Ok(())
     }
 
-    fn handle_tree_navigation(&mut self, _key: event::KeyEvent) -> Result<()> {
-        // Tree navigation removed - use search dialog instead
-        Ok(())
-    }
-
     fn handle_editor_navigation(&mut self, key: event::KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Down | KeyCode::Char('j') => {

@@ -97,9 +97,12 @@ Or run the built binary:
 
 ### Search Dialog
 
-- `j` / `↓` - Next heading
-- `k` / `↑` - Previous heading
-- `Enter` - Jump to heading in editor
+- Type to search documents
+- Empty query shows all documents
+- `↓` - Next result
+- `↑` - Previous result
+- `Enter` - Open selected document
+- `Esc` - Close search dialog
 
 ## Data Storage
 
