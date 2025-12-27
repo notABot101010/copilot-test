@@ -1,6 +1,5 @@
 /// History module for undo/redo functionality
 /// Stores editor state snapshots for in-memory undo/redo operations
-
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
@@ -29,12 +28,12 @@ impl History {
     /// This clears the redo stack as new changes invalidate redo history
     pub fn push(&mut self, state: EditorState) {
         self.undo_stack.push_back(state);
-        
+
         // Limit history size to prevent unbounded memory growth
         if self.undo_stack.len() > self.max_history_size {
             self.undo_stack.pop_front();
         }
-        
+
         // Clear redo stack when new changes are made
         self.redo_stack.clear();
     }
@@ -93,15 +92,15 @@ mod tests {
     #[test]
     fn test_push_and_undo() {
         let mut history = History::new();
-        
+
         let state1 = create_state(vec!["hello"], 0, 5);
         let state2 = create_state(vec!["hello", "world"], 1, 5);
-        
+
         history.push(state1.clone());
         history.push(state2.clone());
-        
+
         let state3 = create_state(vec!["hello", "world", "!"], 2, 1);
-        
+
         // Undo should return state2
         let undone = history.undo(state3.clone());
         assert!(undone.is_some());
@@ -114,16 +113,16 @@ mod tests {
     #[test]
     fn test_redo() {
         let mut history = History::new();
-        
+
         let state1 = create_state(vec!["hello"], 0, 5);
         let state2 = create_state(vec!["hello", "world"], 1, 5);
-        
+
         history.push(state1.clone());
-        
+
         // Undo
         let undone = history.undo(state2.clone());
         assert!(undone.is_some());
-        
+
         // Redo should return state2
         let redone = history.redo(state1.clone());
         assert!(redone.is_some());
@@ -136,18 +135,18 @@ mod tests {
     #[test]
     fn test_push_clears_redo_stack() {
         let mut history = History::new();
-        
+
         let state1 = create_state(vec!["a"], 0, 1);
         let state2 = create_state(vec!["ab"], 0, 2);
         let state3 = create_state(vec!["abc"], 0, 3);
-        
+
         history.push(state1.clone());
         history.push(state2.clone());
-        
+
         // Undo once
         history.undo(state3.clone());
         assert!(history.can_redo());
-        
+
         // Push new state should clear redo
         let state4 = create_state(vec!["abcd"], 0, 4);
         history.push(state4);
@@ -157,19 +156,19 @@ mod tests {
     #[test]
     fn test_can_undo_can_redo() {
         let mut history = History::new();
-        
+
         assert!(!history.can_undo());
         assert!(!history.can_redo());
-        
+
         let state1 = create_state(vec!["test"], 0, 4);
         history.push(state1);
-        
+
         assert!(history.can_undo());
         assert!(!history.can_redo());
-        
+
         let state2 = create_state(vec!["test2"], 0, 5);
         history.undo(state2);
-        
+
         assert!(!history.can_undo());
         assert!(history.can_redo());
     }
@@ -178,16 +177,16 @@ mod tests {
     fn test_max_history_size() {
         let mut history = History::new();
         history.max_history_size = 5;
-        
+
         // Push 10 states
         for i in 0..10 {
             let state = create_state(vec![&format!("line{}", i)], 0, i);
             history.push(state);
         }
-        
+
         // Should only keep last 5
         assert_eq!(history.undo_stack.len(), 5);
-        
+
         // The oldest should be line5 (line0-4 were removed)
         assert_eq!(history.undo_stack[0].lines[0], "line5");
     }
@@ -195,17 +194,17 @@ mod tests {
     #[test]
     fn test_clear() {
         let mut history = History::new();
-        
+
         let state1 = create_state(vec!["a"], 0, 1);
         let state2 = create_state(vec!["ab"], 0, 2);
-        
+
         history.push(state1.clone());
         history.undo(state2);
-        
+
         assert!(history.can_redo());
-        
+
         history.clear();
-        
+
         assert!(!history.can_undo());
         assert!(!history.can_redo());
     }

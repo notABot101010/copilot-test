@@ -10,13 +10,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Widget, Wrap},
 };
 
-pub fn render_editor(
-    area: Rect,
-    buf: &mut Buffer,
-    editor: &Editor,
-    focused: bool,
-    mode: &str,
-) {
+pub fn render_editor(area: Rect, buf: &mut Buffer, editor: &Editor, focused: bool, mode: &str) {
     let border_style = if focused {
         Style::default().fg(Color::Cyan)
     } else {
@@ -126,7 +120,12 @@ pub fn render_toc(area: Rect, buf: &mut Buffer, toc: &TableOfContents, focused: 
     }
 }
 
-pub fn render_search_dialog(area: Rect, buf: &mut Buffer, search: &SearchDialog, tree: &DocumentTree) {
+pub fn render_search_dialog(
+    area: Rect,
+    buf: &mut Buffer,
+    search: &SearchDialog,
+    tree: &DocumentTree,
+) {
     // Create a centered dialog
     let dialog_width = area.width.min(60);
     let dialog_height = area.height.min(20);
@@ -171,7 +170,7 @@ pub fn render_search_dialog(area: Rect, buf: &mut Buffer, search: &SearchDialog,
         .style(Style::default().fg(Color::White))
         .scroll((0, scroll as u16));
     input_text.render(input_inner, buf);
-    
+
     // Render cursor
     let cursor_pos = search.input().visual_cursor().max(scroll) - scroll;
     if cursor_pos < width {
@@ -271,10 +270,7 @@ fn highlight_markdown(line: &str, _is_cursor_line: bool) -> Line<'_> {
             base_style.fg(color).add_modifier(Modifier::BOLD),
         ))
     } else if line.trim_start().starts_with("```") {
-        Line::from(Span::styled(
-            line.to_string(),
-            base_style.fg(Color::Yellow),
-        ))
+        Line::from(Span::styled(line.to_string(), base_style.fg(Color::Yellow)))
     } else if line.trim_start().starts_with("- ") || line.trim_start().starts_with("* ") {
         Line::from(Span::styled(line.to_string(), base_style.fg(Color::Cyan)))
     } else {

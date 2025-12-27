@@ -50,7 +50,7 @@ impl Editor {
             self.cursor_line = 0;
             self.cursor_col = 0;
         }
-        
+
         if self.cursor_line >= self.lines.len() {
             self.cursor_line = self.lines.len().saturating_sub(1);
         }
@@ -78,7 +78,7 @@ impl Editor {
         self.cursor_line += 1;
         self.lines.insert(self.cursor_line, remaining);
         self.cursor_col = 0;
-        
+
         // Ensure cursor stays visible after newline
         self.ensure_cursor_visible();
     }
@@ -150,7 +150,7 @@ impl Editor {
             self.ensure_cursor_visible();
         }
     }
-    
+
     pub fn set_viewport_height(&mut self, height: usize) {
         self.viewport_height = height.max(1);
         self.ensure_cursor_visible();
@@ -168,7 +168,8 @@ impl Editor {
         self.scroll_offset = self.scroll_offset.saturating_sub(1);
         // Move cursor up if it's below the visible area
         if self.cursor_line >= self.scroll_offset + self.viewport_height {
-            self.cursor_line = (self.scroll_offset + self.viewport_height - 1).min(self.lines.len().saturating_sub(1));
+            self.cursor_line = (self.scroll_offset + self.viewport_height - 1)
+                .min(self.lines.len().saturating_sub(1));
         }
     }
 
@@ -187,7 +188,8 @@ impl Editor {
         self.scroll_offset = self.scroll_offset.saturating_sub(scroll_amount);
         // Move cursor up if it's below the visible area
         if self.cursor_line >= self.scroll_offset + self.viewport_height {
-            self.cursor_line = (self.scroll_offset + self.viewport_height - 1).min(self.lines.len().saturating_sub(1));
+            self.cursor_line = (self.scroll_offset + self.viewport_height - 1)
+                .min(self.lines.len().saturating_sub(1));
         }
     }
 
@@ -251,7 +253,7 @@ impl Editor {
             cursor_line: self.cursor_line,
             cursor_col: self.cursor_col,
         };
-        
+
         if let Some(previous_state) = self.history.undo(current_state) {
             self.restore_state(previous_state);
             true
@@ -267,7 +269,7 @@ impl Editor {
             cursor_line: self.cursor_line,
             cursor_col: self.cursor_col,
         };
-        
+
         if let Some(next_state) = self.history.redo(current_state) {
             self.restore_state(next_state);
             true
@@ -300,22 +302,25 @@ mod tests {
     fn test_scroll_down_moves_cursor() {
         let mut editor = Editor::new();
         editor.set_viewport_height(10);
-        
+
         // Create a document with many lines
-        let content = (0..50).map(|i| format!("Line {}", i)).collect::<Vec<_>>().join("\n");
+        let content = (0..50)
+            .map(|i| format!("Line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         editor.set_content(content);
-        
+
         // Initial state: cursor at line 0, scroll at 0
         assert_eq!(editor.cursor_line, 0);
         assert_eq!(editor.scroll_offset, 0);
-        
+
         // Scroll down 5 times - cursor should move to stay visible
         for _ in 0..5 {
             editor.scroll_down();
         }
         assert_eq!(editor.scroll_offset, 5);
         assert_eq!(editor.cursor_line, 5); // Moved to stay at top of viewport
-        
+
         // Scroll down 10 more times - cursor should now move to stay visible
         for _ in 0..10 {
             editor.scroll_down();
@@ -329,20 +334,23 @@ mod tests {
     fn test_scroll_up_moves_cursor() {
         let mut editor = Editor::new();
         editor.set_viewport_height(10);
-        
+
         // Create a document with many lines
-        let content = (0..50).map(|i| format!("Line {}", i)).collect::<Vec<_>>().join("\n");
+        let content = (0..50)
+            .map(|i| format!("Line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         editor.set_content(content);
-        
+
         // Position cursor and scroll at line 30
         editor.cursor_line = 30;
         editor.scroll_offset = 25;
-        
+
         // Scroll up - cursor should stay at 30 (still within viewport 25-34)
         editor.scroll_up();
         assert_eq!(editor.scroll_offset, 24);
         assert_eq!(editor.cursor_line, 30);
-        
+
         // Scroll up 10 more times
         for _ in 0..10 {
             editor.scroll_up();
@@ -357,18 +365,21 @@ mod tests {
     fn test_page_down_keeps_cursor_visible() {
         let mut editor = Editor::new();
         editor.set_viewport_height(10);
-        
+
         // Create a document with many lines
-        let content = (0..50).map(|i| format!("Line {}", i)).collect::<Vec<_>>().join("\n");
+        let content = (0..50)
+            .map(|i| format!("Line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         editor.set_content(content);
-        
+
         // Initial state
         assert_eq!(editor.cursor_line, 0);
         assert_eq!(editor.scroll_offset, 0);
-        
+
         // Page down once
         editor.page_down();
-        
+
         // Cursor should be visible
         assert!(editor.cursor_line >= editor.scroll_offset);
         assert!(editor.cursor_line < editor.scroll_offset + editor.viewport_height);
@@ -378,18 +389,21 @@ mod tests {
     fn test_page_up_keeps_cursor_visible() {
         let mut editor = Editor::new();
         editor.set_viewport_height(10);
-        
+
         // Create a document with many lines
-        let content = (0..50).map(|i| format!("Line {}", i)).collect::<Vec<_>>().join("\n");
+        let content = (0..50)
+            .map(|i| format!("Line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         editor.set_content(content);
-        
+
         // Position cursor and scroll far down
         editor.cursor_line = 40;
         editor.scroll_offset = 35;
-        
+
         // Page up
         editor.page_up();
-        
+
         // Cursor should be visible
         assert!(editor.cursor_line >= editor.scroll_offset);
         assert!(editor.cursor_line < editor.scroll_offset + editor.viewport_height);
@@ -399,35 +413,35 @@ mod tests {
     fn test_cursor_movement_in_normal_mode() {
         let mut editor = Editor::new();
         editor.set_viewport_height(10);
-        
+
         // Create a simple document
         let content = "Line 0\nLine 1\nLine 2\nLine 3\nLine 4".to_string();
         editor.set_content(content);
-        
+
         // Start at (0, 0)
         assert_eq!(editor.cursor_position(), (0, 0));
-        
+
         // Move down
         editor.move_cursor_down();
         assert_eq!(editor.cursor_position(), (1, 0));
-        
+
         // Move right
         editor.move_cursor_right();
         editor.move_cursor_right();
         assert_eq!(editor.cursor_position(), (1, 2));
-        
+
         // Move up
         editor.move_cursor_up();
         assert_eq!(editor.cursor_position(), (0, 2));
-        
+
         // Move left
         editor.move_cursor_left();
         assert_eq!(editor.cursor_position(), (0, 1));
-        
+
         // Move to line end
         editor.move_cursor_to_line_end();
         assert_eq!(editor.cursor_position(), (0, 6)); // "Line 0" has 6 chars
-        
+
         // Move to line start
         editor.move_cursor_to_line_start();
         assert_eq!(editor.cursor_position(), (0, 0));
@@ -437,23 +451,26 @@ mod tests {
     fn test_cursor_movement_scrolls_viewport() {
         let mut editor = Editor::new();
         editor.set_viewport_height(5);
-        
+
         // Create a document with many lines
-        let content = (0..20).map(|i| format!("Line {}", i)).collect::<Vec<_>>().join("\n");
+        let content = (0..20)
+            .map(|i| format!("Line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         editor.set_content(content);
-        
+
         // Initial state
         assert_eq!(editor.cursor_line, 0);
         assert_eq!(editor.scroll_offset, 0);
-        
+
         // Move cursor down beyond viewport
         for _ in 0..10 {
             editor.move_cursor_down();
         }
-        
+
         // Cursor should be at line 10
         assert_eq!(editor.cursor_line, 10);
-        
+
         // Scroll offset should have adjusted to keep cursor visible
         assert!(editor.scroll_offset > 0);
         assert!(editor.cursor_line >= editor.scroll_offset);
@@ -511,22 +528,22 @@ mod tests {
         // Make several changes
         editor.save_state();
         editor.insert_char('h');
-        
+
         editor.save_state();
         editor.insert_char('i');
-        
+
         editor.save_state();
         editor.insert_char('!');
-        
+
         assert_eq!(editor.get_content(), "hi!");
 
         // Undo all changes
         assert!(editor.undo());
         assert_eq!(editor.get_content(), "hi");
-        
+
         assert!(editor.undo());
         assert_eq!(editor.get_content(), "h");
-        
+
         assert!(editor.undo());
         assert_eq!(editor.get_content(), "");
 
@@ -536,10 +553,10 @@ mod tests {
         // Redo all changes
         assert!(editor.redo());
         assert_eq!(editor.get_content(), "h");
-        
+
         assert!(editor.redo());
         assert_eq!(editor.get_content(), "hi");
-        
+
         assert!(editor.redo());
         assert_eq!(editor.get_content(), "hi!");
 
@@ -556,15 +573,15 @@ mod tests {
         // Make a change
         editor.save_state();
         editor.insert_char('!');
-        
+
         // Undo it
         assert!(editor.undo());
         assert_eq!(editor.get_content(), "hello");
-        
+
         // Make a different change
         editor.save_state();
         editor.insert_char('?');
-        
+
         // Now redo should not bring back the '!'
         assert!(!editor.redo());
         assert_eq!(editor.get_content(), "hello?");
@@ -579,10 +596,10 @@ mod tests {
         // Make some changes
         editor.save_state();
         editor.insert_char('!');
-        
+
         // Clear history
         editor.clear_history();
-        
+
         // Undo should not work
         assert!(!editor.undo());
         assert_eq!(editor.get_content(), "hello!");
@@ -592,14 +609,14 @@ mod tests {
     fn test_cursor_right_stops_at_line_end() {
         let mut editor = Editor::new();
         editor.set_content("hello".to_string());
-        
+
         // Try to move right 10 times, should stop at end of line (position 5)
         for _ in 0..10 {
             editor.move_cursor_right();
         }
-        
+
         assert_eq!(editor.cursor_position(), (0, 5));
-        
+
         // Verify we can't go beyond the end
         editor.move_cursor_right();
         assert_eq!(editor.cursor_position(), (0, 5));
@@ -609,12 +626,12 @@ mod tests {
     fn test_cursor_down_stops_at_last_line() {
         let mut editor = Editor::new();
         editor.set_content("Line 1\nLine 2\nLine 3".to_string());
-        
+
         // Try to move down 10 times, should stop at last line
         for _ in 0..10 {
             editor.move_cursor_down();
         }
-        
+
         assert_eq!(editor.cursor_position().0, 2); // Line 2 is the last (0-indexed)
     }
 
@@ -623,12 +640,12 @@ mod tests {
         let mut editor = Editor::new();
         editor.set_content("hello".to_string());
         editor.cursor_col = 3;
-        
+
         // Try to move left 10 times, should stop at beginning
         for _ in 0..10 {
             editor.move_cursor_left();
         }
-        
+
         assert_eq!(editor.cursor_position().1, 0); // Column should be 0
     }
 
@@ -637,12 +654,12 @@ mod tests {
         let mut editor = Editor::new();
         editor.set_content("Line 1\nLine 2\nLine 3".to_string());
         editor.cursor_line = 2;
-        
+
         // Try to move up 10 times, should stop at first line
         for _ in 0..10 {
             editor.move_cursor_up();
         }
-        
+
         assert_eq!(editor.cursor_position().0, 0); // Line should be 0
     }
 
@@ -651,7 +668,7 @@ mod tests {
         let mut editor = Editor::new();
         editor.set_content("Line 1\nLine 2".to_string());
         editor.cursor_col = 6; // At end of first line
-        
+
         // Move right should wrap to next line
         editor.move_cursor_right();
         assert_eq!(editor.cursor_position(), (1, 0));
@@ -663,7 +680,7 @@ mod tests {
         editor.set_content("Line 1\nLine 2".to_string());
         editor.cursor_line = 1;
         editor.cursor_col = 0;
-        
+
         // Move left should wrap to end of previous line
         editor.move_cursor_left();
         assert_eq!(editor.cursor_position(), (0, 6));
@@ -673,22 +690,22 @@ mod tests {
     fn test_multiple_cursor_movements_respect_line_boundaries() {
         let mut editor = Editor::new();
         editor.set_content("Short\nThis is a longer line\nShort".to_string());
-        
+
         // Start at beginning
         assert_eq!(editor.cursor_position(), (0, 0));
-        
+
         // Move down to longer line
         editor.move_cursor_down();
         assert_eq!(editor.cursor_position(), (1, 0));
-        
+
         // Move right 21 times to reach end of line
         for _ in 0..21 {
             editor.move_cursor_right();
         }
-        
+
         // Should be at end of line (21 chars)
         assert_eq!(editor.cursor_position(), (1, 21));
-        
+
         // One more right movement should wrap to next line
         editor.move_cursor_right();
         assert_eq!(editor.cursor_position(), (2, 0));
@@ -700,12 +717,12 @@ mod tests {
         editor.set_content("hello\nworld".to_string());
         editor.cursor_line = 1;
         editor.cursor_col = 3;
-        
+
         // Move left 10 times with no_wrap - should stop at beginning of current line
         for _ in 0..10 {
             editor.move_cursor_left_no_wrap();
         }
-        
+
         // Should be at start of line 1, NOT wrapped to previous line
         assert_eq!(editor.cursor_position(), (1, 0));
     }
@@ -716,12 +733,12 @@ mod tests {
         editor.set_content("hello\nworld".to_string());
         editor.cursor_line = 0;
         editor.cursor_col = 0;
-        
+
         // Move right 10 times with no_wrap - should stop at end of current line
         for _ in 0..10 {
             editor.move_cursor_right_no_wrap();
         }
-        
+
         // Should be at end of line 0 (5 chars), NOT wrapped to next line
         assert_eq!(editor.cursor_position(), (0, 5));
     }
@@ -730,22 +747,21 @@ mod tests {
     fn test_numeric_prefix_movements_dont_cross_lines() {
         let mut editor = Editor::new();
         editor.set_content("Line one\nLine two\nLine three".to_string());
-        
+
         // Start at line 1, column 2
         editor.cursor_line = 1;
         editor.cursor_col = 2;
-        
+
         // Move left 5 times with no wrap - should stop at column 0
         for _ in 0..5 {
             editor.move_cursor_left_no_wrap();
         }
         assert_eq!(editor.cursor_position(), (1, 0));
-        
+
         // Move right 100 times with no wrap - should stop at end of line
         for _ in 0..100 {
             editor.move_cursor_right_no_wrap();
         }
         assert_eq!(editor.cursor_position(), (1, 8)); // "Line two" has 8 chars
     }
-
 }

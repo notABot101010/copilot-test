@@ -17,15 +17,14 @@ pub struct Storage {
 impl Storage {
     pub async fn new() -> Result<Self> {
         let db_path = Self::get_db_path()?;
-        
+
         // Create parent directory if it doesn't exist
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
 
         let connection_string = format!("sqlite://{}", db_path.display());
-        let options = SqliteConnectOptions::from_str(&connection_string)?
-            .create_if_missing(true);
+        let options = SqliteConnectOptions::from_str(&connection_string)?.create_if_missing(true);
 
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
@@ -76,7 +75,7 @@ impl Storage {
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .unwrap_or_else(|_| ".".to_string());
-        
+
         let db_path = PathBuf::from(home).join(".tuinotions").join("tuinotion.db");
         Ok(db_path)
     }
@@ -94,7 +93,7 @@ impl Storage {
         .bind(document.parent_id.map(|id| id.to_string()))
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
 
@@ -132,7 +131,7 @@ impl Storage {
         .bind(doc_id.to_string())
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
 
@@ -176,7 +175,7 @@ impl Storage {
         .bind(doc_id.to_string())
         .execute(&self.pool)
         .await?;
-        
+
         Ok(())
     }
 
@@ -323,32 +322,32 @@ mod tests {
     #[tokio::test]
     async fn test_recently_accessed_documents_ordering() {
         let storage = create_test_storage().await.unwrap();
-        
+
         // Create and save test documents
         let doc1 = Document::new("Document 1".to_string());
         let doc2 = Document::new("Document 2".to_string());
         let doc3 = Document::new("Document 3".to_string());
-        
+
         let id1 = doc1.id;
         let id2 = doc2.id;
         let id3 = doc3.id;
-        
+
         storage.save_document(&doc1).await.unwrap();
         storage.save_document(&doc2).await.unwrap();
         storage.save_document(&doc3).await.unwrap();
-        
+
         // Access documents in order with delays to ensure different timestamps
         storage.record_document_access(id1).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        
+
         storage.record_document_access(id2).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        
+
         storage.record_document_access(id3).await.unwrap();
-        
+
         // Get recently accessed - should be in reverse order (most recent first)
         let recent = storage.get_recently_accessed_documents(10).await.unwrap();
-        
+
         assert_eq!(recent.len(), 3);
         assert_eq!(recent[0], id3); // Most recent
         assert_eq!(recent[1], id2);
@@ -358,7 +357,7 @@ mod tests {
     #[tokio::test]
     async fn test_recently_accessed_documents_limit() {
         let storage = create_test_storage().await.unwrap();
-        
+
         // Create 5 documents
         let mut doc_ids = Vec::new();
         for i in 0..5 {
@@ -367,16 +366,16 @@ mod tests {
             storage.save_document(&doc).await.unwrap();
             doc_ids.push(id);
         }
-        
+
         // Access them in order with delays to ensure different timestamps
         for id in &doc_ids {
             storage.record_document_access(*id).await.unwrap();
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
-        
+
         // Request only 3 most recent
         let recent = storage.get_recently_accessed_documents(3).await.unwrap();
-        
+
         assert_eq!(recent.len(), 3);
         assert_eq!(recent[0], doc_ids[4]); // Most recent
         assert_eq!(recent[1], doc_ids[3]);

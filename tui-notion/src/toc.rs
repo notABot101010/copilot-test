@@ -19,13 +19,13 @@ impl TableOfContents {
 
     pub fn update_from_content(&mut self, content: &str) {
         self.entries.clear();
-        
+
         for (line_num, line) in content.lines().enumerate() {
             let trimmed = line.trim_start();
             if trimmed.starts_with('#') {
                 let level = trimmed.chars().take_while(|&c| c == '#').count();
                 let title = trimmed.trim_start_matches('#').trim().to_string();
-                
+
                 if !title.is_empty() && level <= 6 {
                     self.entries.push(TocEntry {
                         level,
@@ -39,7 +39,7 @@ impl TableOfContents {
         if !self.entries.is_empty() && self.selected_index.is_none() {
             self.selected_index = Some(0);
         }
-        
+
         if let Some(idx) = self.selected_index {
             if idx >= self.entries.len() {
                 self.selected_index = if self.entries.is_empty() {
@@ -96,8 +96,10 @@ impl TableOfContents {
 
         // Use binary search to find the appropriate heading efficiently
         // We want the last heading that starts before or at the cursor position
-        let result = self.entries.binary_search_by_key(&cursor_line, |entry| entry.line);
-        
+        let result = self
+            .entries
+            .binary_search_by_key(&cursor_line, |entry| entry.line);
+
         let best_match_idx = match result {
             // Exact match: cursor is on a heading line
             Ok(idx) => idx,
@@ -113,7 +115,7 @@ impl TableOfContents {
                 }
             }
         };
-        
+
         self.selected_index = Some(best_match_idx);
     }
 }
@@ -131,13 +133,13 @@ Some content here
 More content
 ### Third Heading
 Even more content"#;
-        
+
         toc.update_from_content(content);
-        
+
         // Cursor at line 0 (the first heading) - should select first heading
         toc.sync_with_cursor(0);
         assert_eq!(toc.selected_index(), Some(0));
-        
+
         // Cursor at line 1 (after first heading, before second) - should select first heading
         toc.sync_with_cursor(1);
         assert_eq!(toc.selected_index(), Some(0));
@@ -155,25 +157,25 @@ Line 5
 ### Third Heading
 Line 7
 Line 8"#;
-        
+
         toc.update_from_content(content);
-        
+
         // Cursor at line 2 (within first section) - should select first heading
         toc.sync_with_cursor(2);
         assert_eq!(toc.selected_index(), Some(0));
-        
+
         // Cursor at line 3 (the second heading itself) - should select second heading
         toc.sync_with_cursor(3);
         assert_eq!(toc.selected_index(), Some(1));
-        
+
         // Cursor at line 5 (within second section) - should select second heading
         toc.sync_with_cursor(5);
         assert_eq!(toc.selected_index(), Some(1));
-        
+
         // Cursor at line 6 (the third heading) - should select third heading
         toc.sync_with_cursor(6);
         assert_eq!(toc.selected_index(), Some(2));
-        
+
         // Cursor at line 8 (within third section) - should select third heading
         toc.sync_with_cursor(8);
         assert_eq!(toc.selected_index(), Some(2));
@@ -187,13 +189,13 @@ Line 8"#;
 Some content
 More content
 Even more content"#;
-        
+
         toc.update_from_content(content);
-        
+
         // Cursor at line 10 (way beyond all headings) - should select last heading
         toc.sync_with_cursor(10);
         assert_eq!(toc.selected_index(), Some(1));
-        
+
         // Cursor at line 100 - should still select last heading
         toc.sync_with_cursor(100);
         assert_eq!(toc.selected_index(), Some(1));
@@ -203,13 +205,13 @@ Even more content"#;
     fn test_sync_with_cursor_empty_toc() {
         let mut toc = TableOfContents::new();
         let content = "No headings here\nJust plain text";
-        
+
         toc.update_from_content(content);
-        
+
         // Should have no selection when there are no headings
         toc.sync_with_cursor(0);
         assert_eq!(toc.selected_index(), None);
-        
+
         toc.sync_with_cursor(5);
         assert_eq!(toc.selected_index(), None);
     }
@@ -222,13 +224,13 @@ Content
 ## Second Heading
 Content
 ### Third Heading"#;
-        
+
         toc.update_from_content(content);
-        
+
         // Manually select second heading
         toc.next();
         assert_eq!(toc.selected_index(), Some(1));
-        
+
         // Now sync with cursor at line 0 - should change to first heading
         toc.sync_with_cursor(0);
         assert_eq!(toc.selected_index(), Some(0));
@@ -241,16 +243,16 @@ Content
         let content = r#"# First Heading
 ## Second Heading
 ### Third Heading"#;
-        
+
         toc.update_from_content(content);
-        
+
         // All headings are on consecutive lines
         toc.sync_with_cursor(0);
         assert_eq!(toc.selected_index(), Some(0));
-        
+
         toc.sync_with_cursor(1);
         assert_eq!(toc.selected_index(), Some(1));
-        
+
         toc.sync_with_cursor(2);
         assert_eq!(toc.selected_index(), Some(2));
     }

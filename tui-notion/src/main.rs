@@ -120,7 +120,8 @@ The editor highlights:
 - Documents are auto-saved as you edit!
 
 Happy note-taking!
-"#.to_string();
+"#
+            .to_string();
             tree.add_document(welcome_doc.clone());
             storage.save_document(&welcome_doc).await?;
         }
@@ -135,7 +136,10 @@ Happy note-taking!
             .get_recently_accessed_documents(limit)
             .await
             .unwrap_or_else(|err| {
-                eprintln!("Warning: Failed to load recently accessed documents: {}", err);
+                eprintln!(
+                    "Warning: Failed to load recently accessed documents: {}",
+                    err
+                );
                 Vec::new()
             });
 
@@ -170,7 +174,10 @@ Happy note-taking!
                 let limit = Storage::default_recently_accessed_limit();
                 match app.storage.get_recently_accessed_documents(limit).await {
                     Ok(docs) => app.recently_accessed_docs = docs,
-                    Err(err) => eprintln!("Warning: Failed to refresh recently accessed documents: {}", err),
+                    Err(err) => eprintln!(
+                        "Warning: Failed to refresh recently accessed documents: {}",
+                        err
+                    ),
                 }
             }
         }
@@ -192,13 +199,6 @@ Happy note-taking!
         // Global shortcuts
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
-                KeyCode::Char('k') => {
-                    self.mode = AppMode::Search;
-                    self.focused_panel = FocusedPanel::Search;
-                    self.search.reset();
-                    self.search.update_results_with_recent(&self.tree, &self.recently_accessed_docs);
-                    return Ok(());
-                }
                 KeyCode::Char('n') => {
                     // Create new document
                     let new_doc = Document::new("New Document".to_string());
@@ -225,31 +225,35 @@ Happy note-taking!
             KeyCode::Char('q') => {
                 self.should_quit = true;
             }
+            KeyCode::Char('/') => {
+                self.mode = AppMode::Search;
+                self.focused_panel = FocusedPanel::Search;
+                self.search.reset();
+                self.search
+                    .update_results_with_recent(&self.tree, &self.recently_accessed_docs);
+                return Ok(());
+            }
             KeyCode::Tab => {
                 self.cycle_focus();
             }
-            KeyCode::Enter => {
-                match self.focused_panel {
-                    FocusedPanel::Editor => {
-                        self.mode = AppMode::Insert;
-                    }
-                    FocusedPanel::Toc => {
-                        if let Some(line) = self.toc.selected_line() {
-                            self.editor.jump_to_line(line);
-                            self.sync_toc_with_cursor();
-                            self.focused_panel = FocusedPanel::Editor;
-                        }
-                    }
-                    FocusedPanel::Search => {}
+            KeyCode::Enter => match self.focused_panel {
+                FocusedPanel::Editor => {
+                    self.mode = AppMode::Insert;
                 }
-            }
-            _ => {
-                match self.focused_panel {
-                    FocusedPanel::Editor => self.handle_editor_navigation(key)?,
-                    FocusedPanel::Toc => self.handle_toc_navigation(key).await?,
-                    FocusedPanel::Search => {}
+                FocusedPanel::Toc => {
+                    if let Some(line) = self.toc.selected_line() {
+                        self.editor.jump_to_line(line);
+                        self.sync_toc_with_cursor();
+                        self.focused_panel = FocusedPanel::Editor;
+                    }
                 }
-            }
+                FocusedPanel::Search => {}
+            },
+            _ => match self.focused_panel {
+                FocusedPanel::Editor => self.handle_editor_navigation(key)?,
+                FocusedPanel::Toc => self.handle_toc_navigation(key).await?,
+                FocusedPanel::Search => {}
+            },
         }
         Ok(())
     }
@@ -352,7 +356,8 @@ Happy note-taking!
                 use crossterm::event::Event;
                 let input_event = Event::Key(key);
                 self.search.input_mut().handle_event(&input_event);
-                self.search.update_results_with_recent(&self.tree, &self.recently_accessed_docs);
+                self.search
+                    .update_results_with_recent(&self.tree, &self.recently_accessed_docs);
             }
         }
         Ok(())
@@ -528,7 +533,7 @@ Happy note-taking!
     }
 
     /// Synchronize the TOC (Table of Contents) selection with the current cursor position in the editor.
-    /// 
+    ///
     /// This method ensures the outline panel highlights the heading corresponding to the section
     /// where the cursor is currently positioned. It should be called whenever the cursor moves
     /// vertically (up/down), during page scrolling, or when jumping to a different location.
@@ -545,7 +550,10 @@ Happy note-taking!
             }
             Err(err) => {
                 // Log error but don't fail - fall back to empty list
-                eprintln!("Warning: Failed to refresh recently accessed documents: {}", err);
+                eprintln!(
+                    "Warning: Failed to refresh recently accessed documents: {}",
+                    err
+                );
                 self.recently_accessed_docs.clear();
             }
         }
@@ -567,10 +575,7 @@ async fn run_app<B: ratatui::backend::Backend>(
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(80),
-                ])
+                .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
                 .split(f.area());
 
             // Render table of contents (left panel - moved from right)

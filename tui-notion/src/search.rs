@@ -37,9 +37,9 @@ impl SearchDialog {
 
     pub fn update_results_with_recent(&mut self, tree: &DocumentTree, recent_doc_ids: &[Uuid]) {
         self.results.clear();
-        
+
         let query = self.input.value();
-        
+
         if query.is_empty() {
             // Show recently accessed documents when query is empty
             // Only include documents that still exist in the tree
@@ -48,7 +48,7 @@ impl SearchDialog {
                 .filter(|id| tree.get_document(**id).is_some())
                 .copied()
                 .collect();
-            
+
             // If no recently accessed documents, show all documents
             if self.results.is_empty() {
                 self.results = tree.documents().iter().map(|doc| doc.id).collect();
@@ -58,7 +58,7 @@ impl SearchDialog {
             let matches = tree.search(query);
             self.results = matches.iter().map(|doc| doc.id).collect();
         }
-        
+
         if !self.results.is_empty() {
             self.selected_index = Some(0);
         } else {
