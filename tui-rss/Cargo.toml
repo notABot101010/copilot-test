@@ -18,5 +18,5 @@ chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
 feed-rs = "2.2"
 reqwest = { version = "0.12", features = ["blocking"] }
-tui-input = "0.10"
+tui-input = "0.14"
 html2text = "0.12"
