@@ -744,15 +744,6 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
     // Reserve space for help text at the bottom
     let help_height = 2;
     let available_height = inner.height.saturating_sub(help_height);
-    
-    // Calculate how many hours we can show based on available height
-    // Each hour needs at least 1 line
-    let hours_to_show = available_height.min(24);
-    let hour_height = if hours_to_show > 0 {
-        available_height / hours_to_show
-    } else {
-        1
-    };
 
     // Render hour slots
     let mut lines = Vec::new();
@@ -1268,7 +1259,6 @@ fn run_app<B: ratatui::backend::Backend>(
                     }
                     KeyCode::Char('t') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.selected_date = app.current_date;
-                        app.event_list_state.select(None);
                         app.number_buffer.clear();
                     }
                     KeyCode::Char(c) if c.is_ascii_digit() => {
