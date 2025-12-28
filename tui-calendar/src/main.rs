@@ -142,22 +142,13 @@ impl App {
 
     fn move_selection_up_by(&mut self, count: usize) {
         // Move up by weeks (7 days per count)
-        let days_to_move = count * 7;
-        let mut new_date = self.selected_date;
+        let days_to_move = (count * 7) as u64;
         
-        for _ in 0..days_to_move {
-            if let Some(pred) = new_date.pred_opt() {
-                if pred.year() >= MIN_YEAR {
-                    new_date = pred;
-                } else {
-                    break;
-                }
-            } else {
-                break;
+        if let Some(new_date) = self.selected_date.checked_sub_days(chrono::Days::new(days_to_move)) {
+            if new_date.year() >= MIN_YEAR {
+                self.selected_date = new_date;
             }
         }
-        
-        self.selected_date = new_date;
     }
 
     fn move_selection_down(&mut self) {
@@ -166,22 +157,13 @@ impl App {
 
     fn move_selection_down_by(&mut self, count: usize) {
         // Move down by weeks (7 days per count)
-        let days_to_move = count * 7;
-        let mut new_date = self.selected_date;
+        let days_to_move = (count * 7) as u64;
         
-        for _ in 0..days_to_move {
-            if let Some(succ) = new_date.succ_opt() {
-                if succ.year() <= MAX_YEAR {
-                    new_date = succ;
-                } else {
-                    break;
-                }
-            } else {
-                break;
+        if let Some(new_date) = self.selected_date.checked_add_days(chrono::Days::new(days_to_move)) {
+            if new_date.year() <= MAX_YEAR {
+                self.selected_date = new_date;
             }
         }
-        
-        self.selected_date = new_date;
     }
 
     fn move_selection_left(&mut self) {
@@ -189,21 +171,13 @@ impl App {
     }
 
     fn move_selection_left_by(&mut self, count: usize) {
-        let mut new_date = self.selected_date;
+        let days_to_move = count as u64;
         
-        for _ in 0..count {
-            if let Some(pred) = new_date.pred_opt() {
-                if pred.year() >= MIN_YEAR {
-                    new_date = pred;
-                } else {
-                    break;
-                }
-            } else {
-                break;
+        if let Some(new_date) = self.selected_date.checked_sub_days(chrono::Days::new(days_to_move)) {
+            if new_date.year() >= MIN_YEAR {
+                self.selected_date = new_date;
             }
         }
-        
-        self.selected_date = new_date;
     }
 
     fn move_selection_right(&mut self) {
@@ -211,21 +185,13 @@ impl App {
     }
 
     fn move_selection_right_by(&mut self, count: usize) {
-        let mut new_date = self.selected_date;
+        let days_to_move = count as u64;
         
-        for _ in 0..count {
-            if let Some(succ) = new_date.succ_opt() {
-                if succ.year() <= MAX_YEAR {
-                    new_date = succ;
-                } else {
-                    break;
-                }
-            } else {
-                break;
+        if let Some(new_date) = self.selected_date.checked_add_days(chrono::Days::new(days_to_move)) {
+            if new_date.year() <= MAX_YEAR {
+                self.selected_date = new_date;
             }
         }
-        
-        self.selected_date = new_date;
     }
 
     fn start_create_event(&mut self) {
@@ -431,11 +397,15 @@ impl App {
 
     fn get_count(&self) -> usize {
         if self.number_buffer.is_empty() {
-            1
-        } else {
-            // Cap at MAX_COUNT to prevent performance issues with very large numbers
-            self.number_buffer.parse().unwrap_or(1).max(1).min(MAX_COUNT)
+            return 1;
         }
+        
+        // Try to parse the buffer, cap at MAX_COUNT to prevent performance issues
+        self.number_buffer
+            .parse::<usize>()
+            .unwrap_or(1)
+            .max(1)
+            .min(MAX_COUNT)
     }
 
     fn handle_create_event_input(&mut self, key_event: &Event) {
@@ -708,6 +678,9 @@ fn render_event_list(f: &mut Frame, app: &mut App, area: Rect) {
 
 // Helper function to render cursor for input fields
 fn render_input_cursor(f: &mut Frame, input: &Input, area: Rect, y_offset: u16) {
+    if area.width == 0 {
+        return;
+    }
     let cursor_pos = input.visual_cursor().min(area.width.saturating_sub(1) as usize);
     f.set_cursor_position((area.x + cursor_pos as u16, area.y + y_offset));
 }
