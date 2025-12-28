@@ -1,14 +1,19 @@
 # TUI Calendar
 
-A terminal-based calendar application built with Rust and ratatui.
+A terminal-based calendar application built with Rust and ratatui with persistent SQLite storage.
 
 ## Features
 
+- **Persistent Storage** - Events are saved to SQLite database at `~/.tuicalendar/tuicalendar.db`
 - **Monthly calendar view** with current day highlighting
 - **Week view mode** - see all events for a full week at a glance
 - **Day view panel** showing hourly breakdown (00:00-23:00) with events
+- **Event list focus mode** - Tab to focus and navigate today's events
+- **Search functionality** - Search events by title or description with recently viewed events
+- **Help dialog** - Press 'h' for comprehensive keyboard shortcuts
+- **Bottom status bar** - Shows current mode, date, and helpful hints
 - **Dynamic vertical sizing** - calendar uses maximum available vertical space
-- **Create events** with Ctrl+N
+- **Create events** with 'n' key
 - **Multi-day events** - events can span multiple days
 - **Time ranges** - specify start and end times for events
 - **Event categories** - organize events with colored categories (work, personal, meeting, important)
@@ -16,7 +21,7 @@ A terminal-based calendar application built with Rust and ratatui.
   - Up/Down arrows move by weeks (7 days)
   - Left/Right arrows move by days
   - Vim-style count prefix supported (e.g., "3→" moves 3 days right, "2↓" moves 2 weeks down)
-- **Jump to today** with Ctrl+T
+- **Jump to today** with 't' key
 - **Event indicators** on dates with events
 - **Cursor support** in input fields with tui-input
 
@@ -36,20 +41,37 @@ cargo run
 - **,** (comma): Previous month
 - **.** (period): Next month
 - **W**: Toggle Week View
-- **Ctrl+T**: Jump to today's date
+- **T**: Jump to today's date
 - **Esc**: Clear number buffer or exit week view
 
 ### Event Management
-- **Ctrl+N**: Create new event
+- **N**: Create new event
+- **Tab**: Focus event list panel (navigate today's events)
+- **Enter** (in event list): Edit selected event
+- **/** (slash): Open search dialog
+
+### Search
+- **/**: Open search dialog
+- **Type**: Search events by title or description
+- **Up/Down**: Navigate search results
+- **Enter**: View selected event
+- **Esc**: Close search
+- **Empty search**: Shows recently viewed events
+
+### Event List Panel (when focused with Tab)
+- **Up/Down**: Navigate events
+- **Enter**: Edit selected event
+- **Esc**: Return to calendar view
 
 ### Week View
 When in week view:
 - **W or Esc**: Return to month view
 - **Left/Right Arrows**: Navigate to previous/next week
-- **Ctrl+N**: Create new event (same as month view)
-- **Ctrl+T**: Jump to today's date
+- **N**: Create new event (same as month view)
+- **T**: Jump to today's date
 
 ### General
+- **H**: Show help dialog with all shortcuts
 - **Q**: Quit application
 - **Esc**: Close modals/dialogs, exit week view, or clear number buffer
 
