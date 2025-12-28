@@ -5,6 +5,7 @@ A terminal-based calendar application built with Rust and ratatui.
 ## Features
 
 - **Monthly calendar view** with current day highlighting
+- **Week view mode** - see all events for a full week at a glance
 - **Day view panel** showing hourly breakdown (00:00-23:00) with events
 - **Dynamic vertical sizing** - calendar uses maximum available vertical space
 - **Create events** with Ctrl+N
@@ -34,15 +35,23 @@ cargo run
   - **[count] + Arrow**: Move by count × direction (e.g., 5→ moves 5 days right, 2↑ moves 2 weeks up)
 - **,** (comma): Previous month
 - **.** (period): Next month
+- **W**: Toggle Week View
 - **Ctrl+T**: Jump to today's date
-- **Esc**: Clear number buffer
+- **Esc**: Clear number buffer or exit week view
 
 ### Event Management
 - **Ctrl+N**: Create new event
 
+### Week View
+When in week view:
+- **W or Esc**: Return to month view
+- **Left/Right Arrows**: Navigate to previous/next week
+- **Ctrl+N**: Create new event (same as month view)
+- **Ctrl+T**: Jump to today's date
+
 ### General
 - **Q**: Quit application
-- **Esc**: Close modals/dialogs or clear number buffer
+- **Esc**: Close modals/dialogs, exit week view, or clear number buffer
 
 ## Event Creation/Editing
 
@@ -106,3 +115,13 @@ The number buffer is cleared after each movement or when pressing Esc.
 - **Timed events**: Displayed in their corresponding hour slot with time ranges
 - **Event details**: Shows event time and title for the selected date
 - **Color-coded events**: Categories are reflected in the day view as well
+
+### Week View
+- **Full week display**: Shows 7 days (Sunday through Saturday) at once
+- **Event overview**: See all events for the week in a grid layout
+- **Day headers**: Each day shows the weekday name and date
+- **Color-coded events**: Same category colors as in month view
+- **Current day highlighting**: Today's date is highlighted in green
+- **Selected day**: The selected day is highlighted in cyan
+- **Compact event display**: Shows time and title for each event, truncated to fit
+- **Quick navigation**: Use left/right arrows to move between weeks
