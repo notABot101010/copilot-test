@@ -100,7 +100,7 @@ impl App {
         }
 
         // Reset selection if out of bounds
-        if self.selected_article.is_some() && self.selected_article.unwrap() >= self.articles.len() {
+        if self.selected_article.map_or(false, |idx| idx >= self.articles.len()) {
             self.selected_article = if self.articles.is_empty() {
                 None
             } else {
