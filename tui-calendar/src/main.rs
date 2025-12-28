@@ -188,11 +188,7 @@ impl App {
         let mut display_order = Vec::new();
         
         // First, add all-day events (events without start_time)
-        for event in events.iter() {
-            if event.start_time.is_none() {
-                display_order.push(*event);
-            }
-        }
+        display_order.extend(events.iter().copied().filter(|e| e.start_time.is_none()));
         
         // Then, add timed events sorted by start time
         let mut timed_events: Vec<&CalendarEvent> = events
