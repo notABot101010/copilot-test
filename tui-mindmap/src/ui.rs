@@ -6,6 +6,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap, Widget},
 };
+use unicode_width::UnicodeWidthStr;
 use uuid::Uuid;
 
 pub struct Canvas<'a> {
@@ -306,7 +307,10 @@ impl<'a> Widget for DocumentDialog<'a> {
 
         // Render cursor for title if editing
         if self.editing && self.editing_title {
-            let cursor_x = title_area.x + (self.title_cursor as u16).min(title_area.width.saturating_sub(1));
+            // Calculate visual width up to cursor position
+            let text_before_cursor = &self.title_value.chars().take(self.title_cursor).collect::<String>();
+            let visual_width = text_before_cursor.width();
+            let cursor_x = title_area.x + (visual_width as u16).min(title_area.width.saturating_sub(1));
             let cursor_y = title_area.y;
             if cursor_x < buf.area.width && cursor_y < buf.area.height {
                 if let Some(cell) = buf.cell_mut((cursor_x, cursor_y)) {
@@ -330,7 +334,10 @@ impl<'a> Widget for DocumentDialog<'a> {
 
         // Render cursor for body if editing
         if self.editing && !self.editing_title {
-            let cursor_x = body_area.x + (self.body_cursor as u16).min(body_area.width.saturating_sub(1));
+            // Calculate visual width up to cursor position
+            let text_before_cursor = &self.body_value.chars().take(self.body_cursor).collect::<String>();
+            let visual_width = text_before_cursor.width();
+            let cursor_x = body_area.x + (visual_width as u16).min(body_area.width.saturating_sub(1));
             let cursor_y = body_area.y;
             if cursor_x < buf.area.width && cursor_y < buf.area.height {
                 if let Some(cell) = buf.cell_mut((cursor_x, cursor_y)) {
