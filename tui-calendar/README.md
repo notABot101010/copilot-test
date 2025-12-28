@@ -68,8 +68,6 @@ The number buffer is cleared after each movement or when pressing Esc.
 
 ## Visual Indicators
 
-## Visual Indicators
-
 ### Day Cell Styling
 - **Green border**: Current day (today)
 - **Cyan border with blue background**: Selected date
