@@ -14,7 +14,7 @@ use ratatui::{
 };
 use std::io;
 use std::time::{Duration, Instant};
-use ui::{Canvas, DocumentDialog};
+use ui::{Canvas, DocumentDialog, SearchBox};
 use uuid::Uuid;
 
 const DOUBLE_CLICK_THRESHOLD: Duration = Duration::from_millis(500);
@@ -27,6 +27,7 @@ enum Mode {
     Normal,
     ViewingDocument,
     EditingDocument,
+    Searching,
 }
 
 #[derive(Debug, Clone)]
@@ -53,6 +54,8 @@ struct App {
     editing_title: bool,
     history: Vec<HistoryEntry>,
     history_index: usize,
+    search_query: String,
+    search_results: Vec<Uuid>,
 }
 
 impl App {
@@ -97,6 +100,8 @@ impl App {
             editing_title: true,
             history: vec![history_entry],
             history_index: 0,
+            search_query: String::new(),
+            search_results: Vec::new(),
         }
     }
 
@@ -243,6 +248,63 @@ impl App {
         self.edit_body.clear();
     }
 
+    fn start_search(&mut self) {
+        self.mode = Mode::Searching;
+        self.search_query.clear();
+        self.search_results.clear();
+    }
+
+    fn perform_search(&mut self) {
+        self.search_results.clear();
+        let query = self.search_query.to_lowercase();
+        
+        if query.is_empty() {
+            return;
+        }
+
+        for node in &self.mindmap.nodes {
+            if node.document.title.to_lowercase().contains(&query) 
+                || node.document.body.to_lowercase().contains(&query) {
+                self.search_results.push(node.id);
+            }
+        }
+
+        // If there are results, select the first one
+        if !self.search_results.is_empty() {
+            self.selected_node = Some(self.search_results[0]);
+            // Pan to the selected node
+            if let Some(node) = self.mindmap.get_node_by_id(self.search_results[0]) {
+                self.pan_x = node.x - 50.0;
+                self.pan_y = node.y - 25.0;
+            }
+        }
+    }
+
+    fn next_search_result(&mut self) {
+        if self.search_results.is_empty() {
+            return;
+        }
+
+        let current_idx = self.selected_node
+            .and_then(|id| self.search_results.iter().position(|&rid| rid == id))
+            .unwrap_or(0);
+
+        let next_idx = (current_idx + 1) % self.search_results.len();
+        self.selected_node = Some(self.search_results[next_idx]);
+
+        // Pan to the selected node
+        if let Some(node) = self.mindmap.get_node_by_id(self.search_results[next_idx]) {
+            self.pan_x = node.x - 50.0;
+            self.pan_y = node.y - 25.0;
+        }
+    }
+
+    fn cancel_search(&mut self) {
+        self.mode = Mode::Normal;
+        self.search_query.clear();
+        self.search_results.clear();
+    }
+
     fn save_to_file(&self) -> Result<()> {
         let json = serde_json::to_string_pretty(&self.mindmap)?;
         std::fs::write("mindmap.json", json)?;
@@ -359,6 +421,9 @@ impl App {
                     KeyCode::Char('r') | KeyCode::Char('R') => {
                         self.cycle_node_color();
                     }
+                    KeyCode::Char('f') | KeyCode::Char('F') => {
+                        self.start_search();
+                    }
                     KeyCode::Char('s') | KeyCode::Char('S') => {
                         if let Err(err) = self.save_to_file() {
                             eprintln!("Error saving: {:?}", err);
@@ -436,6 +501,27 @@ impl App {
                     _ => {}
                 }
             }
+            Mode::Searching => {
+                match key_event.code {
+                    KeyCode::Enter => {
+                        self.perform_search();
+                        self.cancel_search();
+                    }
+                    KeyCode::Char(c) => {
+                        self.search_query.push(c);
+                    }
+                    KeyCode::Backspace => {
+                        self.search_query.pop();
+                    }
+                    KeyCode::Down => {
+                        self.next_search_result();
+                    }
+                    KeyCode::Esc => {
+                        self.cancel_search();
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 }
@@ -464,6 +550,15 @@ fn run_app<B: ratatui::backend::Backend>(
                     editing_title: app.editing_title,
                 };
                 f.render_widget(dialog, area);
+            }
+
+            // Render search box if in searching mode
+            if app.mode == Mode::Searching {
+                let search_box = SearchBox {
+                    query: &app.search_query,
+                    results_count: app.search_results.len(),
+                };
+                f.render_widget(search_box, area);
             }
         })?;
 

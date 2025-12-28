@@ -184,9 +184,9 @@ impl<'a> Canvas<'a> {
         let help_text = if self.connecting_from.is_some() {
             "Click another node to connect | Esc to cancel"
         } else if self.selected_node.is_some() {
-            "Double-click: Open | N: New | D: Delete | C: Connect | X: Disconnect | R: Color | Esc: Deselect"
+            "Double-click: Open | N: New | D: Delete | C: Connect | X: Disconnect | R: Color | F: Search"
         } else {
-            "+/-: Zoom | N: New | D: Delete | C: Connect | X: Disconnect | R: Color | S: Save | L: Load | Q: Quit"
+            "+/-: Zoom | N: New | D: Delete | R: Color | F: Search | S: Save | L: Load | Q: Quit"
         };
 
         let help_y = area.y + area.height.saturating_sub(1);
@@ -325,3 +325,49 @@ impl<'a> Widget for DocumentDialog<'a> {
         Paragraph::new(help_line).render(help_area, buf);
     }
 }
+
+pub struct SearchBox<'a> {
+    pub query: &'a str,
+    pub results_count: usize,
+}
+
+impl<'a> Widget for SearchBox<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        // Calculate search box size (top center, smaller)
+        let box_width = 50.min(area.width);
+        let box_height = 3;
+        let box_x = (area.width.saturating_sub(box_width)) / 2;
+        let box_y = 2;
+
+        let box_area = Rect {
+            x: area.x + box_x,
+            y: area.y + box_y,
+            width: box_width,
+            height: box_height,
+        };
+
+        // Clear the box area
+        Clear.render(box_area, buf);
+
+        let title = if self.results_count > 0 {
+            format!(" Search ({} results) ", self.results_count)
+        } else {
+            " Search ".to_string()
+        };
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+            .title(title)
+            .style(Style::default().bg(Color::Black));
+
+        let inner = block.inner(box_area);
+        block.render(box_area, buf);
+
+        let paragraph = Paragraph::new(self.query)
+            .style(Style::default().fg(Color::White));
+
+        paragraph.render(inner, buf);
+    }
+}
+
