@@ -440,7 +440,9 @@ impl App {
             let events = self.get_selected_date_events();
             if idx < events.len() {
                 let event_id = events[idx].id;
-                let _ = self.database.delete_event(event_id);
+                if let Err(err) = self.database.delete_event(event_id) {
+                    eprintln!("Failed to delete event from database: {}", err);
+                }
                 self.events.retain(|e| e.id != event_id);
                 
                 // Adjust selection

@@ -28,8 +28,10 @@ impl Database {
     }
     
     fn get_db_path() -> Result<PathBuf> {
+        // Try HOME first (Unix), then USERPROFILE (Windows)
         let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))?;
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .map_err(|_| anyhow::anyhow!("Cannot determine home directory. Please set HOME or USERPROFILE environment variable."))?;
         
         let mut path = PathBuf::from(home);
         path.push(".tuicalendar");
