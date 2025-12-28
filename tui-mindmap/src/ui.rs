@@ -1,4 +1,4 @@
-use crate::models::{MindMap, Node};
+use crate::models::{MindMap, Node, NodeColor};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -66,6 +66,18 @@ impl<'a> Widget for Canvas<'a> {
 }
 
 impl<'a> Canvas<'a> {
+    fn node_color_to_ratatui(node_color: NodeColor) -> Color {
+        match node_color {
+            NodeColor::Default => Color::DarkGray,
+            NodeColor::Red => Color::Red,
+            NodeColor::Green => Color::Green,
+            NodeColor::Blue => Color::Blue,
+            NodeColor::Yellow => Color::Yellow,
+            NodeColor::Magenta => Color::Magenta,
+            NodeColor::Cyan => Color::Cyan,
+        }
+    }
+
     fn draw_node(&self, area: Rect, buf: &mut Buffer, node: &Node) {
         let screen_x = ((node.x - self.pan_x) * self.zoom) as u16;
         let screen_y = ((node.y - self.pan_y) * self.zoom) as u16;
@@ -91,7 +103,8 @@ impl<'a> Canvas<'a> {
         let is_selected = self.selected_node == Some(node.id);
         let is_connecting = self.connecting_from == Some(node.id);
 
-        let mut style = Style::default().fg(Color::White).bg(Color::DarkGray);
+        let node_bg_color = Self::node_color_to_ratatui(node.color);
+        let mut style = Style::default().fg(Color::White).bg(node_bg_color);
         let mut border_style = Style::default().fg(Color::Gray);
 
         if is_selected {
@@ -171,9 +184,9 @@ impl<'a> Canvas<'a> {
         let help_text = if self.connecting_from.is_some() {
             "Click another node to connect | Esc to cancel"
         } else if self.selected_node.is_some() {
-            "Click: Select | Double-click: Open | N: New node | D: Delete | C: Connect | Esc: Deselect"
+            "Double-click: Open | N: New | D: Delete | C: Connect | X: Disconnect | R: Color | Esc: Deselect"
         } else {
-            "+/-: Zoom | Click: Select | Double-click: Open | N: New node | D: Delete | C: Connect | S: Save | L: Load | Q: Quit"
+            "+/-: Zoom | N: New | D: Delete | C: Connect | X: Disconnect | R: Color | S: Save | L: Load | Q: Quit"
         };
 
         let help_y = area.y + area.height.saturating_sub(1);

@@ -16,6 +16,17 @@ impl Document {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum NodeColor {
+    Default,
+    Red,
+    Green,
+    Blue,
+    Yellow,
+    Magenta,
+    Cyan,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub id: Uuid,
@@ -24,6 +35,7 @@ pub struct Node {
     pub y: f64,
     pub width: u16,
     pub height: u16,
+    pub color: NodeColor,
 }
 
 impl Node {
@@ -35,6 +47,7 @@ impl Node {
             y,
             width: 20,
             height: 3,
+            color: NodeColor::Default,
         }
     }
 
