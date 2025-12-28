@@ -2272,7 +2272,10 @@ fn run_app<B: ratatui::backend::Backend>(
                         app.help_scroll = app.help_scroll.saturating_sub(1);
                     }
                     KeyCode::Down => {
-                        app.help_scroll = app.help_scroll.saturating_add(1);
+                        // Limit scroll to reasonable max (help text has ~42 lines, visible area typically ~30 lines)
+                        if app.help_scroll < 20 {
+                            app.help_scroll = app.help_scroll.saturating_add(1);
+                        }
                     }
                     _ => {}
                 },
