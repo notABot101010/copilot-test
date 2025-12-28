@@ -1,16 +1,19 @@
+mod database;
+
 use anyhow::Result;
 use chrono::{Datelike, Local, NaiveDate, NaiveTime, Timelike};
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use database::Database;
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
     Frame, Terminal,
 };
 use std::io;
@@ -41,6 +44,9 @@ enum AppMode {
     ViewEvent,
     ConfirmDelete,
     WeekView,
+    Help,
+    Search,
+    EventListFocused,
 }
 
 enum CreateEventField {
@@ -87,16 +93,30 @@ struct App {
     
     // Vim-style number prefix support
     number_buffer: String,
+    
+    // Database
+    database: Database,
+    
+    // Search state
+    search_input: Input,
+    search_results: Vec<usize>, // Event IDs
+    search_list_state: ListState,
+    recently_viewed: Vec<usize>, // Event IDs
 }
 
 impl App {
-    fn new() -> Self {
+    fn new() -> Result<Self> {
         let today = Local::now().date_naive();
         let date_str = today.format("%Y-%m-%d").to_string();
-        Self {
+        
+        let database = Database::new()?;
+        let events = database.load_events()?;
+        let next_event_id = database.get_max_event_id()? + 1;
+        
+        Ok(Self {
             mode: AppMode::Normal,
-            events: Vec::new(),
-            next_event_id: 1,
+            events,
+            next_event_id,
             current_date: today,
             selected_date: today,
             selected_event_index: None,
@@ -119,7 +139,12 @@ impl App {
             edit_event_field: CreateEventField::Title,
             event_list_state: ListState::default(),
             number_buffer: String::new(),
-        }
+            database,
+            search_input: Input::default(),
+            search_results: Vec::new(),
+            search_list_state: ListState::default(),
+            recently_viewed: Vec::new(),
+        })
     }
 
     fn get_events_for_date(&self, date: NaiveDate) -> Vec<&CalendarEvent> {
@@ -272,6 +297,7 @@ impl App {
             category,
         };
 
+        self.database.save_event(&event)?;
         self.events.push(event);
         self.events.sort_by(|a, b| {
             a.start_date.cmp(&b.start_date).then_with(|| {
@@ -362,6 +388,8 @@ impl App {
                 event.start_time = start_time;
                 event.end_time = end_time;
                 event.category = category;
+                
+                self.database.save_event(event)?;
             }
 
             self.events.sort_by(|a, b| {
@@ -412,6 +440,7 @@ impl App {
             let events = self.get_selected_date_events();
             if idx < events.len() {
                 let event_id = events[idx].id;
+                let _ = self.database.delete_event(event_id);
                 self.events.retain(|e| e.id != event_id);
                 
                 // Adjust selection
@@ -572,6 +601,117 @@ impl App {
             }
         }
     }
+    
+    fn start_search(&mut self) {
+        self.search_input = Input::default();
+        self.search_results.clear();
+        self.search_list_state = ListState::default();
+        self.mode = AppMode::Search;
+    }
+    
+    fn perform_search(&mut self) {
+        let query = self.search_input.value().to_lowercase();
+        
+        if query.is_empty() {
+            // Show recently viewed events
+            self.search_results = self.recently_viewed.clone();
+        } else {
+            // Search events by title or description
+            self.search_results = self.events
+                .iter()
+                .filter(|e| {
+                    e.title.to_lowercase().contains(&query)
+                        || e.description.to_lowercase().contains(&query)
+                })
+                .map(|e| e.id)
+                .collect();
+        }
+        
+        // Select first result if any
+        if !self.search_results.is_empty() {
+            self.search_list_state.select(Some(0));
+        } else {
+            self.search_list_state.select(None);
+        }
+    }
+    
+    fn close_search(&mut self) {
+        self.mode = AppMode::Normal;
+    }
+    
+    fn open_search_result(&mut self) {
+        if let Some(idx) = self.search_list_state.selected() {
+            if idx < self.search_results.len() {
+                let event_id = self.search_results[idx];
+                
+                // Add to recently viewed (at the beginning)
+                self.recently_viewed.retain(|&id| id != event_id);
+                self.recently_viewed.insert(0, event_id);
+                
+                // Keep only last 10 recently viewed
+                if self.recently_viewed.len() > 10 {
+                    self.recently_viewed.truncate(10);
+                }
+                
+                // Find and view the event
+                if let Some(event) = self.events.iter().find(|e| e.id == event_id) {
+                    self.selected_date = event.start_date;
+                    self.selected_event_index = Some(event_id);
+                    self.mode = AppMode::ViewEvent;
+                }
+            }
+        }
+    }
+    
+    fn next_search_result(&mut self) {
+        if self.search_results.is_empty() {
+            return;
+        }
+        
+        let i = match self.search_list_state.selected() {
+            Some(i) => {
+                if i >= self.search_results.len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.search_list_state.select(Some(i));
+    }
+    
+    fn previous_search_result(&mut self) {
+        if self.search_results.is_empty() {
+            return;
+        }
+        
+        let i = match self.search_list_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.search_results.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.search_list_state.select(Some(i));
+    }
+    
+    fn focus_event_list(&mut self) {
+        let events = self.get_selected_date_events();
+        if !events.is_empty() {
+            self.mode = AppMode::EventListFocused;
+            if self.event_list_state.selected().is_none() {
+                self.event_list_state.select(Some(0));
+            }
+        }
+    }
+    
+    fn unfocus_event_list(&mut self) {
+        self.mode = AppMode::Normal;
+    }
 }
 
 // Helper function to get color for a category
@@ -597,15 +737,24 @@ fn truncate_text(text: &str, max_len: usize) -> String {
 }
 
 fn ui(f: &mut Frame, app: &mut App) {
+    // Create main layout with bottom bar
+    let main_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(f.area());
+    
+    let content_area = main_chunks[0];
+    let status_bar_area = main_chunks[1];
+    
     match app.mode {
         AppMode::WeekView => {
-            render_week_view(f, app, f.area());
+            render_week_view(f, app, content_area);
         }
         _ => {
             let chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
-                .split(f.area());
+                .split(content_area);
 
             render_calendar(f, app, chunks[0]);
             render_day_view(f, app, chunks[1]);
@@ -617,8 +766,13 @@ fn ui(f: &mut Frame, app: &mut App) {
         AppMode::EditEvent => render_edit_event_modal(f, app),
         AppMode::ViewEvent => render_view_event_modal(f, app),
         AppMode::ConfirmDelete => render_confirm_delete_modal(f, app),
+        AppMode::Help => render_help_modal(f),
+        AppMode::Search => render_search_modal(f, app),
         _ => {}
     }
+    
+    // Render bottom status bar
+    render_status_bar(f, app, status_bar_area);
 }
 
 fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
@@ -774,10 +928,12 @@ fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
             Span::raw(": Navigate  "),
             Span::styled("W", Style::default().fg(Color::Yellow)),
             Span::raw(": Week View  "),
-            Span::styled("Ctrl+N", Style::default().fg(Color::Yellow)),
+            Span::styled("N", Style::default().fg(Color::Yellow)),
             Span::raw(": New  "),
-            Span::styled("Ctrl+T", Style::default().fg(Color::Yellow)),
+            Span::styled("T", Style::default().fg(Color::Yellow)),
             Span::raw(": Today  "),
+            Span::styled("H", Style::default().fg(Color::Yellow)),
+            Span::raw(": Help  "),
             Span::styled("Q", Style::default().fg(Color::Yellow)),
             Span::raw(": Quit"),
         ]),
@@ -896,10 +1052,17 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
         app.selected_date.format("%Y-%m-%d (%A)")
     );
 
+    let is_focused = matches!(app.mode, AppMode::EventListFocused);
+    
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
-        .title_alignment(Alignment::Center);
+        .title_alignment(Alignment::Center)
+        .border_style(if is_focused {
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        });
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -1047,10 +1210,12 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
     let help_text = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("Ctrl+N", Style::default().fg(Color::Yellow)),
-            Span::raw(": New Event  "),
-            Span::styled("Ctrl+T", Style::default().fg(Color::Yellow)),
-            Span::raw(": Today"),
+            Span::styled("Tab", Style::default().fg(Color::Yellow)),
+            Span::raw(": Focus Events  "),
+            Span::styled("N", Style::default().fg(Color::Yellow)),
+            Span::raw(": New  "),
+            Span::styled("/", Style::default().fg(Color::Yellow)),
+            Span::raw(": Search"),
         ]),
     ];
     f.render_widget(Paragraph::new(help_text), help_area);
@@ -1655,7 +1820,7 @@ fn render_week_view(f: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled("W", Style::default().fg(Color::Yellow)),
             Span::raw(": Toggle Week View  "),
-            Span::styled("Ctrl+N", Style::default().fg(Color::Yellow)),
+            Span::styled("N", Style::default().fg(Color::Yellow)),
             Span::raw(": New Event  "),
             Span::styled("←/→", Style::default().fg(Color::Yellow)),
             Span::raw(": Prev/Next Week  "),
@@ -1664,6 +1829,204 @@ fn render_week_view(f: &mut Frame, app: &App, area: Rect) {
         ]),
     ];
     f.render_widget(Paragraph::new(help_text), help_area);
+}
+
+fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
+    let mode_text = match app.mode {
+        AppMode::Normal => "NORMAL",
+        AppMode::CreateEvent => "CREATE EVENT",
+        AppMode::EditEvent => "EDIT EVENT",
+        AppMode::ViewEvent => "VIEW EVENT",
+        AppMode::ConfirmDelete => "CONFIRM DELETE",
+        AppMode::WeekView => "WEEK VIEW",
+        AppMode::Help => "HELP",
+        AppMode::Search => "SEARCH",
+        AppMode::EventListFocused => "EVENT LIST",
+    };
+    
+    let status_text = format!(
+        " {} | {} | Press 'h' for help ",
+        mode_text,
+        app.current_date.format("%Y-%m-%d %A")
+    );
+    
+    let style = match app.mode {
+        AppMode::EventListFocused => Style::default().bg(Color::Cyan).fg(Color::Black),
+        AppMode::Search => Style::default().bg(Color::Yellow).fg(Color::Black),
+        AppMode::Help => Style::default().bg(Color::Green).fg(Color::Black),
+        _ => Style::default().bg(Color::DarkGray).fg(Color::White),
+    };
+    
+    let status_bar = Paragraph::new(status_text)
+        .style(style);
+    
+    f.render_widget(status_bar, area);
+}
+
+fn render_help_modal(f: &mut Frame) {
+    let area = centered_rect(70, 80, f.area());
+
+    let block = Block::default()
+        .title(" Help - Keyboard Shortcuts ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black));
+
+    f.render_widget(Clear, area);
+    f.render_widget(block.clone(), area);
+
+    let inner = block.inner(area);
+
+    let help_text = vec![
+        Line::from(Span::styled("Navigation", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        Line::from("  Arrow Keys: Navigate dates (Up/Down: weeks, Left/Right: days)"),
+        Line::from("  , (comma): Previous month"),
+        Line::from("  . (period): Next month"),
+        Line::from("  t: Jump to today"),
+        Line::from("  w: Toggle week view"),
+        Line::from(""),
+        Line::from(Span::styled("Event Management", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        Line::from("  n: Create new event"),
+        Line::from("  /: Search events"),
+        Line::from("  Tab: Focus event list panel"),
+        Line::from("  Enter: (in event list) Edit selected event"),
+        Line::from(""),
+        Line::from(Span::styled("Event List Panel (when focused with Tab)", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        Line::from("  Up/Down: Navigate events"),
+        Line::from("  Enter: Edit selected event"),
+        Line::from("  Esc: Return to calendar"),
+        Line::from(""),
+        Line::from(Span::styled("Search Dialog", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        Line::from("  /: Open search"),
+        Line::from("  Type to search by title or description"),
+        Line::from("  Up/Down: Navigate results"),
+        Line::from("  Enter: View selected event"),
+        Line::from("  Esc: Close search"),
+        Line::from(""),
+        Line::from(Span::styled("Event Creation/Editing", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        Line::from("  Tab: Next field"),
+        Line::from("  Enter: Save event"),
+        Line::from("  Esc: Cancel"),
+        Line::from(""),
+        Line::from(Span::styled("Event Categories", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        Line::from("  work: Cyan | personal: Green | meeting: Yellow | important: Red"),
+        Line::from(""),
+        Line::from(Span::styled("Other", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        Line::from("  h: Show this help"),
+        Line::from("  q: Quit application"),
+        Line::from("  [number] + arrow: Move by multiple units (vim-style)"),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Press ", Style::default()),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled(" to close", Style::default()),
+        ]),
+    ];
+
+    let paragraph = Paragraph::new(help_text)
+        .wrap(Wrap { trim: false })
+        .style(Style::default().fg(Color::White));
+
+    f.render_widget(paragraph, inner);
+}
+
+fn render_search_modal(f: &mut Frame, app: &App) {
+    let area = centered_rect(60, 60, f.area());
+
+    let block = Block::default()
+        .title(" Search Events ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black));
+
+    f.render_widget(Clear, area);
+    f.render_widget(block.clone(), area);
+
+    let inner = block.inner(area);
+    
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(3),  // Search input
+            Constraint::Min(1),     // Results list
+            Constraint::Length(2),  // Help
+        ])
+        .split(inner);
+
+    // Search input
+    let input_text = vec![
+        Line::from(Span::styled("Search:", Style::default().fg(Color::Yellow))),
+        Line::from(app.search_input.value()),
+    ];
+    f.render_widget(Paragraph::new(input_text), chunks[0]);
+    
+    // Render cursor
+    let cursor_pos = app.search_input.visual_cursor().min(chunks[0].width.saturating_sub(1) as usize);
+    f.set_cursor_position((chunks[0].x + cursor_pos as u16, chunks[0].y + 1));
+
+    // Results list
+    let results_title = if app.search_input.value().is_empty() {
+        " Recently Viewed Events "
+    } else {
+        " Search Results "
+    };
+    
+    let results_block = Block::default()
+        .borders(Borders::ALL)
+        .title(results_title);
+    
+    let results_inner = results_block.inner(chunks[1]);
+    f.render_widget(results_block, chunks[1]);
+    
+    if app.search_results.is_empty() {
+        let no_results = Paragraph::new("No results found")
+            .style(Style::default().fg(Color::Gray))
+            .alignment(Alignment::Center);
+        f.render_widget(no_results, results_inner);
+    } else {
+        let items: Vec<ListItem> = app.search_results
+            .iter()
+            .filter_map(|&event_id| {
+                app.events.iter().find(|e| e.id == event_id).map(|event| {
+                    let time_str = if let (Some(start), Some(end)) = (event.start_time, event.end_time) {
+                        format!("{}-{} ", start.format("%H:%M"), end.format("%H:%M"))
+                    } else if let Some(start) = event.start_time {
+                        format!("{} ", start.format("%H:%M"))
+                    } else {
+                        String::new()
+                    };
+                    
+                    let event_color = category_color(event.category.as_ref());
+                    let content = format!(
+                        "{} {} - {}",
+                        time_str,
+                        event.start_date.format("%Y-%m-%d"),
+                        event.title
+                    );
+                    
+                    ListItem::new(content).style(Style::default().fg(event_color))
+                })
+            })
+            .collect();
+        
+        let list = List::new(items)
+            .highlight_style(Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD));
+        
+        f.render_stateful_widget(list, results_inner, &mut app.search_list_state.clone());
+    }
+
+    // Help text
+    let help_text = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
+            Span::raw(": Navigate  "),
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::raw(": View  "),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(": Close"),
+        ]),
+    ];
+    f.render_widget(Paragraph::new(help_text), chunks[2]);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
@@ -1728,11 +2091,19 @@ fn run_app<B: ratatui::backend::Backend>(
                     KeyCode::Char('q') | KeyCode::Char('Q') => {
                         return Ok(());
                     }
-                    KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    KeyCode::Char('n') | KeyCode::Char('N') => {
                         app.start_create_event();
                     }
-                    KeyCode::Char('t') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    KeyCode::Char('t') | KeyCode::Char('T') => {
                         app.selected_date = app.current_date;
+                        app.number_buffer.clear();
+                    }
+                    KeyCode::Char('h') | KeyCode::Char('H') => {
+                        app.mode = AppMode::Help;
+                        app.number_buffer.clear();
+                    }
+                    KeyCode::Char('/') => {
+                        app.start_search();
                         app.number_buffer.clear();
                     }
                     KeyCode::Char('w') | KeyCode::Char('W') => {
@@ -1770,7 +2141,7 @@ fn run_app<B: ratatui::backend::Backend>(
                         app.number_buffer.clear();
                     }
                     KeyCode::Tab => {
-                        // Tab can be used for future features or removed
+                        app.focus_event_list();
                         app.number_buffer.clear();
                     }
                     KeyCode::Enter => {
@@ -1801,11 +2172,14 @@ fn run_app<B: ratatui::backend::Backend>(
                     KeyCode::Char('w') | KeyCode::Char('W') => {
                         app.toggle_week_view();
                     }
-                    KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    KeyCode::Char('n') | KeyCode::Char('N') => {
                         app.start_create_event();
                     }
-                    KeyCode::Char('t') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    KeyCode::Char('t') | KeyCode::Char('T') => {
                         app.selected_date = app.current_date;
+                    }
+                    KeyCode::Char('h') | KeyCode::Char('H') => {
+                        app.mode = AppMode::Help;
                     }
                     KeyCode::Left => {
                         // Move to previous week
@@ -1889,6 +2263,48 @@ fn run_app<B: ratatui::backend::Backend>(
                     }
                     _ => {}
                 },
+                AppMode::Help => match key.code {
+                    KeyCode::Esc => {
+                        app.mode = AppMode::Normal;
+                    }
+                    _ => {}
+                },
+                AppMode::Search => {
+                    let input_event = Event::Key(key);
+                    match key.code {
+                        KeyCode::Esc => {
+                            app.close_search();
+                        }
+                        KeyCode::Enter => {
+                            app.open_search_result();
+                        }
+                        KeyCode::Up => {
+                            app.previous_search_result();
+                        }
+                        KeyCode::Down => {
+                            app.next_search_result();
+                        }
+                        _ => {
+                            app.search_input.handle_event(&input_event);
+                            app.perform_search();
+                        }
+                    }
+                }
+                AppMode::EventListFocused => match key.code {
+                    KeyCode::Esc => {
+                        app.unfocus_event_list();
+                    }
+                    KeyCode::Up => {
+                        app.previous_event_in_list();
+                    }
+                    KeyCode::Down => {
+                        app.next_event_in_list();
+                    }
+                    KeyCode::Enter => {
+                        app.start_edit_event();
+                    }
+                    _ => {}
+                },
             }
         }
     }
@@ -1903,7 +2319,7 @@ fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Create app and run it
-    let app = App::new();
+    let app = App::new()?;
     let res = run_app(&mut terminal, app);
 
     // Restore terminal
