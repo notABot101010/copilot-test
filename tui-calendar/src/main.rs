@@ -14,6 +14,8 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::io;
+use tui_input::backend::crossterm::EventHandler;
+use tui_input::Input;
 
 const MIN_YEAR: i32 = 1900;
 const MAX_YEAR: i32 = 3000;
@@ -30,6 +32,7 @@ struct CalendarEvent {
 enum AppMode {
     Normal,
     CreateEvent,
+    EditEvent,
     ViewEvent,
     ConfirmDelete,
 }
@@ -50,19 +53,31 @@ struct App {
     selected_event_index: Option<usize>,
     
     // Create event state
-    new_event_title: String,
-    new_event_description: String,
-    new_event_date: String,
-    new_event_time: String,
+    new_event_title: Input,
+    new_event_description: Input,
+    new_event_date: Input,
+    new_event_time: Input,
     create_event_field: CreateEventField,
+    
+    // Edit event state
+    edit_event_id: Option<usize>,
+    edit_event_title: Input,
+    edit_event_description: Input,
+    edit_event_date: Input,
+    edit_event_time: Input,
+    edit_event_field: CreateEventField,
     
     // Event list state
     event_list_state: ListState,
+    
+    // Vim-style number prefix support
+    number_buffer: String,
 }
 
 impl App {
     fn new() -> Self {
         let today = Local::now().date_naive();
+        let date_str = today.format("%Y-%m-%d").to_string();
         Self {
             mode: AppMode::Normal,
             events: Vec::new(),
@@ -70,12 +85,19 @@ impl App {
             current_date: today,
             selected_date: today,
             selected_event_index: None,
-            new_event_title: String::new(),
-            new_event_description: String::new(),
-            new_event_date: today.format("%Y-%m-%d").to_string(),
-            new_event_time: String::new(),
+            new_event_title: Input::default(),
+            new_event_description: Input::default(),
+            new_event_date: Input::new(date_str.clone()),
+            new_event_time: Input::default(),
             create_event_field: CreateEventField::Title,
+            edit_event_id: None,
+            edit_event_title: Input::default(),
+            edit_event_description: Input::default(),
+            edit_event_date: Input::new(date_str),
+            edit_event_time: Input::default(),
+            edit_event_field: CreateEventField::Title,
             event_list_state: ListState::default(),
+            number_buffer: String::new(),
         }
     }
 
@@ -113,64 +135,124 @@ impl App {
     }
 
     fn move_selection_up(&mut self) {
-        if let Some(new_date) = self.selected_date.pred_opt() {
-            if new_date.year() >= MIN_YEAR {
-                self.selected_date = new_date;
+        self.move_selection_up_by(1);
+    }
+
+    fn move_selection_up_by(&mut self, count: usize) {
+        // Move up by weeks (7 days per count)
+        let days_to_move = count * 7;
+        let mut new_date = self.selected_date;
+        
+        for _ in 0..days_to_move {
+            if let Some(pred) = new_date.pred_opt() {
+                if pred.year() >= MIN_YEAR {
+                    new_date = pred;
+                } else {
+                    break;
+                }
+            } else {
+                break;
             }
         }
+        
+        self.selected_date = new_date;
     }
 
     fn move_selection_down(&mut self) {
-        if let Some(new_date) = self.selected_date.succ_opt() {
-            if new_date.year() <= MAX_YEAR {
-                self.selected_date = new_date;
+        self.move_selection_down_by(1);
+    }
+
+    fn move_selection_down_by(&mut self, count: usize) {
+        // Move down by weeks (7 days per count)
+        let days_to_move = count * 7;
+        let mut new_date = self.selected_date;
+        
+        for _ in 0..days_to_move {
+            if let Some(succ) = new_date.succ_opt() {
+                if succ.year() <= MAX_YEAR {
+                    new_date = succ;
+                } else {
+                    break;
+                }
+            } else {
+                break;
             }
         }
+        
+        self.selected_date = new_date;
     }
 
     fn move_selection_left(&mut self) {
-        self.selected_date = self
-            .selected_date
-            .pred_opt()
-            .filter(|d| d.year() >= MIN_YEAR)
-            .unwrap_or(self.selected_date);
+        self.move_selection_left_by(1);
+    }
+
+    fn move_selection_left_by(&mut self, count: usize) {
+        let mut new_date = self.selected_date;
+        
+        for _ in 0..count {
+            if let Some(pred) = new_date.pred_opt() {
+                if pred.year() >= MIN_YEAR {
+                    new_date = pred;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        
+        self.selected_date = new_date;
     }
 
     fn move_selection_right(&mut self) {
-        self.selected_date = self
-            .selected_date
-            .succ_opt()
-            .filter(|d| d.year() <= MAX_YEAR)
-            .unwrap_or(self.selected_date);
+        self.move_selection_right_by(1);
+    }
+
+    fn move_selection_right_by(&mut self, count: usize) {
+        let mut new_date = self.selected_date;
+        
+        for _ in 0..count {
+            if let Some(succ) = new_date.succ_opt() {
+                if succ.year() <= MAX_YEAR {
+                    new_date = succ;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        
+        self.selected_date = new_date;
     }
 
     fn start_create_event(&mut self) {
-        self.new_event_title.clear();
-        self.new_event_description.clear();
-        self.new_event_date = self.selected_date.format("%Y-%m-%d").to_string();
-        self.new_event_time.clear();
+        self.new_event_title = Input::default();
+        self.new_event_description = Input::default();
+        self.new_event_date = Input::new(self.selected_date.format("%Y-%m-%d").to_string());
+        self.new_event_time = Input::default();
         self.create_event_field = CreateEventField::Title;
         self.mode = AppMode::CreateEvent;
     }
 
     fn create_event(&mut self) -> Result<()> {
-        if self.new_event_title.trim().is_empty() {
+        if self.new_event_title.value().trim().is_empty() {
             return Ok(());
         }
 
-        let date = NaiveDate::parse_from_str(&self.new_event_date, "%Y-%m-%d")
+        let date = NaiveDate::parse_from_str(self.new_event_date.value(), "%Y-%m-%d")
             .unwrap_or(self.selected_date);
 
-        let time = if self.new_event_time.trim().is_empty() {
+        let time = if self.new_event_time.value().trim().is_empty() {
             None
         } else {
-            NaiveTime::parse_from_str(&self.new_event_time, "%H:%M").ok()
+            NaiveTime::parse_from_str(self.new_event_time.value(), "%H:%M").ok()
         };
 
         let event = CalendarEvent {
             id: self.next_event_id,
-            title: self.new_event_title.trim().to_string(),
-            description: self.new_event_description.trim().to_string(),
+            title: self.new_event_title.value().trim().to_string(),
+            description: self.new_event_description.value().trim().to_string(),
             date,
             time,
         };
@@ -194,6 +276,72 @@ impl App {
 
     fn cancel_create_event(&mut self) {
         self.mode = AppMode::Normal;
+    }
+
+    fn start_edit_event(&mut self) {
+        if let Some(idx) = self.event_list_state.selected() {
+            let events = self.get_selected_date_events();
+            if idx < events.len() {
+                let event = events[idx];
+                let event_id = event.id;
+                let title = event.title.clone();
+                let description = event.description.clone();
+                let date = event.date.format("%Y-%m-%d").to_string();
+                let time = event.time.map(|t| t.format("%H:%M").to_string()).unwrap_or_default();
+                
+                self.edit_event_id = Some(event_id);
+                self.edit_event_title = Input::new(title);
+                self.edit_event_description = Input::new(description);
+                self.edit_event_date = Input::new(date);
+                self.edit_event_time = Input::new(time);
+                self.edit_event_field = CreateEventField::Title;
+                self.mode = AppMode::EditEvent;
+            }
+        }
+    }
+
+    fn save_edited_event(&mut self) -> Result<()> {
+        if let Some(event_id) = self.edit_event_id {
+            if self.edit_event_title.value().trim().is_empty() {
+                return Ok(());
+            }
+
+            let date = NaiveDate::parse_from_str(self.edit_event_date.value(), "%Y-%m-%d")
+                .unwrap_or(self.selected_date);
+
+            let time = if self.edit_event_time.value().trim().is_empty() {
+                None
+            } else {
+                NaiveTime::parse_from_str(self.edit_event_time.value(), "%H:%M").ok()
+            };
+
+            if let Some(event) = self.events.iter_mut().find(|e| e.id == event_id) {
+                event.title = self.edit_event_title.value().trim().to_string();
+                event.description = self.edit_event_description.value().trim().to_string();
+                event.date = date;
+                event.time = time;
+            }
+
+            self.events.sort_by(|a, b| {
+                a.date.cmp(&b.date).then_with(|| {
+                    match (a.time, b.time) {
+                        (Some(at), Some(bt)) => at.cmp(&bt),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => std::cmp::Ordering::Equal,
+                    }
+                })
+            });
+
+            self.mode = AppMode::Normal;
+            self.edit_event_id = None;
+        }
+        Ok(())
+    }
+
+    fn cancel_edit_event(&mut self) {
+        self.mode = AppMode::Normal;
+        self.edit_event_id = None;
     }
 
     fn show_event_details(&mut self) {
@@ -279,47 +427,46 @@ impl App {
         self.event_list_state.select(Some(i));
     }
 
-    fn handle_create_event_input(&mut self, code: KeyCode) {
-        match code {
-            KeyCode::Char(c) => {
-                match self.create_event_field {
-                    CreateEventField::Title => self.new_event_title.push(c),
-                    CreateEventField::Description => self.new_event_description.push(c),
-                    CreateEventField::Date => self.new_event_date.push(c),
-                    CreateEventField::Time => self.new_event_time.push(c),
-                }
+    fn get_count(&self) -> usize {
+        if self.number_buffer.is_empty() {
+            1
+        } else {
+            // Cap at 9999 to prevent performance issues with very large numbers
+            self.number_buffer.parse().unwrap_or(1).max(1).min(9999)
+        }
+    }
+
+    fn handle_create_event_input(&mut self, key_event: &Event) {
+        match self.create_event_field {
+            CreateEventField::Title => {
+                self.new_event_title.handle_event(key_event);
             }
-            KeyCode::Backspace => {
-                match self.create_event_field {
-                    CreateEventField::Title => {
-                        self.new_event_title.pop();
-                    }
-                    CreateEventField::Description => {
-                        self.new_event_description.pop();
-                    }
-                    CreateEventField::Date => {
-                        self.new_event_date.pop();
-                    }
-                    CreateEventField::Time => {
-                        self.new_event_time.pop();
-                    }
-                }
+            CreateEventField::Description => {
+                self.new_event_description.handle_event(key_event);
             }
-            KeyCode::Tab => {
-                self.create_event_field = match self.create_event_field {
-                    CreateEventField::Title => CreateEventField::Description,
-                    CreateEventField::Description => CreateEventField::Date,
-                    CreateEventField::Date => CreateEventField::Time,
-                    CreateEventField::Time => CreateEventField::Title,
-                };
+            CreateEventField::Date => {
+                self.new_event_date.handle_event(key_event);
             }
-            KeyCode::Enter => {
-                let _ = self.create_event();
+            CreateEventField::Time => {
+                self.new_event_time.handle_event(key_event);
             }
-            KeyCode::Esc => {
-                self.cancel_create_event();
+        }
+    }
+
+    fn handle_edit_event_input(&mut self, key_event: &Event) {
+        match self.edit_event_field {
+            CreateEventField::Title => {
+                self.edit_event_title.handle_event(key_event);
             }
-            _ => {}
+            CreateEventField::Description => {
+                self.edit_event_description.handle_event(key_event);
+            }
+            CreateEventField::Date => {
+                self.edit_event_date.handle_event(key_event);
+            }
+            CreateEventField::Time => {
+                self.edit_event_time.handle_event(key_event);
+            }
         }
     }
 }
@@ -335,6 +482,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     match app.mode {
         AppMode::CreateEvent => render_create_event_modal(f, app),
+        AppMode::EditEvent => render_edit_event_modal(f, app),
         AppMode::ViewEvent => render_view_event_modal(f, app),
         AppMode::ConfirmDelete => render_confirm_delete_modal(f, app),
         _ => {}
@@ -548,6 +696,8 @@ fn render_event_list(f: &mut Frame, app: &mut App, area: Rect) {
     let help_text = Line::from(vec![
         Span::styled("Enter", Style::default().fg(Color::Yellow)),
         Span::raw(": View  "),
+        Span::styled("E", Style::default().fg(Color::Yellow)),
+        Span::raw(": Edit  "),
         Span::styled("Del", Style::default().fg(Color::Yellow)),
         Span::raw(": Delete"),
     ]);
@@ -586,9 +736,16 @@ fn render_create_event_modal(f: &mut Frame, app: &App) {
     };
     let title_text = vec![
         Line::from(Span::styled("Title:", title_style)),
-        Line::from(app.new_event_title.as_str()),
+        Line::from(app.new_event_title.value()),
     ];
-    f.render_widget(Paragraph::new(title_text), chunks[0]);
+    let title_para = Paragraph::new(title_text);
+    f.render_widget(title_para, chunks[0]);
+    
+    // Render cursor for title field
+    if matches!(app.create_event_field, CreateEventField::Title) {
+        let cursor_pos = app.new_event_title.visual_cursor().min(chunks[0].width.saturating_sub(1) as usize);
+        f.set_cursor_position((chunks[0].x + cursor_pos as u16, chunks[0].y + 1));
+    }
 
     // Description field
     let desc_style = if matches!(app.create_event_field, CreateEventField::Description) {
@@ -598,9 +755,16 @@ fn render_create_event_modal(f: &mut Frame, app: &App) {
     };
     let desc_text = vec![
         Line::from(Span::styled("Description:", desc_style)),
-        Line::from(app.new_event_description.as_str()),
+        Line::from(app.new_event_description.value()),
     ];
-    f.render_widget(Paragraph::new(desc_text), chunks[1]);
+    let desc_para = Paragraph::new(desc_text);
+    f.render_widget(desc_para, chunks[1]);
+    
+    // Render cursor for description field
+    if matches!(app.create_event_field, CreateEventField::Description) {
+        let cursor_pos = app.new_event_description.visual_cursor().min(chunks[1].width.saturating_sub(1) as usize);
+        f.set_cursor_position((chunks[1].x + cursor_pos as u16, chunks[1].y + 1));
+    }
 
     // Date field
     let date_style = if matches!(app.create_event_field, CreateEventField::Date) {
@@ -610,9 +774,16 @@ fn render_create_event_modal(f: &mut Frame, app: &App) {
     };
     let date_text = vec![
         Line::from(Span::styled("Date (YYYY-MM-DD):", date_style)),
-        Line::from(app.new_event_date.as_str()),
+        Line::from(app.new_event_date.value()),
     ];
-    f.render_widget(Paragraph::new(date_text), chunks[2]);
+    let date_para = Paragraph::new(date_text);
+    f.render_widget(date_para, chunks[2]);
+    
+    // Render cursor for date field
+    if matches!(app.create_event_field, CreateEventField::Date) {
+        let cursor_pos = app.new_event_date.visual_cursor().min(chunks[2].width.saturating_sub(1) as usize);
+        f.set_cursor_position((chunks[2].x + cursor_pos as u16, chunks[2].y + 1));
+    }
 
     // Time field
     let time_style = if matches!(app.create_event_field, CreateEventField::Time) {
@@ -622,9 +793,131 @@ fn render_create_event_modal(f: &mut Frame, app: &App) {
     };
     let time_text = vec![
         Line::from(Span::styled("Time (HH:MM, optional):", time_style)),
-        Line::from(app.new_event_time.as_str()),
+        Line::from(app.new_event_time.value()),
     ];
-    f.render_widget(Paragraph::new(time_text), chunks[3]);
+    let time_para = Paragraph::new(time_text);
+    f.render_widget(time_para, chunks[3]);
+    
+    // Render cursor for time field
+    if matches!(app.create_event_field, CreateEventField::Time) {
+        let cursor_pos = app.new_event_time.visual_cursor().min(chunks[3].width.saturating_sub(1) as usize);
+        f.set_cursor_position((chunks[3].x + cursor_pos as u16, chunks[3].y + 1));
+    }
+
+    // Help text
+    let help_text = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(": Next Field  "),
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::raw(": Save  "),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(": Cancel"),
+        ]),
+    ];
+    f.render_widget(Paragraph::new(help_text), chunks[4]);
+}
+
+fn render_edit_event_modal(f: &mut Frame, app: &App) {
+    let area = centered_rect(60, 60, f.area());
+
+    let block = Block::default()
+        .title(" Edit Event ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black));
+
+    f.render_widget(Clear, area);
+    f.render_widget(block.clone(), area);
+
+    let inner = block.inner(area);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(1),
+        ])
+        .split(inner);
+
+    // Title field
+    let title_style = if matches!(app.edit_event_field, CreateEventField::Title) {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let title_text = vec![
+        Line::from(Span::styled("Title:", title_style)),
+        Line::from(app.edit_event_title.value()),
+    ];
+    let title_para = Paragraph::new(title_text);
+    f.render_widget(title_para, chunks[0]);
+    
+    // Render cursor for title field
+    if matches!(app.edit_event_field, CreateEventField::Title) {
+        let cursor_pos = app.edit_event_title.visual_cursor().min(chunks[0].width.saturating_sub(1) as usize);
+        f.set_cursor_position((chunks[0].x + cursor_pos as u16, chunks[0].y + 1));
+    }
+
+    // Description field
+    let desc_style = if matches!(app.edit_event_field, CreateEventField::Description) {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let desc_text = vec![
+        Line::from(Span::styled("Description:", desc_style)),
+        Line::from(app.edit_event_description.value()),
+    ];
+    let desc_para = Paragraph::new(desc_text);
+    f.render_widget(desc_para, chunks[1]);
+    
+    // Render cursor for description field
+    if matches!(app.edit_event_field, CreateEventField::Description) {
+        let cursor_pos = app.edit_event_description.visual_cursor().min(chunks[1].width.saturating_sub(1) as usize);
+        f.set_cursor_position((chunks[1].x + cursor_pos as u16, chunks[1].y + 1));
+    }
+
+    // Date field
+    let date_style = if matches!(app.edit_event_field, CreateEventField::Date) {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let date_text = vec![
+        Line::from(Span::styled("Date (YYYY-MM-DD):", date_style)),
+        Line::from(app.edit_event_date.value()),
+    ];
+    let date_para = Paragraph::new(date_text);
+    f.render_widget(date_para, chunks[2]);
+    
+    // Render cursor for date field
+    if matches!(app.edit_event_field, CreateEventField::Date) {
+        let cursor_pos = app.edit_event_date.visual_cursor().min(chunks[2].width.saturating_sub(1) as usize);
+        f.set_cursor_position((chunks[2].x + cursor_pos as u16, chunks[2].y + 1));
+    }
+
+    // Time field
+    let time_style = if matches!(app.edit_event_field, CreateEventField::Time) {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let time_text = vec![
+        Line::from(Span::styled("Time (HH:MM, optional):", time_style)),
+        Line::from(app.edit_event_time.value()),
+    ];
+    let time_para = Paragraph::new(time_text);
+    f.render_widget(time_para, chunks[3]);
+    
+    // Render cursor for time field
+    if matches!(app.edit_event_field, CreateEventField::Time) {
+        let cursor_pos = app.edit_event_time.visual_cursor().min(chunks[3].width.saturating_sub(1) as usize);
+        f.set_cursor_position((chunks[3].x + cursor_pos as u16, chunks[3].y + 1));
+    }
 
     // Help text
     let help_text = vec![
@@ -793,26 +1086,48 @@ fn run_app<B: ratatui::backend::Backend>(
                     KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.start_create_event();
                     }
+                    KeyCode::Char(c) if c.is_ascii_digit() => {
+                        // Build up number buffer for vim-style numeric prefixes
+                        if app.number_buffer.len() < 4 {
+                            app.number_buffer.push(c);
+                        }
+                    }
+                    KeyCode::Char('e') | KeyCode::Char('E') => {
+                        if app.event_list_state.selected().is_some() {
+                            app.start_edit_event();
+                        }
+                        app.number_buffer.clear();
+                    }
                     KeyCode::Left => {
-                        app.move_selection_left();
+                        let count = app.get_count();
+                        app.move_selection_left_by(count);
                         app.event_list_state.select(None);
+                        app.number_buffer.clear();
                     }
                     KeyCode::Right => {
-                        app.move_selection_right();
+                        let count = app.get_count();
+                        app.move_selection_right_by(count);
                         app.event_list_state.select(None);
+                        app.number_buffer.clear();
                     }
                     KeyCode::Up => {
                         if app.event_list_state.selected().is_some() {
                             app.previous_event_in_list();
+                            app.number_buffer.clear();
                         } else {
-                            app.move_selection_up();
+                            let count = app.get_count();
+                            app.move_selection_up_by(count);
+                            app.number_buffer.clear();
                         }
                     }
                     KeyCode::Down => {
                         if app.event_list_state.selected().is_some() {
                             app.next_event_in_list();
+                            app.number_buffer.clear();
                         } else {
-                            app.move_selection_down();
+                            let count = app.get_count();
+                            app.move_selection_down_by(count);
+                            app.number_buffer.clear();
                         }
                     }
                     KeyCode::Tab => {
@@ -824,25 +1139,74 @@ fn run_app<B: ratatui::backend::Backend>(
                                 app.event_list_state.select(None);
                             }
                         }
+                        app.number_buffer.clear();
                     }
                     KeyCode::Enter => {
                         if app.event_list_state.selected().is_some() {
                             app.show_event_details();
                         }
+                        app.number_buffer.clear();
                     }
                     KeyCode::Delete => {
                         app.start_delete_event();
+                        app.number_buffer.clear();
                     }
                     KeyCode::Char(',') => {
                         app.move_to_previous_month();
+                        app.number_buffer.clear();
                     }
                     KeyCode::Char('.') => {
                         app.move_to_next_month();
+                        app.number_buffer.clear();
+                    }
+                    KeyCode::Esc => {
+                        app.number_buffer.clear();
                     }
                     _ => {}
                 },
                 AppMode::CreateEvent => {
-                    app.handle_create_event_input(key.code);
+                    let input_event = Event::Key(key);
+                    match key.code {
+                        KeyCode::Tab => {
+                            app.create_event_field = match app.create_event_field {
+                                CreateEventField::Title => CreateEventField::Description,
+                                CreateEventField::Description => CreateEventField::Date,
+                                CreateEventField::Date => CreateEventField::Time,
+                                CreateEventField::Time => CreateEventField::Title,
+                            };
+                        }
+                        KeyCode::Enter => {
+                            let _ = app.create_event();
+                        }
+                        KeyCode::Esc => {
+                            app.cancel_create_event();
+                        }
+                        _ => {
+                            app.handle_create_event_input(&input_event);
+                        }
+                    }
+                }
+                AppMode::EditEvent => {
+                    let input_event = Event::Key(key);
+                    match key.code {
+                        KeyCode::Tab => {
+                            app.edit_event_field = match app.edit_event_field {
+                                CreateEventField::Title => CreateEventField::Description,
+                                CreateEventField::Description => CreateEventField::Date,
+                                CreateEventField::Date => CreateEventField::Time,
+                                CreateEventField::Time => CreateEventField::Title,
+                            };
+                        }
+                        KeyCode::Enter => {
+                            let _ = app.save_edited_event();
+                        }
+                        KeyCode::Esc => {
+                            app.cancel_edit_event();
+                        }
+                        _ => {
+                            app.handle_edit_event_input(&input_event);
+                        }
+                    }
                 }
                 AppMode::ViewEvent => match key.code {
                     KeyCode::Esc => {
