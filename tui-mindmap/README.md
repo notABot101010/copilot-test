@@ -9,6 +9,7 @@ A feature-rich terminal-based mindmap application built with Rust and ratatui.
 - **Document Editing**: Each node contains a title and body document
 - **Visual Connections**: Connect and disconnect nodes to show relationships
 - **Color Coding**: Assign different colors to nodes for better organization
+- **Search Functionality**: Quickly find nodes by searching in titles and body text
 - **Mouse Support**: Drag nodes, click to select, double-click to open
 - **Undo/Redo**: Full history support with Ctrl+Z and Ctrl+Y
 - **Save/Load**: Persist your mindmaps to JSON files
@@ -69,6 +70,13 @@ When editing a document:
 - **Backspace**: Delete characters
 - **Enter**: Save and close
 - **Esc**: Cancel and close without saving
+
+### Search
+- **F**: Open search dialog
+- **Type**: Enter search query
+- **Enter**: Execute search and jump to first result
+- **Down**: Navigate to next search result
+- **Esc**: Close search dialog
 
 ### File Operations
 - **S**: Save mindmap to `mindmap.json`
