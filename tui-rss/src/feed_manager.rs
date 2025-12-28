@@ -259,18 +259,20 @@ impl FeedManager {
         articles
     }
 
+    fn save_with_warning(&mut self) {
+        if let Err(err) = self.save() {
+            eprintln!("Warning: Failed to save: {}", err);
+        }
+    }
+
     pub fn mark_as_read(&mut self, article_id: &str) {
         self.storage.read_articles.insert(article_id.to_string(), true);
-        if let Err(err) = self.save() {
-            eprintln!("Warning: Failed to save read status: {}", err);
-        }
+        self.save_with_warning();
     }
 
     pub fn mark_as_unread(&mut self, article_id: &str) {
         self.storage.read_articles.insert(article_id.to_string(), false);
-        if let Err(err) = self.save() {
-            eprintln!("Warning: Failed to save read status: {}", err);
-        }
+        self.save_with_warning();
     }
 
     pub fn get_feeds(&self) -> Vec<Feed> {
