@@ -15,6 +15,9 @@ use ratatui::{
 };
 use std::io;
 
+const MIN_YEAR: i32 = 1900;
+const MAX_YEAR: i32 = 3000;
+
 #[derive(Clone, Debug)]
 struct CalendarEvent {
     id: usize,
@@ -111,7 +114,7 @@ impl App {
 
     fn move_selection_up(&mut self) {
         if let Some(new_date) = self.selected_date.pred_opt() {
-            if new_date.year() >= 1900 {
+            if new_date.year() >= MIN_YEAR {
                 self.selected_date = new_date;
             }
         }
@@ -119,7 +122,7 @@ impl App {
 
     fn move_selection_down(&mut self) {
         if let Some(new_date) = self.selected_date.succ_opt() {
-            if new_date.year() <= 3000 {
+            if new_date.year() <= MAX_YEAR {
                 self.selected_date = new_date;
             }
         }
@@ -129,7 +132,7 @@ impl App {
         self.selected_date = self
             .selected_date
             .pred_opt()
-            .filter(|d| d.year() >= 1900)
+            .filter(|d| d.year() >= MIN_YEAR)
             .unwrap_or(self.selected_date);
     }
 
@@ -137,7 +140,7 @@ impl App {
         self.selected_date = self
             .selected_date
             .succ_opt()
-            .filter(|d| d.year() <= 3000)
+            .filter(|d| d.year() <= MAX_YEAR)
             .unwrap_or(self.selected_date);
     }
 
@@ -421,7 +424,10 @@ fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
 
     // Add days of the month
     for day in 1..=days_in_month {
-        let date = NaiveDate::from_ymd_opt(year, month, day).unwrap();
+        let date = match NaiveDate::from_ymd_opt(year, month, day) {
+            Some(d) => d,
+            None => continue, // Skip invalid dates
+        };
         let is_today = date == app.current_date;
         let is_selected = date == app.selected_date;
         let has_events = !app.get_events_for_date(date).is_empty();
@@ -743,11 +749,32 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 }
 
 fn days_in_month(year: i32, month: u32) -> u32 {
-    NaiveDate::from_ymd_opt(year, month + 1, 1)
-        .unwrap_or_else(|| NaiveDate::from_ymd_opt(year + 1, 1, 1).unwrap())
-        .pred_opt()
+    // Try to get the first day of next month, then subtract 1 to get last day of current month
+    let next_month_date = if month == 12 {
+        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(year, month + 1, 1)
+    };
+    
+    next_month_date
+        .and_then(|d| d.pred_opt())
         .map(|d| d.day())
-        .unwrap_or(31)
+        .unwrap_or_else(|| {
+            // Fallback to known month lengths if date calculations fail
+            match month {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+                4 | 6 | 9 | 11 => 30,
+                2 => {
+                    // Check for leap year
+                    if (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0) {
+                        29
+                    } else {
+                        28
+                    }
+                }
+                _ => 31, // Default fallback
+            }
+        })
 }
 
 fn run_app<B: ratatui::backend::Backend>(
