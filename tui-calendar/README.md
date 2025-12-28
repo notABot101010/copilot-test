@@ -8,7 +8,10 @@ A terminal-based calendar application built with Rust and ratatui with persisten
 - **Monthly calendar view** with current day highlighting
 - **Week view mode** - see all events for a full week at a glance
 - **Day view panel** showing hourly breakdown (00:00-23:00) with events
-- **Event list focus mode** - Tab to focus and navigate today's events
+- **Day view navigation** - Tab to focus Day View panel and navigate events with arrow keys
+  - Arrow keys cycle through events on the selected day
+  - Visual indicator (► marker and highlight) shows selected event
+  - Press Enter to edit selected event
 - **Search functionality** - Search events by title or description with recently viewed events
 - **Help dialog** - Press 'h' for comprehensive keyboard shortcuts
 - **Bottom status bar** - Shows current mode, date, and helpful hints
@@ -46,9 +49,14 @@ cargo run
 
 ### Event Management
 - **N**: Create new event
-- **Tab**: Focus event list panel (navigate today's events)
-- **Enter** (in event list): Edit selected event
+- **Tab**: Toggle focus between Calendar and Day View panels
 - **/** (slash): Open search dialog
+
+### Day View Panel (when focused with Tab)
+- **Arrow Keys** (Up/Down/Left/Right): Navigate through events on the selected day
+- **Enter**: Edit selected event
+- **Tab**: Return to calendar view
+- Visual indicator: Selected event is highlighted with ► marker and background
 
 ### Search
 - **/**: Open search dialog
@@ -58,10 +66,14 @@ cargo run
 - **Esc**: Close search
 - **Empty search**: Shows recently viewed events
 
-### Event List Panel (when focused with Tab)
-- **Up/Down**: Navigate events
-- **Enter**: Edit selected event
-- **Esc**: Return to calendar view
+### Calendar Navigation
+- **Arrow Keys** (when Calendar panel is focused):
+  - **Up/Down**: Move by weeks (7 days)
+  - **Left/Right**: Move by days
+  - **[count] + Arrow**: Move by count × direction (e.g., 5→ moves 5 days right, 2↑ moves 2 weeks up)
+- **,** (comma): Previous month
+- **.** (period): Next month
+- **T**: Jump to today's date
 
 ### Week View
 When in week view:
