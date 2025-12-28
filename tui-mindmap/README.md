@@ -43,12 +43,14 @@ Or run the compiled binary:
 - **Arrow Keys**: Pan the canvas
 - **+/-**: Zoom in/out (when no node is selected)
 - **Mouse Scroll**: Zoom in/out
-- **Mouse Drag**: Move nodes
+- **Mouse Drag on Node**: Move nodes
+- **Mouse Drag on Empty Space**: Pan the canvas
 
 ### Node Operations
 - **N**: Create a new node at the center
 - **Click**: Select a node
 - **Double-Click**: Open node document
+- **Enter**: Open node document (when node is selected)
 - **D**: Delete selected node
 - **R**: Cycle through colors for selected node
 - **Esc**: Deselect node (or cancel operation)
@@ -67,6 +69,8 @@ When viewing a document:
 When editing a document:
 - **Tab**: Switch between title and body fields
 - **Type**: Enter text
+- **Left/Right Arrows**: Move cursor
+- **Home/End**: Jump to start/end of text
 - **Backspace**: Delete characters
 - **Enter**: Save and close
 - **Esc**: Cancel and close without saving
