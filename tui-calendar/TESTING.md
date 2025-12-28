@@ -31,6 +31,16 @@ cargo run --release
 - [ ] **Down Arrow**: Moves selection down one week (7 days forward)
 - [ ] **Comma (,)**: Navigate to previous month
 - [ ] **Period (.)**: Navigate to next month
+- [ ] **Arrow navigation automatically switches months** when crossing month boundaries
+
+**Test:** Vim-style count prefix for navigation
+- [ ] Press **3** then **→** (right arrow): Moves 3 days forward
+- [ ] Press **2** then **←** (left arrow): Moves 2 days backward
+- [ ] Press **2** then **↑** (up arrow): Moves 2 weeks up (14 days back)
+- [ ] Press **3** then **↓** (down arrow): Moves 3 weeks down (21 days forward)
+- [ ] Press **Esc**: Clears the number buffer
+- [ ] Any movement clears the number buffer
+- [ ] Number buffer is limited to 4 digits (9999 max)
 
 ### 3. Create New Event (Ctrl+N)
 **Test:** Press Ctrl+N to open event creation modal
@@ -41,6 +51,9 @@ cargo run --release
 
 **Test:** Fill in event details
 - [ ] Type text in Title field
+- [ ] Cursor is visible and moves as you type
+- [ ] Arrow keys move cursor within field
+- [ ] Home/End keys jump to start/end of field
 - [ ] Press Tab to move to Description field (field highlights in yellow)
 - [ ] Type text in Description field
 - [ ] Press Tab to move to Date field
@@ -89,6 +102,40 @@ cargo run --release
 - [ ] Returns to calendar view
 - [ ] Event remains selected in list
 
+### 5. Edit Event (E Key)
+**Test:** Select an event and press E
+- [ ] Modal appears with "Edit Event" title
+- [ ] Four input fields visible: Title, Description, Date, Time
+- [ ] Title field is highlighted (active field)
+- [ ] Fields are pre-filled with existing event data
+
+**Test:** Edit event details
+- [ ] Cursor is visible in current field
+- [ ] Arrow keys move cursor within field
+- [ ] Home/End keys jump to start/end of field
+- [ ] Can modify Title field
+- [ ] Press Tab to move to Description field
+- [ ] Can modify Description field
+- [ ] Press Tab to move to Date field
+- [ ] Can change date (YYYY-MM-DD format)
+- [ ] Press Tab to move to Time field
+- [ ] Can change or add/remove time (HH:MM format)
+- [ ] Tab wraps around from Time back to Title
+
+**Test:** Save edited event
+- [ ] Press Enter to save changes
+- [ ] Modal closes
+- [ ] Event appears in list with updated information
+- [ ] Event is re-sorted by date/time if date or time was changed
+- [ ] If date changed, event moves to new date
+
+**Test:** Cancel editing
+- [ ] Press E to edit an event
+- [ ] Make some changes
+- [ ] Press Esc
+- [ ] Modal closes without saving
+- [ ] Event data is unchanged
+
 ### 6. Delete Event (Delete Key)
 **Test:** Select an event and press Delete
 - [ ] Confirmation modal appears with "Confirm Delete" title
@@ -129,7 +176,7 @@ cargo run --release
 ### 8. General UI
 **Test:** Help text visibility
 - [ ] Calendar shows help: "Arrows: Navigate  Ctrl+N: New Event  Q: Quit"
-- [ ] Event list shows: "Enter: View  Del: Delete"
+- [ ] Event list shows: "Enter: View  E: Edit  Del: Delete"
 
 **Test:** Quit application
 - [ ] Press Q
