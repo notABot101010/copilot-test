@@ -7,7 +7,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use models::{MindMap, Node};
+use models::{MindMap, Node, NodeColor};
 use ratatui::{
     backend::CrosstermBackend,
     Terminal,
@@ -161,6 +161,31 @@ impl App {
             self.mindmap.remove_node(node_id);
             self.selected_node = None;
             self.save_to_history();
+        }
+    }
+
+    fn disconnect_from_selected(&mut self) {
+        if let Some(from_id) = self.selected_node {
+            // Remove all connections from the selected node
+            self.mindmap.connections.retain(|c| c.from != from_id && c.to != from_id);
+            self.save_to_history();
+        }
+    }
+
+    fn cycle_node_color(&mut self) {
+        if let Some(node_id) = self.selected_node {
+            if let Some(node) = self.mindmap.get_node_by_id_mut(node_id) {
+                node.color = match node.color {
+                    NodeColor::Default => NodeColor::Red,
+                    NodeColor::Red => NodeColor::Green,
+                    NodeColor::Green => NodeColor::Blue,
+                    NodeColor::Blue => NodeColor::Yellow,
+                    NodeColor::Yellow => NodeColor::Magenta,
+                    NodeColor::Magenta => NodeColor::Cyan,
+                    NodeColor::Cyan => NodeColor::Default,
+                };
+                self.save_to_history();
+            }
         }
     }
 
@@ -327,6 +352,12 @@ impl App {
                     }
                     KeyCode::Char('c') | KeyCode::Char('C') => {
                         self.start_connecting();
+                    }
+                    KeyCode::Char('x') | KeyCode::Char('X') => {
+                        self.disconnect_from_selected();
+                    }
+                    KeyCode::Char('r') | KeyCode::Char('R') => {
+                        self.cycle_node_color();
                     }
                     KeyCode::Char('s') | KeyCode::Char('S') => {
                         if let Err(err) = self.save_to_file() {

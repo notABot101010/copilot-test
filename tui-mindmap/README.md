@@ -8,6 +8,7 @@ A feature-rich terminal-based mindmap application built with Rust and ratatui.
 - **Node Management**: Create, delete, and organize nodes freely
 - **Document Editing**: Each node contains a title and body document
 - **Visual Connections**: Connect and disconnect nodes to show relationships
+- **Color Coding**: Assign different colors to nodes for better organization
 - **Mouse Support**: Drag nodes, click to select, double-click to open
 - **Undo/Redo**: Full history support with Ctrl+Z and Ctrl+Y
 - **Save/Load**: Persist your mindmaps to JSON files
@@ -48,11 +49,13 @@ Or run the compiled binary:
 - **Click**: Select a node
 - **Double-Click**: Open node document
 - **D**: Delete selected node
+- **R**: Cycle through colors for selected node
 - **Esc**: Deselect node (or cancel operation)
 
 ### Connections
 - **C**: Start connecting from selected node
 - **Click another node**: Complete the connection
+- **X**: Disconnect all connections from selected node
 - **Esc**: Cancel connection mode
 
 ### Document Editing
