@@ -27,8 +27,11 @@ struct CalendarEvent {
     id: usize,
     title: String,
     description: String,
-    date: NaiveDate,
-    time: Option<NaiveTime>,
+    start_date: NaiveDate,
+    end_date: Option<NaiveDate>, // For multi-day events
+    start_time: Option<NaiveTime>,
+    end_time: Option<NaiveTime>,
+    category: Option<String>,
 }
 
 enum AppMode {
@@ -42,8 +45,11 @@ enum AppMode {
 enum CreateEventField {
     Title,
     Description,
-    Date,
-    Time,
+    StartDate,
+    EndDate,
+    StartTime,
+    EndTime,
+    Category,
 }
 
 struct App {
@@ -57,16 +63,22 @@ struct App {
     // Create event state
     new_event_title: Input,
     new_event_description: Input,
-    new_event_date: Input,
-    new_event_time: Input,
+    new_event_start_date: Input,
+    new_event_end_date: Input,
+    new_event_start_time: Input,
+    new_event_end_time: Input,
+    new_event_category: Input,
     create_event_field: CreateEventField,
     
     // Edit event state
     edit_event_id: Option<usize>,
     edit_event_title: Input,
     edit_event_description: Input,
-    edit_event_date: Input,
-    edit_event_time: Input,
+    edit_event_start_date: Input,
+    edit_event_end_date: Input,
+    edit_event_start_time: Input,
+    edit_event_end_time: Input,
+    edit_event_category: Input,
     edit_event_field: CreateEventField,
     
     // Event list state
@@ -89,14 +101,20 @@ impl App {
             selected_event_index: None,
             new_event_title: Input::default(),
             new_event_description: Input::default(),
-            new_event_date: Input::new(date_str.clone()),
-            new_event_time: Input::default(),
+            new_event_start_date: Input::new(date_str.clone()),
+            new_event_end_date: Input::default(),
+            new_event_start_time: Input::default(),
+            new_event_end_time: Input::default(),
+            new_event_category: Input::default(),
             create_event_field: CreateEventField::Title,
             edit_event_id: None,
             edit_event_title: Input::default(),
             edit_event_description: Input::default(),
-            edit_event_date: Input::new(date_str),
-            edit_event_time: Input::default(),
+            edit_event_start_date: Input::new(date_str),
+            edit_event_end_date: Input::default(),
+            edit_event_start_time: Input::default(),
+            edit_event_end_time: Input::default(),
+            edit_event_category: Input::default(),
             edit_event_field: CreateEventField::Title,
             event_list_state: ListState::default(),
             number_buffer: String::new(),
@@ -106,7 +124,11 @@ impl App {
     fn get_events_for_date(&self, date: NaiveDate) -> Vec<&CalendarEvent> {
         self.events
             .iter()
-            .filter(|e| e.date == date)
+            .filter(|e| {
+                // Check if the event occurs on this date
+                let end_date = e.end_date.unwrap_or(e.start_date);
+                date >= e.start_date && date <= end_date
+            })
             .collect()
     }
 
@@ -197,8 +219,11 @@ impl App {
     fn start_create_event(&mut self) {
         self.new_event_title = Input::default();
         self.new_event_description = Input::default();
-        self.new_event_date = Input::new(self.selected_date.format("%Y-%m-%d").to_string());
-        self.new_event_time = Input::default();
+        self.new_event_start_date = Input::new(self.selected_date.format("%Y-%m-%d").to_string());
+        self.new_event_end_date = Input::default();
+        self.new_event_start_time = Input::default();
+        self.new_event_end_time = Input::default();
+        self.new_event_category = Input::default();
         self.create_event_field = CreateEventField::Title;
         self.mode = AppMode::CreateEvent;
     }
@@ -208,27 +233,48 @@ impl App {
             return Ok(());
         }
 
-        let date = NaiveDate::parse_from_str(self.new_event_date.value(), "%Y-%m-%d")
+        let start_date = NaiveDate::parse_from_str(self.new_event_start_date.value(), "%Y-%m-%d")
             .unwrap_or(self.selected_date);
 
-        let time = if self.new_event_time.value().trim().is_empty() {
+        let end_date = if self.new_event_end_date.value().trim().is_empty() {
             None
         } else {
-            NaiveTime::parse_from_str(self.new_event_time.value(), "%H:%M").ok()
+            NaiveDate::parse_from_str(self.new_event_end_date.value(), "%Y-%m-%d").ok()
+        };
+
+        let start_time = if self.new_event_start_time.value().trim().is_empty() {
+            None
+        } else {
+            NaiveTime::parse_from_str(self.new_event_start_time.value(), "%H:%M").ok()
+        };
+
+        let end_time = if self.new_event_end_time.value().trim().is_empty() {
+            None
+        } else {
+            NaiveTime::parse_from_str(self.new_event_end_time.value(), "%H:%M").ok()
+        };
+
+        let category = if self.new_event_category.value().trim().is_empty() {
+            None
+        } else {
+            Some(self.new_event_category.value().trim().to_string())
         };
 
         let event = CalendarEvent {
             id: self.next_event_id,
             title: self.new_event_title.value().trim().to_string(),
             description: self.new_event_description.value().trim().to_string(),
-            date,
-            time,
+            start_date,
+            end_date,
+            start_time,
+            end_time,
+            category,
         };
 
         self.events.push(event);
         self.events.sort_by(|a, b| {
-            a.date.cmp(&b.date).then_with(|| {
-                match (a.time, b.time) {
+            a.start_date.cmp(&b.start_date).then_with(|| {
+                match (a.start_time, b.start_time) {
                     (Some(at), Some(bt)) => at.cmp(&bt),
                     (Some(_), None) => std::cmp::Ordering::Less,
                     (None, Some(_)) => std::cmp::Ordering::Greater,
@@ -254,14 +300,20 @@ impl App {
                 let event_id = event.id;
                 let title = event.title.clone();
                 let description = event.description.clone();
-                let date = event.date.format("%Y-%m-%d").to_string();
-                let time = event.time.map(|t| t.format("%H:%M").to_string()).unwrap_or_default();
+                let start_date = event.start_date.format("%Y-%m-%d").to_string();
+                let end_date = event.end_date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default();
+                let start_time = event.start_time.map(|t| t.format("%H:%M").to_string()).unwrap_or_default();
+                let end_time = event.end_time.map(|t| t.format("%H:%M").to_string()).unwrap_or_default();
+                let category = event.category.clone().unwrap_or_default();
                 
                 self.edit_event_id = Some(event_id);
                 self.edit_event_title = Input::new(title);
                 self.edit_event_description = Input::new(description);
-                self.edit_event_date = Input::new(date);
-                self.edit_event_time = Input::new(time);
+                self.edit_event_start_date = Input::new(start_date);
+                self.edit_event_end_date = Input::new(end_date);
+                self.edit_event_start_time = Input::new(start_time);
+                self.edit_event_end_time = Input::new(end_time);
+                self.edit_event_category = Input::new(category);
                 self.edit_event_field = CreateEventField::Title;
                 self.mode = AppMode::EditEvent;
             }
@@ -274,25 +326,46 @@ impl App {
                 return Ok(());
             }
 
-            let date = NaiveDate::parse_from_str(self.edit_event_date.value(), "%Y-%m-%d")
+            let start_date = NaiveDate::parse_from_str(self.edit_event_start_date.value(), "%Y-%m-%d")
                 .unwrap_or(self.selected_date);
 
-            let time = if self.edit_event_time.value().trim().is_empty() {
+            let end_date = if self.edit_event_end_date.value().trim().is_empty() {
                 None
             } else {
-                NaiveTime::parse_from_str(self.edit_event_time.value(), "%H:%M").ok()
+                NaiveDate::parse_from_str(self.edit_event_end_date.value(), "%Y-%m-%d").ok()
+            };
+
+            let start_time = if self.edit_event_start_time.value().trim().is_empty() {
+                None
+            } else {
+                NaiveTime::parse_from_str(self.edit_event_start_time.value(), "%H:%M").ok()
+            };
+
+            let end_time = if self.edit_event_end_time.value().trim().is_empty() {
+                None
+            } else {
+                NaiveTime::parse_from_str(self.edit_event_end_time.value(), "%H:%M").ok()
+            };
+
+            let category = if self.edit_event_category.value().trim().is_empty() {
+                None
+            } else {
+                Some(self.edit_event_category.value().trim().to_string())
             };
 
             if let Some(event) = self.events.iter_mut().find(|e| e.id == event_id) {
                 event.title = self.edit_event_title.value().trim().to_string();
                 event.description = self.edit_event_description.value().trim().to_string();
-                event.date = date;
-                event.time = time;
+                event.start_date = start_date;
+                event.end_date = end_date;
+                event.start_time = start_time;
+                event.end_time = end_time;
+                event.category = category;
             }
 
             self.events.sort_by(|a, b| {
-                a.date.cmp(&b.date).then_with(|| {
-                    match (a.time, b.time) {
+                a.start_date.cmp(&b.start_date).then_with(|| {
+                    match (a.start_time, b.start_time) {
                         (Some(at), Some(bt)) => at.cmp(&bt),
                         (Some(_), None) => std::cmp::Ordering::Less,
                         (None, Some(_)) => std::cmp::Ordering::Greater,
@@ -416,11 +489,20 @@ impl App {
             CreateEventField::Description => {
                 self.new_event_description.handle_event(key_event);
             }
-            CreateEventField::Date => {
-                self.new_event_date.handle_event(key_event);
+            CreateEventField::StartDate => {
+                self.new_event_start_date.handle_event(key_event);
             }
-            CreateEventField::Time => {
-                self.new_event_time.handle_event(key_event);
+            CreateEventField::EndDate => {
+                self.new_event_end_date.handle_event(key_event);
+            }
+            CreateEventField::StartTime => {
+                self.new_event_start_time.handle_event(key_event);
+            }
+            CreateEventField::EndTime => {
+                self.new_event_end_time.handle_event(key_event);
+            }
+            CreateEventField::Category => {
+                self.new_event_category.handle_event(key_event);
             }
         }
     }
@@ -433,11 +515,20 @@ impl App {
             CreateEventField::Description => {
                 self.edit_event_description.handle_event(key_event);
             }
-            CreateEventField::Date => {
-                self.edit_event_date.handle_event(key_event);
+            CreateEventField::StartDate => {
+                self.edit_event_start_date.handle_event(key_event);
             }
-            CreateEventField::Time => {
-                self.edit_event_time.handle_event(key_event);
+            CreateEventField::EndDate => {
+                self.edit_event_end_date.handle_event(key_event);
+            }
+            CreateEventField::StartTime => {
+                self.edit_event_start_time.handle_event(key_event);
+            }
+            CreateEventField::EndTime => {
+                self.edit_event_end_time.handle_event(key_event);
+            }
+            CreateEventField::Category => {
+                self.edit_event_category.handle_event(key_event);
             }
         }
     }
@@ -687,9 +778,14 @@ fn render_day_cell(f: &mut Frame, area: Rect, day: u32, is_today: bool, is_selec
         let max_events_to_show = events_area.height.saturating_sub(1) as usize;
         
         for event in events.iter().take(max_events_to_show) {
-            let time_str = event.time
-                .map(|t| format!("{} ", t.format("%H:%M")))
-                .unwrap_or_default();
+            // Show time range if both start and end times are present
+            let time_str = if let (Some(start), Some(end)) = (event.start_time, event.end_time) {
+                format!("{}-{} ", start.format("%H:%M"), end.format("%H:%M"))
+            } else if let Some(start) = event.start_time {
+                format!("{} ", start.format("%H:%M"))
+            } else {
+                String::new()
+            };
             
             let available_width = events_area.width as usize;
             let max_title_len = available_width.saturating_sub(time_str.len()).max(1);
@@ -702,9 +798,21 @@ fn render_day_cell(f: &mut Frame, area: Rect, day: u32, is_today: bool, is_selec
             };
             
             let event_text = format!("{}{}", time_str, title);
+            
+            // Choose color based on category
+            let event_color = event.category.as_ref().and_then(|cat| {
+                match cat.to_lowercase().as_str() {
+                    "work" => Some(Color::Cyan),
+                    "personal" => Some(Color::Green),
+                    "meeting" => Some(Color::Yellow),
+                    "important" => Some(Color::Red),
+                    _ => None,
+                }
+            }).unwrap_or(Color::White);
+            
             event_lines.push(Line::from(Span::styled(
                 event_text,
-                Style::default().fg(Color::White)
+                Style::default().fg(event_color)
             )));
         }
 
@@ -753,7 +861,7 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
             .iter()
             .copied()
             .filter(|e| {
-                if let Some(event_time) = e.time {
+                if let Some(event_time) = e.start_time {
                     event_time.hour() == hour
                 } else {
                     false
@@ -774,9 +882,14 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
         } else {
             // Hour with events
             for (idx, event) in hour_events.iter().enumerate() {
-                let time_str = event.time
-                    .map(|t| format!("{}", t.format("%H:%M")))
-                    .unwrap_or_else(|| format!("{:02}:00", hour));
+                // Show time range if available
+                let time_str = if let (Some(start), Some(end)) = (event.start_time, event.end_time) {
+                    format!("{}-{}", start.format("%H:%M"), end.format("%H:%M"))
+                } else if let Some(start) = event.start_time {
+                    format!("{}", start.format("%H:%M"))
+                } else {
+                    format!("{:02}:00", hour)
+                };
                 
                 let prefix = if idx == 0 {
                     time_str
@@ -791,20 +904,31 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
                     event.title.clone()
                 };
                 
+                // Choose color based on category
+                let event_color = event.category.as_ref().and_then(|cat| {
+                    match cat.to_lowercase().as_str() {
+                        "work" => Some(Color::Cyan),
+                        "personal" => Some(Color::Green),
+                        "meeting" => Some(Color::Yellow),
+                        "important" => Some(Color::Red),
+                        _ => None,
+                    }
+                }).unwrap_or(Color::White);
+                
                 lines.push(Line::from(vec![
                     Span::styled(prefix, Style::default().fg(Color::Cyan)),
                     Span::raw("  "),
-                    Span::styled(title, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                    Span::styled(title, Style::default().fg(event_color).add_modifier(Modifier::BOLD)),
                 ]));
             }
         }
     }
 
-    // Add all-day events at the top if any
+    // Add all-day events and multi-day events at the top
     let all_day_events: Vec<&CalendarEvent> = events
         .iter()
         .copied()
-        .filter(|e| e.time.is_none())
+        .filter(|e| e.start_time.is_none())
         .collect();
     
     if !all_day_events.is_empty() {
@@ -820,9 +944,32 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
                 event.title.clone()
             };
             
+            // Show date range for multi-day events
+            let date_info = if let Some(end_date) = event.end_date {
+                if end_date != event.start_date {
+                    format!(" ({} - {})", event.start_date.format("%m/%d"), end_date.format("%m/%d"))
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+            
+            // Choose color based on category
+            let event_color = event.category.as_ref().and_then(|cat| {
+                match cat.to_lowercase().as_str() {
+                    "work" => Some(Color::Cyan),
+                    "personal" => Some(Color::Green),
+                    "meeting" => Some(Color::Yellow),
+                    "important" => Some(Color::Red),
+                    _ => None,
+                }
+            }).unwrap_or(Color::White);
+            
             all_day_lines.push(Line::from(vec![
                 Span::raw("  • "),
-                Span::styled(title, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::styled(title, Style::default().fg(event_color).add_modifier(Modifier::BOLD)),
+                Span::styled(date_info, Style::default().fg(Color::Gray)),
             ]));
         }
         
@@ -884,7 +1031,7 @@ fn render_input_cursor(f: &mut Frame, input: &Input, area: Rect, y_offset: u16) 
 }
 
 fn render_create_event_modal(f: &mut Frame, app: &App) {
-    let area = centered_rect(60, 60, f.area());
+    let area = centered_rect(60, 70, f.area());
 
     let block = Block::default()
         .title(" Create New Event ")
@@ -899,11 +1046,14 @@ fn render_create_event_modal(f: &mut Frame, app: &App) {
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Length(3),
-            Constraint::Length(3),
-            Constraint::Length(3),
-            Constraint::Min(1),
+            Constraint::Length(3),  // Title
+            Constraint::Length(3),  // Description
+            Constraint::Length(3),  // Start Date
+            Constraint::Length(3),  // End Date
+            Constraint::Length(3),  // Start Time
+            Constraint::Length(3),  // End Time
+            Constraint::Length(3),  // Category
+            Constraint::Min(1),     // Help
         ])
         .split(inner);
 
@@ -920,7 +1070,6 @@ fn render_create_event_modal(f: &mut Frame, app: &App) {
     let title_para = Paragraph::new(title_text);
     f.render_widget(title_para, chunks[0]);
     
-    // Render cursor for title field
     if matches!(app.create_event_field, CreateEventField::Title) {
         render_input_cursor(f, &app.new_event_title, chunks[0], 1);
     }
@@ -938,45 +1087,93 @@ fn render_create_event_modal(f: &mut Frame, app: &App) {
     let desc_para = Paragraph::new(desc_text);
     f.render_widget(desc_para, chunks[1]);
     
-    // Render cursor for description field
     if matches!(app.create_event_field, CreateEventField::Description) {
         render_input_cursor(f, &app.new_event_description, chunks[1], 1);
     }
 
-    // Date field
-    let date_style = if matches!(app.create_event_field, CreateEventField::Date) {
+    // Start Date field
+    let start_date_style = if matches!(app.create_event_field, CreateEventField::StartDate) {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let date_text = vec![
-        Line::from(Span::styled("Date (YYYY-MM-DD):", date_style)),
-        Line::from(app.new_event_date.value()),
+    let start_date_text = vec![
+        Line::from(Span::styled("Start Date (YYYY-MM-DD):", start_date_style)),
+        Line::from(app.new_event_start_date.value()),
     ];
-    let date_para = Paragraph::new(date_text);
-    f.render_widget(date_para, chunks[2]);
+    let start_date_para = Paragraph::new(start_date_text);
+    f.render_widget(start_date_para, chunks[2]);
     
-    // Render cursor for date field
-    if matches!(app.create_event_field, CreateEventField::Date) {
-        render_input_cursor(f, &app.new_event_date, chunks[2], 1);
+    if matches!(app.create_event_field, CreateEventField::StartDate) {
+        render_input_cursor(f, &app.new_event_start_date, chunks[2], 1);
     }
 
-    // Time field
-    let time_style = if matches!(app.create_event_field, CreateEventField::Time) {
+    // End Date field
+    let end_date_style = if matches!(app.create_event_field, CreateEventField::EndDate) {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let time_text = vec![
-        Line::from(Span::styled("Time (HH:MM, optional):", time_style)),
-        Line::from(app.new_event_time.value()),
+    let end_date_text = vec![
+        Line::from(Span::styled("End Date (YYYY-MM-DD, optional for multi-day):", end_date_style)),
+        Line::from(app.new_event_end_date.value()),
     ];
-    let time_para = Paragraph::new(time_text);
-    f.render_widget(time_para, chunks[3]);
+    let end_date_para = Paragraph::new(end_date_text);
+    f.render_widget(end_date_para, chunks[3]);
     
-    // Render cursor for time field
-    if matches!(app.create_event_field, CreateEventField::Time) {
-        render_input_cursor(f, &app.new_event_time, chunks[3], 1);
+    if matches!(app.create_event_field, CreateEventField::EndDate) {
+        render_input_cursor(f, &app.new_event_end_date, chunks[3], 1);
+    }
+
+    // Start Time field
+    let start_time_style = if matches!(app.create_event_field, CreateEventField::StartTime) {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let start_time_text = vec![
+        Line::from(Span::styled("Start Time (HH:MM, optional):", start_time_style)),
+        Line::from(app.new_event_start_time.value()),
+    ];
+    let start_time_para = Paragraph::new(start_time_text);
+    f.render_widget(start_time_para, chunks[4]);
+    
+    if matches!(app.create_event_field, CreateEventField::StartTime) {
+        render_input_cursor(f, &app.new_event_start_time, chunks[4], 1);
+    }
+
+    // End Time field
+    let end_time_style = if matches!(app.create_event_field, CreateEventField::EndTime) {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let end_time_text = vec![
+        Line::from(Span::styled("End Time (HH:MM, optional):", end_time_style)),
+        Line::from(app.new_event_end_time.value()),
+    ];
+    let end_time_para = Paragraph::new(end_time_text);
+    f.render_widget(end_time_para, chunks[5]);
+    
+    if matches!(app.create_event_field, CreateEventField::EndTime) {
+        render_input_cursor(f, &app.new_event_end_time, chunks[5], 1);
+    }
+
+    // Category field
+    let category_style = if matches!(app.create_event_field, CreateEventField::Category) {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let category_text = vec![
+        Line::from(Span::styled("Category (work/personal/meeting/important):", category_style)),
+        Line::from(app.new_event_category.value()),
+    ];
+    let category_para = Paragraph::new(category_text);
+    f.render_widget(category_para, chunks[6]);
+    
+    if matches!(app.create_event_field, CreateEventField::Category) {
+        render_input_cursor(f, &app.new_event_category, chunks[6], 1);
     }
 
     // Help text
@@ -991,11 +1188,11 @@ fn render_create_event_modal(f: &mut Frame, app: &App) {
             Span::raw(": Cancel"),
         ]),
     ];
-    f.render_widget(Paragraph::new(help_text), chunks[4]);
+    f.render_widget(Paragraph::new(help_text), chunks[7]);
 }
 
 fn render_edit_event_modal(f: &mut Frame, app: &App) {
-    let area = centered_rect(60, 60, f.area());
+    let area = centered_rect(60, 70, f.area());
 
     let block = Block::default()
         .title(" Edit Event ")
@@ -1010,11 +1207,14 @@ fn render_edit_event_modal(f: &mut Frame, app: &App) {
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Length(3),
-            Constraint::Length(3),
-            Constraint::Length(3),
-            Constraint::Min(1),
+            Constraint::Length(3),  // Title
+            Constraint::Length(3),  // Description
+            Constraint::Length(3),  // Start Date
+            Constraint::Length(3),  // End Date
+            Constraint::Length(3),  // Start Time
+            Constraint::Length(3),  // End Time
+            Constraint::Length(3),  // Category
+            Constraint::Min(1),     // Help
         ])
         .split(inner);
 
@@ -1031,7 +1231,6 @@ fn render_edit_event_modal(f: &mut Frame, app: &App) {
     let title_para = Paragraph::new(title_text);
     f.render_widget(title_para, chunks[0]);
     
-    // Render cursor for title field
     if matches!(app.edit_event_field, CreateEventField::Title) {
         render_input_cursor(f, &app.edit_event_title, chunks[0], 1);
     }
@@ -1049,45 +1248,93 @@ fn render_edit_event_modal(f: &mut Frame, app: &App) {
     let desc_para = Paragraph::new(desc_text);
     f.render_widget(desc_para, chunks[1]);
     
-    // Render cursor for description field
     if matches!(app.edit_event_field, CreateEventField::Description) {
         render_input_cursor(f, &app.edit_event_description, chunks[1], 1);
     }
 
-    // Date field
-    let date_style = if matches!(app.edit_event_field, CreateEventField::Date) {
+    // Start Date field
+    let start_date_style = if matches!(app.edit_event_field, CreateEventField::StartDate) {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let date_text = vec![
-        Line::from(Span::styled("Date (YYYY-MM-DD):", date_style)),
-        Line::from(app.edit_event_date.value()),
+    let start_date_text = vec![
+        Line::from(Span::styled("Start Date (YYYY-MM-DD):", start_date_style)),
+        Line::from(app.edit_event_start_date.value()),
     ];
-    let date_para = Paragraph::new(date_text);
-    f.render_widget(date_para, chunks[2]);
+    let start_date_para = Paragraph::new(start_date_text);
+    f.render_widget(start_date_para, chunks[2]);
     
-    // Render cursor for date field
-    if matches!(app.edit_event_field, CreateEventField::Date) {
-        render_input_cursor(f, &app.edit_event_date, chunks[2], 1);
+    if matches!(app.edit_event_field, CreateEventField::StartDate) {
+        render_input_cursor(f, &app.edit_event_start_date, chunks[2], 1);
     }
 
-    // Time field
-    let time_style = if matches!(app.edit_event_field, CreateEventField::Time) {
+    // End Date field
+    let end_date_style = if matches!(app.edit_event_field, CreateEventField::EndDate) {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let time_text = vec![
-        Line::from(Span::styled("Time (HH:MM, optional):", time_style)),
-        Line::from(app.edit_event_time.value()),
+    let end_date_text = vec![
+        Line::from(Span::styled("End Date (YYYY-MM-DD, optional for multi-day):", end_date_style)),
+        Line::from(app.edit_event_end_date.value()),
     ];
-    let time_para = Paragraph::new(time_text);
-    f.render_widget(time_para, chunks[3]);
+    let end_date_para = Paragraph::new(end_date_text);
+    f.render_widget(end_date_para, chunks[3]);
     
-    // Render cursor for time field
-    if matches!(app.edit_event_field, CreateEventField::Time) {
-        render_input_cursor(f, &app.edit_event_time, chunks[3], 1);
+    if matches!(app.edit_event_field, CreateEventField::EndDate) {
+        render_input_cursor(f, &app.edit_event_end_date, chunks[3], 1);
+    }
+
+    // Start Time field
+    let start_time_style = if matches!(app.edit_event_field, CreateEventField::StartTime) {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let start_time_text = vec![
+        Line::from(Span::styled("Start Time (HH:MM, optional):", start_time_style)),
+        Line::from(app.edit_event_start_time.value()),
+    ];
+    let start_time_para = Paragraph::new(start_time_text);
+    f.render_widget(start_time_para, chunks[4]);
+    
+    if matches!(app.edit_event_field, CreateEventField::StartTime) {
+        render_input_cursor(f, &app.edit_event_start_time, chunks[4], 1);
+    }
+
+    // End Time field
+    let end_time_style = if matches!(app.edit_event_field, CreateEventField::EndTime) {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let end_time_text = vec![
+        Line::from(Span::styled("End Time (HH:MM, optional):", end_time_style)),
+        Line::from(app.edit_event_end_time.value()),
+    ];
+    let end_time_para = Paragraph::new(end_time_text);
+    f.render_widget(end_time_para, chunks[5]);
+    
+    if matches!(app.edit_event_field, CreateEventField::EndTime) {
+        render_input_cursor(f, &app.edit_event_end_time, chunks[5], 1);
+    }
+
+    // Category field
+    let category_style = if matches!(app.edit_event_field, CreateEventField::Category) {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let category_text = vec![
+        Line::from(Span::styled("Category (work/personal/meeting/important):", category_style)),
+        Line::from(app.edit_event_category.value()),
+    ];
+    let category_para = Paragraph::new(category_text);
+    f.render_widget(category_para, chunks[6]);
+    
+    if matches!(app.edit_event_field, CreateEventField::Category) {
+        render_input_cursor(f, &app.edit_event_category, chunks[6], 1);
     }
 
     // Help text
@@ -1102,11 +1349,11 @@ fn render_edit_event_modal(f: &mut Frame, app: &App) {
             Span::raw(": Cancel"),
         ]),
     ];
-    f.render_widget(Paragraph::new(help_text), chunks[4]);
+    f.render_widget(Paragraph::new(help_text), chunks[7]);
 }
 
 fn render_view_event_modal(f: &mut Frame, app: &App) {
-    let area = centered_rect(60, 50, f.area());
+    let area = centered_rect(60, 60, f.area());
 
     if let Some(event_id) = app.selected_event_index {
         if let Some(event) = app.events.iter().find(|e| e.id == event_id) {
@@ -1120,16 +1367,37 @@ fn render_view_event_modal(f: &mut Frame, app: &App) {
 
             let inner = block.inner(area);
 
-            let time_str = event
-                .time
-                .map(|t| format!("Time: {}\n", t.format("%H:%M")))
+            // Build time string
+            let time_str = if let (Some(start), Some(end)) = (event.start_time, event.end_time) {
+                format!("Time: {} - {}\n", start.format("%H:%M"), end.format("%H:%M"))
+            } else if let Some(start) = event.start_time {
+                format!("Time: {}\n", start.format("%H:%M"))
+            } else {
+                String::new()
+            };
+
+            // Build date string
+            let date_str = if let Some(end_date) = event.end_date {
+                if end_date != event.start_date {
+                    format!("Dates: {} to {}\n", event.start_date.format("%Y-%m-%d"), end_date.format("%Y-%m-%d"))
+                } else {
+                    format!("Date: {}\n", event.start_date.format("%Y-%m-%d"))
+                }
+            } else {
+                format!("Date: {}\n", event.start_date.format("%Y-%m-%d"))
+            };
+
+            // Build category string
+            let category_str = event.category.as_ref()
+                .map(|c| format!("Category: {}\n", c))
                 .unwrap_or_default();
 
             let content = format!(
-                "Title: {}\n\nDate: {}\n{}\nDescription:\n{}",
+                "Title: {}\n\n{}{}{}\nDescription:\n{}",
                 event.title,
-                event.date.format("%Y-%m-%d"),
+                date_str,
                 time_str,
+                category_str,
                 if event.description.is_empty() {
                     "(No description)"
                 } else {
@@ -1322,9 +1590,12 @@ fn run_app<B: ratatui::backend::Backend>(
                         KeyCode::Tab => {
                             app.create_event_field = match app.create_event_field {
                                 CreateEventField::Title => CreateEventField::Description,
-                                CreateEventField::Description => CreateEventField::Date,
-                                CreateEventField::Date => CreateEventField::Time,
-                                CreateEventField::Time => CreateEventField::Title,
+                                CreateEventField::Description => CreateEventField::StartDate,
+                                CreateEventField::StartDate => CreateEventField::EndDate,
+                                CreateEventField::EndDate => CreateEventField::StartTime,
+                                CreateEventField::StartTime => CreateEventField::EndTime,
+                                CreateEventField::EndTime => CreateEventField::Category,
+                                CreateEventField::Category => CreateEventField::Title,
                             };
                         }
                         KeyCode::Enter => {
@@ -1344,9 +1615,12 @@ fn run_app<B: ratatui::backend::Backend>(
                         KeyCode::Tab => {
                             app.edit_event_field = match app.edit_event_field {
                                 CreateEventField::Title => CreateEventField::Description,
-                                CreateEventField::Description => CreateEventField::Date,
-                                CreateEventField::Date => CreateEventField::Time,
-                                CreateEventField::Time => CreateEventField::Title,
+                                CreateEventField::Description => CreateEventField::StartDate,
+                                CreateEventField::StartDate => CreateEventField::EndDate,
+                                CreateEventField::EndDate => CreateEventField::StartTime,
+                                CreateEventField::StartTime => CreateEventField::EndTime,
+                                CreateEventField::EndTime => CreateEventField::Category,
+                                CreateEventField::Category => CreateEventField::Title,
                             };
                         }
                         KeyCode::Enter => {
