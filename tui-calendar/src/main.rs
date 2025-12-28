@@ -19,6 +19,8 @@ use tui_input::Input;
 
 const MIN_YEAR: i32 = 1900;
 const MAX_YEAR: i32 = 3000;
+const MAX_COUNT: usize = 9999;
+const MAX_BUFFER_LEN: usize = 4;
 
 #[derive(Clone, Debug)]
 struct CalendarEvent {
@@ -431,8 +433,8 @@ impl App {
         if self.number_buffer.is_empty() {
             1
         } else {
-            // Cap at 9999 to prevent performance issues with very large numbers
-            self.number_buffer.parse().unwrap_or(1).max(1).min(9999)
+            // Cap at MAX_COUNT to prevent performance issues with very large numbers
+            self.number_buffer.parse().unwrap_or(1).max(1).min(MAX_COUNT)
         }
     }
 
@@ -704,6 +706,12 @@ fn render_event_list(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(Paragraph::new(help_text), help_area);
 }
 
+// Helper function to render cursor for input fields
+fn render_input_cursor(f: &mut Frame, input: &Input, area: Rect, y_offset: u16) {
+    let cursor_pos = input.visual_cursor().min(area.width.saturating_sub(1) as usize);
+    f.set_cursor_position((area.x + cursor_pos as u16, area.y + y_offset));
+}
+
 fn render_create_event_modal(f: &mut Frame, app: &App) {
     let area = centered_rect(60, 60, f.area());
 
@@ -743,8 +751,7 @@ fn render_create_event_modal(f: &mut Frame, app: &App) {
     
     // Render cursor for title field
     if matches!(app.create_event_field, CreateEventField::Title) {
-        let cursor_pos = app.new_event_title.visual_cursor().min(chunks[0].width.saturating_sub(1) as usize);
-        f.set_cursor_position((chunks[0].x + cursor_pos as u16, chunks[0].y + 1));
+        render_input_cursor(f, &app.new_event_title, chunks[0], 1);
     }
 
     // Description field
@@ -762,8 +769,7 @@ fn render_create_event_modal(f: &mut Frame, app: &App) {
     
     // Render cursor for description field
     if matches!(app.create_event_field, CreateEventField::Description) {
-        let cursor_pos = app.new_event_description.visual_cursor().min(chunks[1].width.saturating_sub(1) as usize);
-        f.set_cursor_position((chunks[1].x + cursor_pos as u16, chunks[1].y + 1));
+        render_input_cursor(f, &app.new_event_description, chunks[1], 1);
     }
 
     // Date field
@@ -781,8 +787,7 @@ fn render_create_event_modal(f: &mut Frame, app: &App) {
     
     // Render cursor for date field
     if matches!(app.create_event_field, CreateEventField::Date) {
-        let cursor_pos = app.new_event_date.visual_cursor().min(chunks[2].width.saturating_sub(1) as usize);
-        f.set_cursor_position((chunks[2].x + cursor_pos as u16, chunks[2].y + 1));
+        render_input_cursor(f, &app.new_event_date, chunks[2], 1);
     }
 
     // Time field
@@ -800,8 +805,7 @@ fn render_create_event_modal(f: &mut Frame, app: &App) {
     
     // Render cursor for time field
     if matches!(app.create_event_field, CreateEventField::Time) {
-        let cursor_pos = app.new_event_time.visual_cursor().min(chunks[3].width.saturating_sub(1) as usize);
-        f.set_cursor_position((chunks[3].x + cursor_pos as u16, chunks[3].y + 1));
+        render_input_cursor(f, &app.new_event_time, chunks[3], 1);
     }
 
     // Help text
@@ -858,8 +862,7 @@ fn render_edit_event_modal(f: &mut Frame, app: &App) {
     
     // Render cursor for title field
     if matches!(app.edit_event_field, CreateEventField::Title) {
-        let cursor_pos = app.edit_event_title.visual_cursor().min(chunks[0].width.saturating_sub(1) as usize);
-        f.set_cursor_position((chunks[0].x + cursor_pos as u16, chunks[0].y + 1));
+        render_input_cursor(f, &app.edit_event_title, chunks[0], 1);
     }
 
     // Description field
@@ -877,8 +880,7 @@ fn render_edit_event_modal(f: &mut Frame, app: &App) {
     
     // Render cursor for description field
     if matches!(app.edit_event_field, CreateEventField::Description) {
-        let cursor_pos = app.edit_event_description.visual_cursor().min(chunks[1].width.saturating_sub(1) as usize);
-        f.set_cursor_position((chunks[1].x + cursor_pos as u16, chunks[1].y + 1));
+        render_input_cursor(f, &app.edit_event_description, chunks[1], 1);
     }
 
     // Date field
@@ -896,8 +898,7 @@ fn render_edit_event_modal(f: &mut Frame, app: &App) {
     
     // Render cursor for date field
     if matches!(app.edit_event_field, CreateEventField::Date) {
-        let cursor_pos = app.edit_event_date.visual_cursor().min(chunks[2].width.saturating_sub(1) as usize);
-        f.set_cursor_position((chunks[2].x + cursor_pos as u16, chunks[2].y + 1));
+        render_input_cursor(f, &app.edit_event_date, chunks[2], 1);
     }
 
     // Time field
@@ -915,8 +916,7 @@ fn render_edit_event_modal(f: &mut Frame, app: &App) {
     
     // Render cursor for time field
     if matches!(app.edit_event_field, CreateEventField::Time) {
-        let cursor_pos = app.edit_event_time.visual_cursor().min(chunks[3].width.saturating_sub(1) as usize);
-        f.set_cursor_position((chunks[3].x + cursor_pos as u16, chunks[3].y + 1));
+        render_input_cursor(f, &app.edit_event_time, chunks[3], 1);
     }
 
     // Help text
@@ -1088,7 +1088,7 @@ fn run_app<B: ratatui::backend::Backend>(
                     }
                     KeyCode::Char(c) if c.is_ascii_digit() => {
                         // Build up number buffer for vim-style numeric prefixes
-                        if app.number_buffer.len() < 4 {
+                        if app.number_buffer.len() < MAX_BUFFER_LEN {
                             app.number_buffer.push(c);
                         }
                     }
