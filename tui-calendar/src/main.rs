@@ -728,7 +728,14 @@ impl App {
     
     fn toggle_panel_focus(&mut self) {
         self.panel_focus = match self.panel_focus {
-            PanelFocus::Calendar => PanelFocus::DayView,
+            PanelFocus::Calendar => {
+                // When switching to DayView, select first event if available
+                let events = self.get_selected_date_events();
+                if !events.is_empty() && self.event_list_state.selected().is_none() {
+                    self.event_list_state.select(Some(0));
+                }
+                PanelFocus::DayView
+            }
             PanelFocus::DayView => PanelFocus::Calendar,
         };
     }
@@ -1070,9 +1077,77 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
+    // Get selected event index
+    let selected_idx = if is_focused {
+        app.event_list_state.selected()
+    } else {
+        None
+    };
+
     // Render hour slots
     let mut lines = Vec::new();
+    let mut event_line_idx = 0; // Track which event we're rendering
     
+    // Add all-day events and multi-day events at the top
+    let all_day_events: Vec<&CalendarEvent> = events
+        .iter()
+        .copied()
+        .filter(|e| e.start_time.is_none())
+        .collect();
+    
+    if !all_day_events.is_empty() {
+        let mut all_day_lines = vec![
+            Line::from(Span::styled("All Day", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        ];
+        
+        for event in all_day_events {
+            let is_selected = selected_idx == Some(event_line_idx);
+            let available_width = inner.width.saturating_sub(6) as usize; // Extra space for selection marker
+            let title = truncate_text(&event.title, available_width);
+            
+            // Show date range for multi-day events
+            let date_info = if let Some(end_date) = event.end_date {
+                if end_date != event.start_date {
+                    format!(" ({} - {})", event.start_date.format("%m/%d"), end_date.format("%m/%d"))
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+            
+            // Use helper function for category color
+            let event_color = category_color(event.category.as_ref());
+            let mut style = Style::default().fg(event_color).add_modifier(Modifier::BOLD);
+            
+            // Highlight selected event
+            if is_selected {
+                style = style.bg(Color::DarkGray);
+            }
+            
+            let marker = if is_selected { "► " } else { "  " };
+            
+            all_day_lines.push(Line::from(vec![
+                Span::styled(marker, Style::default().fg(Color::Cyan)),
+                Span::raw("• "),
+                Span::styled(title, style),
+                Span::styled(date_info, if is_selected {
+                    Style::default().fg(Color::Gray).bg(Color::DarkGray)
+                } else {
+                    Style::default().fg(Color::Gray)
+                }),
+            ]));
+            
+            event_line_idx += 1;
+        }
+        
+        all_day_lines.push(Line::from(""));
+        
+        // Add all-day events
+        lines.extend(all_day_lines);
+    }
+    
+    // Add timed events
     for hour in 0..24 {
         let hour_events: Vec<&CalendarEvent> = events
             .iter()
@@ -1099,6 +1174,8 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
         } else {
             // Hour with events
             for (idx, event) in hour_events.iter().enumerate() {
+                let is_selected = selected_idx == Some(event_line_idx);
+                
                 // Show time range if available
                 let time_str = if let (Some(start), Some(end)) = (event.start_time, event.end_time) {
                     format!("{}-{}", start.format("%H:%M"), end.format("%H:%M"))
@@ -1114,62 +1191,34 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
                     "      ".to_string()
                 };
                 
-                let available_width = inner.width.saturating_sub(8) as usize;
+                let available_width = inner.width.saturating_sub(10) as usize; // Extra space for marker
                 let title = truncate_text(&event.title, available_width);
                 
                 // Use helper function for category color
                 let event_color = category_color(event.category.as_ref());
+                let mut event_style = Style::default().fg(event_color).add_modifier(Modifier::BOLD);
+                
+                // Highlight selected event
+                if is_selected {
+                    event_style = event_style.bg(Color::DarkGray);
+                }
+                
+                let marker = if is_selected { "► " } else { "  " };
                 
                 lines.push(Line::from(vec![
-                    Span::styled(prefix, Style::default().fg(Color::Cyan)),
+                    Span::styled(marker, Style::default().fg(Color::Cyan)),
+                    Span::styled(prefix, if is_selected {
+                        Style::default().fg(Color::Cyan).bg(Color::DarkGray)
+                    } else {
+                        Style::default().fg(Color::Cyan)
+                    }),
                     Span::raw("  "),
-                    Span::styled(title, Style::default().fg(event_color).add_modifier(Modifier::BOLD)),
+                    Span::styled(title, event_style),
                 ]));
+                
+                event_line_idx += 1;
             }
         }
-    }
-
-    // Add all-day events and multi-day events at the top
-    let all_day_events: Vec<&CalendarEvent> = events
-        .iter()
-        .copied()
-        .filter(|e| e.start_time.is_none())
-        .collect();
-    
-    if !all_day_events.is_empty() {
-        let mut all_day_lines = vec![
-            Line::from(Span::styled("All Day", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
-        ];
-        
-        for event in all_day_events {
-            let available_width = inner.width.saturating_sub(4) as usize;
-            let title = truncate_text(&event.title, available_width);
-            
-            // Show date range for multi-day events
-            let date_info = if let Some(end_date) = event.end_date {
-                if end_date != event.start_date {
-                    format!(" ({} - {})", event.start_date.format("%m/%d"), end_date.format("%m/%d"))
-                } else {
-                    String::new()
-                }
-            } else {
-                String::new()
-            };
-            
-            // Use helper function for category color
-            let event_color = category_color(event.category.as_ref());
-            
-            all_day_lines.push(Line::from(vec![
-                Span::raw("  • "),
-                Span::styled(title, Style::default().fg(event_color).add_modifier(Modifier::BOLD)),
-                Span::styled(date_info, Style::default().fg(Color::Gray)),
-            ]));
-        }
-        
-        all_day_lines.push(Line::from(""));
-        
-        // Prepend all-day events
-        lines.splice(0..0, all_day_lines);
     }
 
     // If no events at all, show a message
@@ -2113,31 +2162,51 @@ fn run_app<B: ratatui::backend::Backend>(
                         app.number_buffer.clear();
                     }
                     KeyCode::Left => {
-                        if matches!(app.panel_focus, PanelFocus::Calendar) {
-                            let count = app.get_count();
-                            app.move_selection_left_by(count);
-                            app.number_buffer.clear();
+                        match app.panel_focus {
+                            PanelFocus::Calendar => {
+                                let count = app.get_count();
+                                app.move_selection_left_by(count);
+                                app.number_buffer.clear();
+                            }
+                            PanelFocus::DayView => {
+                                app.previous_event_in_list();
+                            }
                         }
                     }
                     KeyCode::Right => {
-                        if matches!(app.panel_focus, PanelFocus::Calendar) {
-                            let count = app.get_count();
-                            app.move_selection_right_by(count);
-                            app.number_buffer.clear();
+                        match app.panel_focus {
+                            PanelFocus::Calendar => {
+                                let count = app.get_count();
+                                app.move_selection_right_by(count);
+                                app.number_buffer.clear();
+                            }
+                            PanelFocus::DayView => {
+                                app.next_event_in_list();
+                            }
                         }
                     }
                     KeyCode::Up => {
-                        if matches!(app.panel_focus, PanelFocus::Calendar) {
-                            let count = app.get_count();
-                            app.move_selection_up_by(count);
-                            app.number_buffer.clear();
+                        match app.panel_focus {
+                            PanelFocus::Calendar => {
+                                let count = app.get_count();
+                                app.move_selection_up_by(count);
+                                app.number_buffer.clear();
+                            }
+                            PanelFocus::DayView => {
+                                app.previous_event_in_list();
+                            }
                         }
                     }
                     KeyCode::Down => {
-                        if matches!(app.panel_focus, PanelFocus::Calendar) {
-                            let count = app.get_count();
-                            app.move_selection_down_by(count);
-                            app.number_buffer.clear();
+                        match app.panel_focus {
+                            PanelFocus::Calendar => {
+                                let count = app.get_count();
+                                app.move_selection_down_by(count);
+                                app.number_buffer.clear();
+                            }
+                            PanelFocus::DayView => {
+                                app.next_event_in_list();
+                            }
                         }
                     }
                     KeyCode::Tab => {
@@ -2145,7 +2214,9 @@ fn run_app<B: ratatui::backend::Backend>(
                         app.number_buffer.clear();
                     }
                     KeyCode::Enter => {
-                        // Enter can be used for future features or removed
+                        if matches!(app.panel_focus, PanelFocus::DayView) {
+                            app.start_edit_event();
+                        }
                         app.number_buffer.clear();
                     }
                     KeyCode::Delete => {
