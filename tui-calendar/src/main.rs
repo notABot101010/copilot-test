@@ -183,6 +183,36 @@ impl App {
             .collect()
     }
 
+    fn get_events_in_display_order(&self) -> Vec<&CalendarEvent> {
+        let events = self.get_selected_date_events();
+        let mut display_order = Vec::new();
+        
+        // First, add all-day events (events without start_time)
+        for event in events.iter() {
+            if event.start_time.is_none() {
+                display_order.push(*event);
+            }
+        }
+        
+        // Then, add timed events sorted by hour
+        let mut timed_events: Vec<&CalendarEvent> = events
+            .iter()
+            .copied()
+            .filter(|e| e.start_time.is_some())
+            .collect();
+        
+        // Sort timed events by start_time
+        timed_events.sort_by(|a, b| {
+            match (a.start_time, b.start_time) {
+                (Some(at), Some(bt)) => at.cmp(&bt),
+                _ => std::cmp::Ordering::Equal,
+            }
+        });
+        
+        display_order.extend(timed_events);
+        display_order
+    }
+
     fn move_to_previous_month(&mut self) {
         self.selected_date = self
             .selected_date
@@ -342,7 +372,8 @@ impl App {
 
     fn start_edit_event(&mut self) {
         if let Some(idx) = self.event_list_state.selected() {
-            let events = self.get_selected_date_events();
+            // Use display order to match the visual selection in day view
+            let events = self.get_events_in_display_order();
             if idx < events.len() {
                 let event = events[idx];
                 let event_id = event.id;
@@ -437,7 +468,8 @@ impl App {
 
     fn show_event_details(&mut self) {
         if let Some(idx) = self.event_list_state.selected() {
-            let events = self.get_selected_date_events();
+            // Use display order to match the visual selection in day view
+            let events = self.get_events_in_display_order();
             if idx < events.len() {
                 self.selected_event_index = Some(events[idx].id);
                 self.mode = AppMode::ViewEvent;
@@ -458,7 +490,8 @@ impl App {
 
     fn confirm_delete_event(&mut self) {
         if let Some(idx) = self.event_list_state.selected() {
-            let events = self.get_selected_date_events();
+            // Use display order to match the visual selection in day view
+            let events = self.get_events_in_display_order();
             if idx < events.len() {
                 let event_id = events[idx].id;
                 if let Err(err) = self.database.delete_event(event_id) {
@@ -484,7 +517,8 @@ impl App {
     }
 
     fn next_event_in_list(&mut self) {
-        let events = self.get_selected_date_events();
+        // Use display order for consistency with visual rendering
+        let events = self.get_events_in_display_order();
         if events.is_empty() {
             return;
         }
@@ -503,7 +537,8 @@ impl App {
     }
 
     fn previous_event_in_list(&mut self) {
-        let events = self.get_selected_date_events();
+        // Use display order for consistency with visual rendering
+        let events = self.get_events_in_display_order();
         if events.is_empty() {
             return;
         }
