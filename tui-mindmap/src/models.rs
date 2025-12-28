@@ -51,13 +51,11 @@ impl Node {
         }
     }
 
-    pub fn contains_point(&self, x: f64, y: f64, zoom: f64, pan_x: f64, pan_y: f64) -> bool {
-        let screen_x = (self.x - pan_x) * zoom;
-        let screen_y = (self.y - pan_y) * zoom;
-        let screen_width = self.width as f64 * zoom;
-        let screen_height = self.height as f64 * zoom;
-
-        x >= screen_x && x < screen_x + screen_width && y >= screen_y && y < screen_y + screen_height
+    pub fn contains_point(&self, world_x: f64, world_y: f64) -> bool {
+        world_x >= self.x 
+            && world_x < self.x + self.width as f64 
+            && world_y >= self.y 
+            && world_y < self.y + self.height as f64
     }
 }
 
@@ -107,10 +105,10 @@ impl MindMap {
         self.connections.retain(|c| !(c.from == from && c.to == to));
     }
 
-    pub fn find_node_at(&self, x: f64, y: f64, zoom: f64, pan_x: f64, pan_y: f64) -> Option<usize> {
+    pub fn find_node_at(&self, world_x: f64, world_y: f64) -> Option<usize> {
         // Search in reverse order so top nodes are selected first
         for (i, node) in self.nodes.iter().enumerate().rev() {
-            if node.contains_point(x, y, zoom, pan_x, pan_y) {
+            if node.contains_point(world_x, world_y) {
                 return Some(i);
             }
         }

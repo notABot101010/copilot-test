@@ -212,8 +212,10 @@ impl<'a> Canvas<'a> {
 }
 
 pub struct DocumentDialog<'a> {
-    pub title: &'a str,
-    pub body: &'a str,
+    pub title_value: &'a str,
+    pub title_cursor: usize,
+    pub body_value: &'a str,
+    pub body_cursor: usize,
     pub editing: bool,
     pub editing_title: bool,
 }
@@ -295,12 +297,23 @@ impl<'a> Widget for DocumentDialog<'a> {
             .borders(Borders::BOTTOM)
             .border_style(Style::default().fg(Color::DarkGray));
 
-        let title_paragraph = Paragraph::new(self.title)
+        let title_paragraph = Paragraph::new(self.title_value)
             .block(title_block)
             .style(title_style)
             .wrap(Wrap { trim: false });
 
         title_paragraph.render(title_area, buf);
+
+        // Render cursor for title if editing
+        if self.editing && self.editing_title {
+            let cursor_x = title_area.x + (self.title_cursor as u16).min(title_area.width.saturating_sub(1));
+            let cursor_y = title_area.y;
+            if cursor_x < buf.area.width && cursor_y < buf.area.height {
+                if let Some(cell) = buf.cell_mut((cursor_x, cursor_y)) {
+                    cell.set_style(Style::default().bg(Color::Green).fg(Color::Black));
+                }
+            }
+        }
 
         // Render body
         let body_style = if self.editing && !self.editing_title {
@@ -309,11 +322,22 @@ impl<'a> Widget for DocumentDialog<'a> {
             Style::default().fg(Color::Gray)
         };
 
-        let body_paragraph = Paragraph::new(self.body)
+        let body_paragraph = Paragraph::new(self.body_value)
             .style(body_style)
             .wrap(Wrap { trim: false });
 
         body_paragraph.render(body_area, buf);
+
+        // Render cursor for body if editing
+        if self.editing && !self.editing_title {
+            let cursor_x = body_area.x + (self.body_cursor as u16).min(body_area.width.saturating_sub(1));
+            let cursor_y = body_area.y;
+            if cursor_x < buf.area.width && cursor_y < buf.area.height {
+                if let Some(cell) = buf.cell_mut((cursor_x, cursor_y)) {
+                    cell.set_style(Style::default().bg(Color::White).fg(Color::Black));
+                }
+            }
+        }
 
         // Render help text
         let help_text = if self.editing {

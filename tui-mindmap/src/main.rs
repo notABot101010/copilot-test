@@ -22,6 +22,81 @@ const ZOOM_STEP: f64 = 0.1;
 const MIN_ZOOM: f64 = 0.5;
 const MAX_ZOOM: f64 = 3.0;
 
+#[derive(Debug, Clone)]
+struct TextInput {
+    value: String,
+    cursor: usize,
+}
+
+impl TextInput {
+    fn new(value: String) -> Self {
+        let cursor = value.chars().count();
+        Self { value, cursor }
+    }
+
+    fn default() -> Self {
+        Self {
+            value: String::new(),
+            cursor: 0,
+        }
+    }
+
+    fn value(&self) -> &str {
+        &self.value
+    }
+
+    fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    fn reset(&mut self) {
+        self.value.clear();
+        self.cursor = 0;
+    }
+
+    fn insert(&mut self, c: char) {
+        let byte_idx = self.value
+            .char_indices()
+            .nth(self.cursor)
+            .map(|(idx, _)| idx)
+            .unwrap_or(self.value.len());
+        self.value.insert(byte_idx, c);
+        self.cursor += 1;
+    }
+
+    fn delete_before_cursor(&mut self) {
+        if self.cursor > 0 {
+            let byte_idx = self.value
+                .char_indices()
+                .nth(self.cursor - 1)
+                .map(|(idx, _)| idx)
+                .unwrap_or(0);
+            self.value.remove(byte_idx);
+            self.cursor -= 1;
+        }
+    }
+
+    fn move_cursor_left(&mut self) {
+        if self.cursor > 0 {
+            self.cursor -= 1;
+        }
+    }
+
+    fn move_cursor_right(&mut self) {
+        if self.cursor < self.value.chars().count() {
+            self.cursor += 1;
+        }
+    }
+
+    fn move_cursor_to_start(&mut self) {
+        self.cursor = 0;
+    }
+
+    fn move_cursor_to_end(&mut self) {
+        self.cursor = self.value.chars().count();
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Mode {
     Normal,
@@ -44,13 +119,14 @@ struct App {
     mode: Mode,
     should_quit: bool,
     dragging_node: Option<Uuid>,
+    dragging_canvas: bool,
     drag_start_x: f64,
     drag_start_y: f64,
     connecting_from: Option<Uuid>,
     last_click_time: Option<Instant>,
     last_click_node: Option<Uuid>,
-    edit_title: String,
-    edit_body: String,
+    edit_title: TextInput,
+    edit_body: TextInput,
     editing_title: bool,
     history: Vec<HistoryEntry>,
     history_index: usize,
@@ -90,13 +166,14 @@ impl App {
             mode: Mode::Normal,
             should_quit: false,
             dragging_node: None,
+            dragging_canvas: false,
             drag_start_x: 0.0,
             drag_start_y: 0.0,
             connecting_from: None,
             last_click_time: None,
             last_click_node: None,
-            edit_title: String::new(),
-            edit_body: String::new(),
+            edit_title: TextInput::default(),
+            edit_body: TextInput::default(),
             editing_title: true,
             history: vec![history_entry],
             history_index: 0,
@@ -216,8 +293,8 @@ impl App {
 
     fn open_document(&mut self, node_id: Uuid) {
         if let Some(node) = self.mindmap.get_node_by_id(node_id) {
-            self.edit_title = node.document.title.clone();
-            self.edit_body = node.document.body.clone();
+            self.edit_title = TextInput::new(node.document.title.clone());
+            self.edit_body = TextInput::new(node.document.body.clone());
             self.editing_title = true;
             self.mode = Mode::ViewingDocument;
         }
@@ -232,20 +309,20 @@ impl App {
     fn save_document(&mut self) {
         if let Some(node_id) = self.selected_node {
             if let Some(node) = self.mindmap.get_node_by_id_mut(node_id) {
-                node.document.title = self.edit_title.clone();
-                node.document.body = self.edit_body.clone();
+                node.document.title = self.edit_title.value().to_string();
+                node.document.body = self.edit_body.value().to_string();
                 self.save_to_history();
             }
         }
         self.mode = Mode::Normal;
-        self.edit_title.clear();
-        self.edit_body.clear();
+        self.edit_title.reset();
+        self.edit_body.reset();
     }
 
     fn cancel_editing(&mut self) {
         self.mode = Mode::Normal;
-        self.edit_title.clear();
-        self.edit_body.clear();
+        self.edit_title.reset();
+        self.edit_body.reset();
     }
 
     fn start_search(&mut self) {
@@ -325,13 +402,13 @@ impl App {
             MouseEventKind::Down(MouseButton::Left) => {
                 if self.connecting_from.is_some() {
                     // In connecting mode, finish the connection
-                    if let Some(node_idx) = self.mindmap.find_node_at(world_x, world_y, self.zoom, self.pan_x, self.pan_y) {
+                    if let Some(node_idx) = self.mindmap.find_node_at(world_x, world_y) {
                         let target_id = self.mindmap.nodes[node_idx].id;
                         self.finish_connecting(target_id);
                     }
                 } else {
                     // Normal mode - check for node selection
-                    if let Some(node_idx) = self.mindmap.find_node_at(world_x, world_y, self.zoom, self.pan_x, self.pan_y) {
+                    if let Some(node_idx) = self.mindmap.find_node_at(world_x, world_y) {
                         let node_id = self.mindmap.nodes[node_idx].id;
                         self.selected_node = Some(node_id);
 
@@ -354,15 +431,19 @@ impl App {
                         self.drag_start_x = world_x;
                         self.drag_start_y = world_y;
                     } else {
-                        // Clicked outside any node
+                        // Clicked outside any node - start canvas drag
                         self.selected_node = None;
                         self.last_click_time = None;
                         self.last_click_node = None;
+                        self.dragging_canvas = true;
+                        self.drag_start_x = mouse_event.column as f64;
+                        self.drag_start_y = mouse_event.row as f64;
                     }
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
                 self.dragging_node = None;
+                self.dragging_canvas = false;
             }
             MouseEventKind::Drag(MouseButton::Left) => {
                 if let Some(node_id) = self.dragging_node {
@@ -374,6 +455,14 @@ impl App {
                         self.drag_start_x = world_x;
                         self.drag_start_y = world_y;
                     }
+                } else if self.dragging_canvas {
+                    // Drag canvas - update pan based on screen coordinates
+                    let dx = (mouse_event.column as f64 - self.drag_start_x) / self.zoom;
+                    let dy = (mouse_event.row as f64 - self.drag_start_y) / self.zoom;
+                    self.pan_x -= dx;
+                    self.pan_y -= dy;
+                    self.drag_start_x = mouse_event.column as f64;
+                    self.drag_start_y = mouse_event.row as f64;
                 }
             }
             MouseEventKind::ScrollUp => {
@@ -447,6 +536,11 @@ impl App {
                             self.selected_node = None;
                         }
                     }
+                    KeyCode::Enter => {
+                        if let Some(node_id) = self.selected_node {
+                            self.open_document(node_id);
+                        }
+                    }
                     KeyCode::Left => {
                         self.pan_x -= 5.0;
                     }
@@ -486,16 +580,44 @@ impl App {
                     }
                     KeyCode::Char(c) => {
                         if self.editing_title {
-                            self.edit_title.push(c);
+                            self.edit_title.insert(c);
                         } else {
-                            self.edit_body.push(c);
+                            self.edit_body.insert(c);
                         }
                     }
                     KeyCode::Backspace => {
                         if self.editing_title {
-                            self.edit_title.pop();
+                            self.edit_title.delete_before_cursor();
                         } else {
-                            self.edit_body.pop();
+                            self.edit_body.delete_before_cursor();
+                        }
+                    }
+                    KeyCode::Left => {
+                        if self.editing_title {
+                            self.edit_title.move_cursor_left();
+                        } else {
+                            self.edit_body.move_cursor_left();
+                        }
+                    }
+                    KeyCode::Right => {
+                        if self.editing_title {
+                            self.edit_title.move_cursor_right();
+                        } else {
+                            self.edit_body.move_cursor_right();
+                        }
+                    }
+                    KeyCode::Home => {
+                        if self.editing_title {
+                            self.edit_title.move_cursor_to_start();
+                        } else {
+                            self.edit_body.move_cursor_to_start();
+                        }
+                    }
+                    KeyCode::End => {
+                        if self.editing_title {
+                            self.edit_title.move_cursor_to_end();
+                        } else {
+                            self.edit_body.move_cursor_to_end();
                         }
                     }
                     _ => {}
@@ -544,8 +666,10 @@ fn run_app<B: ratatui::backend::Backend>(
             // Render document dialog if in viewing/editing mode
             if app.mode == Mode::ViewingDocument || app.mode == Mode::EditingDocument {
                 let dialog = DocumentDialog {
-                    title: &app.edit_title,
-                    body: &app.edit_body,
+                    title_value: app.edit_title.value(),
+                    title_cursor: app.edit_title.cursor(),
+                    body_value: app.edit_body.value(),
+                    body_cursor: app.edit_body.cursor(),
                     editing: app.mode == Mode::EditingDocument,
                     editing_title: app.editing_title,
                 };
