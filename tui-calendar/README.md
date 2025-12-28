@@ -71,6 +71,20 @@ The number buffer is cleared after each movement or when pressing Esc.
 
 ## Visual Indicators
 
-- **Green**: Current day
-- **Cyan (highlighted)**: Selected date
-- **Magenta with asterisk (*)**: Dates with events
+### Day Cell Styling
+- **Green border**: Current day (today)
+- **Cyan border with blue background**: Selected date
+- **Magenta border**: Dates with events
+- **Gray border**: Regular days
+
+### Event Display
+- Each day cell shows up to **2 event previews** with time and title
+- Event titles are truncated to fit within the cell
+- **"+N more"** indicator appears when there are more than 2 events on a day
+- Events are displayed in chronological order (sorted by time)
+
+### Calendar Layout
+- **Box-based design**: Each day is rendered as a bordered box (similar to GUI calendars)
+- **Larger cells**: Days occupy significantly more screen space for better readability
+- **Weekday headers**: Two-letter abbreviations (Su, Mo, Tu, etc.) centered above columns
+- **Event preview**: See event times and titles directly in the calendar grid
