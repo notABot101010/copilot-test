@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{Datelike, Local, NaiveDate, NaiveTime};
+use chrono::{Datelike, Local, NaiveDate, NaiveTime, Timelike};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
@@ -10,7 +10,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, ListState, Paragraph, Wrap},
     Frame, Terminal,
 };
 use std::io;
@@ -450,7 +450,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         .split(f.area());
 
     render_calendar(f, app, chunks[0]);
-    render_event_list(f, app, chunks[1]);
+    render_day_view(f, app, chunks[1]);
 
     match app.mode {
         AppMode::CreateEvent => render_create_event_modal(f, app),
@@ -508,9 +508,20 @@ fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
 
     // Calculate grid dimensions
     let cell_width = (inner.width / 7).max(12); // At least 12 chars wide per cell
-    let cell_height = 5; // Fixed height for each day cell (box)
     let header_height = 1;
     let help_height = 2;
+    
+    // Calculate number of weeks to display
+    let total_cells = weekday_of_first + days_in_month as usize;
+    let num_weeks = ((total_cells + 6) / 7).min(6); // Round up, max 6 weeks
+    
+    // Calculate cell height dynamically based on available space
+    let available_grid_height = inner.height.saturating_sub(header_height + help_height + 1);
+    let cell_height = if num_weeks > 0 {
+        (available_grid_height / num_weeks as u16).max(3) // At least 3 lines per cell
+    } else {
+        3
+    };
     
     // Render weekday headers
     let header_area = Rect {
@@ -538,15 +549,11 @@ fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
         height: inner.height.saturating_sub(header_height + help_height + 1),
     };
 
-    // Calculate number of weeks to display
-    let total_cells = weekday_of_first + days_in_month as usize;
-    let num_weeks = (total_cells + 6) / 7; // Round up
-
     let mut day_counter = 1;
     let mut current_weekday = weekday_of_first;
 
     // Render each week row
-    for week in 0..num_weeks.min(6) {
+    for week in 0..num_weeks {
         let week_y = grid_area.y + (week as u16 * cell_height);
         if week_y + cell_height > grid_area.y + grid_area.height {
             break;
@@ -606,7 +613,9 @@ fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
             Span::styled("Arrows", Style::default().fg(Color::Yellow)),
             Span::raw(": Navigate  "),
             Span::styled("Ctrl+N", Style::default().fg(Color::Yellow)),
-            Span::raw(": New Event  "),
+            Span::raw(": New  "),
+            Span::styled("Ctrl+T", Style::default().fg(Color::Yellow)),
+            Span::raw(": Today  "),
             Span::styled("Q", Style::default().fg(Color::Yellow)),
             Span::raw(": Quit"),
         ]),
@@ -665,7 +674,7 @@ fn render_day_cell(f: &mut Frame, area: Rect, day: u32, is_today: bool, is_selec
         );
     }
 
-    // Render event previews (up to 2 events)
+    // Render event previews (can show more events with more height)
     if !events.is_empty() && inner.height > 1 {
         let events_area = Rect {
             x: inner.x,
@@ -675,7 +684,9 @@ fn render_day_cell(f: &mut Frame, area: Rect, day: u32, is_today: bool, is_selec
         };
 
         let mut event_lines = Vec::new();
-        for event in events.iter().take(2) {
+        let max_events_to_show = events_area.height.saturating_sub(1) as usize;
+        
+        for event in events.iter().take(max_events_to_show) {
             let time_str = event.time
                 .map(|t| format!("{} ", t.format("%H:%M")))
                 .unwrap_or_default();
@@ -698,8 +709,8 @@ fn render_day_cell(f: &mut Frame, area: Rect, day: u32, is_today: bool, is_selec
         }
 
         // Show "+N more" if there are more events
-        if events.len() > 2 && event_lines.len() < events_area.height as usize {
-            let more_count = events.len() - 2;
+        if events.len() > max_events_to_show && event_lines.len() < events_area.height as usize {
+            let more_count = events.len() - max_events_to_show;
             event_lines.push(Line::from(Span::styled(
                 format!("+{} more", more_count),
                 Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC)
@@ -710,12 +721,12 @@ fn render_day_cell(f: &mut Frame, area: Rect, day: u32, is_today: bool, is_selec
     }
 }
 
-fn render_event_list(f: &mut Frame, app: &mut App, area: Rect) {
+fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
     let events = app.get_selected_date_events();
 
     let title = format!(
-        " Events - {} ",
-        app.selected_date.format("%Y-%m-%d")
+        " Day View - {} ",
+        app.selected_date.format("%Y-%m-%d (%A)")
     );
 
     let block = Block::default()
@@ -723,55 +734,152 @@ fn render_event_list(f: &mut Frame, app: &mut App, area: Rect) {
         .title(title)
         .title_alignment(Alignment::Center);
 
-    if events.is_empty() {
-        let inner = block.inner(area);
-        f.render_widget(block, area);
-        let no_events = Paragraph::new("No events for this day")
-            .style(Style::default().fg(Color::Gray))
-            .alignment(Alignment::Center);
-        f.render_widget(no_events, inner);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    if inner.height < 3 {
         return;
     }
 
-    let items: Vec<ListItem> = events
+    // Reserve space for help text at the bottom
+    let help_height = 2;
+    let available_height = inner.height.saturating_sub(help_height);
+    
+    // Calculate how many hours we can show based on available height
+    // Each hour needs at least 1 line
+    let hours_to_show = available_height.min(24);
+    let hour_height = if hours_to_show > 0 {
+        available_height / hours_to_show
+    } else {
+        1
+    };
+
+    // Render hour slots
+    let mut lines = Vec::new();
+    
+    for hour in 0..24 {
+        let hour_events: Vec<&CalendarEvent> = events
+            .iter()
+            .copied()
+            .filter(|e| {
+                if let Some(event_time) = e.time {
+                    event_time.hour() == hour
+                } else {
+                    false
+                }
+            })
+            .collect();
+
+        // Format hour
+        let hour_label = format!("{:02}:00", hour);
+        
+        if hour_events.is_empty() {
+            // Empty hour slot
+            lines.push(Line::from(vec![
+                Span::styled(hour_label, Style::default().fg(Color::Gray)),
+                Span::raw("  "),
+                Span::styled("─".repeat(inner.width.saturating_sub(8) as usize), Style::default().fg(Color::DarkGray)),
+            ]));
+        } else {
+            // Hour with events
+            for (idx, event) in hour_events.iter().enumerate() {
+                let time_str = event.time
+                    .map(|t| format!("{}", t.format("%H:%M")))
+                    .unwrap_or_else(|| format!("{:02}:00", hour));
+                
+                let prefix = if idx == 0 {
+                    time_str
+                } else {
+                    "      ".to_string()
+                };
+                
+                let available_width = inner.width.saturating_sub(8) as usize;
+                let title = if event.title.chars().count() > available_width {
+                    format!("{}…", event.title.chars().take(available_width.saturating_sub(1)).collect::<String>())
+                } else {
+                    event.title.clone()
+                };
+                
+                lines.push(Line::from(vec![
+                    Span::styled(prefix, Style::default().fg(Color::Cyan)),
+                    Span::raw("  "),
+                    Span::styled(title, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                ]));
+            }
+        }
+    }
+
+    // Add all-day events at the top if any
+    let all_day_events: Vec<&CalendarEvent> = events
         .iter()
-        .map(|event| {
-            let time_str = event
-                .time
-                .map(|t| format!("{} - ", t.format("%H:%M")))
-                .unwrap_or_default();
-            let content = format!("{}{}", time_str, event.title);
-            ListItem::new(content)
-        })
+        .copied()
+        .filter(|e| e.time.is_none())
         .collect();
+    
+    if !all_day_events.is_empty() {
+        let mut all_day_lines = vec![
+            Line::from(Span::styled("All Day", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        ];
+        
+        for event in all_day_events {
+            let available_width = inner.width.saturating_sub(4) as usize;
+            let title = if event.title.chars().count() > available_width {
+                format!("{}…", event.title.chars().take(available_width.saturating_sub(1)).collect::<String>())
+            } else {
+                event.title.clone()
+            };
+            
+            all_day_lines.push(Line::from(vec![
+                Span::raw("  • "),
+                Span::styled(title, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+            ]));
+        }
+        
+        all_day_lines.push(Line::from(""));
+        
+        // Prepend all-day events
+        lines.splice(0..0, all_day_lines);
+    }
 
-    let list = List::new(items)
-        .block(block)
-        .highlight_style(
-            Style::default()
-                .bg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("> ");
+    // If no events at all, show a message
+    if events.is_empty() {
+        lines.clear();
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "No events for this day",
+            Style::default().fg(Color::Gray)
+        )));
+    }
 
-    f.render_stateful_widget(list, area, &mut app.event_list_state);
+    // Render the day view
+    let day_view_area = Rect {
+        x: inner.x,
+        y: inner.y,
+        width: inner.width,
+        height: available_height,
+    };
+    
+    let paragraph = Paragraph::new(lines)
+        .scroll((0, 0));
+    f.render_widget(paragraph, day_view_area);
 
     // Render help text at bottom
     let help_area = Rect {
-        x: area.x + 2,
-        y: area.y + area.height.saturating_sub(2),
-        width: area.width.saturating_sub(4),
-        height: 1,
+        x: inner.x,
+        y: inner.y + available_height,
+        width: inner.width,
+        height: help_height,
     };
 
-    let help_text = Line::from(vec![
-        Span::styled("Enter", Style::default().fg(Color::Yellow)),
-        Span::raw(": View  "),
-        Span::styled("E", Style::default().fg(Color::Yellow)),
-        Span::raw(": Edit  "),
-        Span::styled("Del", Style::default().fg(Color::Yellow)),
-        Span::raw(": Delete"),
-    ]);
+    let help_text = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Ctrl+N", Style::default().fg(Color::Yellow)),
+            Span::raw(": New Event  "),
+            Span::styled("Ctrl+T", Style::default().fg(Color::Yellow)),
+            Span::raw(": Today"),
+        ]),
+    ];
     f.render_widget(Paragraph::new(help_text), help_area);
 }
 
@@ -1158,6 +1266,11 @@ fn run_app<B: ratatui::backend::Backend>(
                     KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.start_create_event();
                     }
+                    KeyCode::Char('t') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.selected_date = app.current_date;
+                        app.event_list_state.select(None);
+                        app.number_buffer.clear();
+                    }
                     KeyCode::Char(c) if c.is_ascii_digit() => {
                         // Build up number buffer for vim-style numeric prefixes
                         if app.number_buffer.len() < MAX_BUFFER_LEN {
@@ -1165,62 +1278,39 @@ fn run_app<B: ratatui::backend::Backend>(
                         }
                     }
                     KeyCode::Char('e') | KeyCode::Char('E') => {
-                        if app.event_list_state.selected().is_some() {
-                            app.start_edit_event();
-                        }
+                        // Reserved for future use
                         app.number_buffer.clear();
                     }
                     KeyCode::Left => {
                         let count = app.get_count();
                         app.move_selection_left_by(count);
-                        app.event_list_state.select(None);
                         app.number_buffer.clear();
                     }
                     KeyCode::Right => {
                         let count = app.get_count();
                         app.move_selection_right_by(count);
-                        app.event_list_state.select(None);
                         app.number_buffer.clear();
                     }
                     KeyCode::Up => {
-                        if app.event_list_state.selected().is_some() {
-                            app.previous_event_in_list();
-                            app.number_buffer.clear();
-                        } else {
-                            let count = app.get_count();
-                            app.move_selection_up_by(count);
-                            app.number_buffer.clear();
-                        }
+                        let count = app.get_count();
+                        app.move_selection_up_by(count);
+                        app.number_buffer.clear();
                     }
                     KeyCode::Down => {
-                        if app.event_list_state.selected().is_some() {
-                            app.next_event_in_list();
-                            app.number_buffer.clear();
-                        } else {
-                            let count = app.get_count();
-                            app.move_selection_down_by(count);
-                            app.number_buffer.clear();
-                        }
+                        let count = app.get_count();
+                        app.move_selection_down_by(count);
+                        app.number_buffer.clear();
                     }
                     KeyCode::Tab => {
-                        let events = app.get_selected_date_events();
-                        if !events.is_empty() {
-                            if app.event_list_state.selected().is_none() {
-                                app.event_list_state.select(Some(0));
-                            } else {
-                                app.event_list_state.select(None);
-                            }
-                        }
+                        // Tab can be used for future features or removed
                         app.number_buffer.clear();
                     }
                     KeyCode::Enter => {
-                        if app.event_list_state.selected().is_some() {
-                            app.show_event_details();
-                        }
+                        // Enter can be used for future features or removed
                         app.number_buffer.clear();
                     }
                     KeyCode::Delete => {
-                        app.start_delete_event();
+                        // Reserved for future use
                         app.number_buffer.clear();
                     }
                     KeyCode::Char(',') => {
