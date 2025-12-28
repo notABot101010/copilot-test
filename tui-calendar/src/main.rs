@@ -675,27 +675,26 @@ fn render_day_cell(f: &mut Frame, area: Rect, day: u32, is_today: bool, is_selec
         };
 
         let mut event_lines = Vec::new();
-        for (i, event) in events.iter().take(2).enumerate() {
-            if i < events_area.height as usize {
-                let time_str = event.time
-                    .map(|t| format!("{} ", t.format("%H:%M")))
-                    .unwrap_or_default();
-                
-                let available_width = events_area.width as usize;
-                let max_title_len = available_width.saturating_sub(time_str.len()).max(1);
-                
-                let title = if event.title.len() > max_title_len {
-                    format!("{}…", &event.title[0..max_title_len.saturating_sub(1)])
-                } else {
-                    event.title.clone()
-                };
-                
-                let event_text = format!("{}{}", time_str, title);
-                event_lines.push(Line::from(Span::styled(
-                    event_text,
-                    Style::default().fg(Color::White)
-                )));
-            }
+        for event in events.iter().take(2) {
+            let time_str = event.time
+                .map(|t| format!("{} ", t.format("%H:%M")))
+                .unwrap_or_default();
+            
+            let available_width = events_area.width as usize;
+            let max_title_len = available_width.saturating_sub(time_str.len()).max(1);
+            
+            // Use char-based truncation to handle multi-byte UTF-8 characters safely
+            let title = if event.title.chars().count() > max_title_len {
+                format!("{}…", event.title.chars().take(max_title_len.saturating_sub(1)).collect::<String>())
+            } else {
+                event.title.clone()
+            };
+            
+            let event_text = format!("{}{}", time_str, title);
+            event_lines.push(Line::from(Span::styled(
+                event_text,
+                Style::default().fg(Color::White)
+            )));
         }
 
         // Show "+N more" if there are more events
