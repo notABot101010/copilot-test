@@ -194,19 +194,16 @@ impl App {
             }
         }
         
-        // Then, add timed events sorted by hour
+        // Then, add timed events sorted by start time
         let mut timed_events: Vec<&CalendarEvent> = events
             .iter()
             .copied()
             .filter(|e| e.start_time.is_some())
             .collect();
         
-        // Sort timed events by start_time
+        // Sort timed events by start_time (all have Some(start_time) due to filter)
         timed_events.sort_by(|a, b| {
-            match (a.start_time, b.start_time) {
-                (Some(at), Some(bt)) => at.cmp(&bt),
-                _ => std::cmp::Ordering::Equal,
-            }
+            a.start_time.unwrap().cmp(&b.start_time.unwrap())
         });
         
         display_order.extend(timed_events);
