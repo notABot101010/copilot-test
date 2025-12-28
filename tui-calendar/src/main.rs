@@ -49,6 +49,11 @@ enum AppMode {
     EventListFocused,
 }
 
+enum PanelFocus {
+    Calendar,
+    DayView,
+}
+
 enum CreateEventField {
     Title,
     Description,
@@ -61,6 +66,7 @@ enum CreateEventField {
 
 struct App {
     mode: AppMode,
+    panel_focus: PanelFocus,
     events: Vec<CalendarEvent>,
     next_event_id: usize,
     current_date: NaiveDate,
@@ -102,6 +108,9 @@ struct App {
     search_results: Vec<usize>, // Event IDs
     search_list_state: ListState,
     recently_viewed: Vec<usize>, // Event IDs
+    
+    // Help dialog scroll state
+    help_scroll: u16,
 }
 
 impl App {
@@ -115,6 +124,7 @@ impl App {
         
         Ok(Self {
             mode: AppMode::Normal,
+            panel_focus: PanelFocus::Calendar,
             events,
             next_event_id,
             current_date: today,
@@ -144,6 +154,7 @@ impl App {
             search_results: Vec::new(),
             search_list_state: ListState::default(),
             recently_viewed: Vec::new(),
+            help_scroll: 0,
         })
     }
 
@@ -714,6 +725,13 @@ impl App {
     fn unfocus_event_list(&mut self) {
         self.mode = AppMode::Normal;
     }
+    
+    fn toggle_panel_focus(&mut self) {
+        self.panel_focus = match self.panel_focus {
+            PanelFocus::Calendar => PanelFocus::DayView,
+            PanelFocus::DayView => PanelFocus::Calendar,
+        };
+    }
 }
 
 // Helper function to get color for a category
@@ -768,7 +786,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         AppMode::EditEvent => render_edit_event_modal(f, app),
         AppMode::ViewEvent => render_view_event_modal(f, app),
         AppMode::ConfirmDelete => render_confirm_delete_modal(f, app),
-        AppMode::Help => render_help_modal(f),
+        AppMode::Help => render_help_modal(f, app),
         AppMode::Search => render_search_modal(f, app),
         _ => {}
     }
@@ -806,10 +824,17 @@ fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
         year
     );
 
+    let is_focused = matches!(app.panel_focus, PanelFocus::Calendar);
+    
     let block = Block::default()
         .borders(Borders::ALL)
         .title(title)
-        .title_alignment(Alignment::Center);
+        .title_alignment(Alignment::Center)
+        .border_style(if is_focused {
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        });
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -825,14 +850,13 @@ fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
     // Calculate grid dimensions
     let cell_width = (inner.width / 7).max(12); // At least 12 chars wide per cell
     let header_height = 1;
-    let help_height = 2;
     
     // Calculate number of weeks to display
     let total_cells = weekday_of_first + days_in_month as usize;
     let num_weeks = ((total_cells + 6) / 7).min(6); // Round up, max 6 weeks
     
     // Calculate cell height dynamically based on available space
-    let available_grid_height = inner.height.saturating_sub(header_height + help_height + 1);
+    let available_grid_height = inner.height.saturating_sub(header_height + 1);
     let cell_height = if num_weeks > 0 {
         (available_grid_height / num_weeks as u16).max(3) // At least 3 lines per cell
     } else {
@@ -862,7 +886,7 @@ fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
         x: inner.x,
         y: inner.y + header_height + 1,
         width: inner.width,
-        height: inner.height.saturating_sub(header_height + help_height + 1),
+        height: inner.height.saturating_sub(header_height + 1),
     };
 
     let mut day_counter = 1;
@@ -914,33 +938,6 @@ fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
             current_weekday = (current_weekday + 1) % 7;
         }
     }
-
-    // Render help text
-    let help_area = Rect {
-        x: inner.x,
-        y: inner.y + inner.height.saturating_sub(help_height),
-        width: inner.width,
-        height: help_height,
-    };
-
-    let help_text = vec![
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("Arrows", Style::default().fg(Color::Yellow)),
-            Span::raw(": Navigate  "),
-            Span::styled("W", Style::default().fg(Color::Yellow)),
-            Span::raw(": Week View  "),
-            Span::styled("N", Style::default().fg(Color::Yellow)),
-            Span::raw(": New  "),
-            Span::styled("T", Style::default().fg(Color::Yellow)),
-            Span::raw(": Today  "),
-            Span::styled("H", Style::default().fg(Color::Yellow)),
-            Span::raw(": Help  "),
-            Span::styled("Q", Style::default().fg(Color::Yellow)),
-            Span::raw(": Quit"),
-        ]),
-    ];
-    f.render_widget(Paragraph::new(help_text), help_area);
 }
 
 fn render_day_cell(f: &mut Frame, area: Rect, day: u32, is_today: bool, is_selected: bool, events: &[&CalendarEvent]) {
@@ -1054,7 +1051,7 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
         app.selected_date.format("%Y-%m-%d (%A)")
     );
 
-    let is_focused = matches!(app.mode, AppMode::EventListFocused);
+    let is_focused = matches!(app.panel_focus, PanelFocus::DayView);
     
     let block = Block::default()
         .borders(Borders::ALL)
@@ -1072,10 +1069,6 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
     if inner.height < 3 {
         return;
     }
-
-    // Reserve space for help text at the bottom
-    let help_height = 2;
-    let available_height = inner.height.saturating_sub(help_height);
 
     // Render hour slots
     let mut lines = Vec::new();
@@ -1194,33 +1187,12 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
         x: inner.x,
         y: inner.y,
         width: inner.width,
-        height: available_height,
+        height: inner.height,
     };
     
     let paragraph = Paragraph::new(lines)
         .scroll((0, 0));
     f.render_widget(paragraph, day_view_area);
-
-    // Render help text at bottom
-    let help_area = Rect {
-        x: inner.x,
-        y: inner.y + available_height,
-        width: inner.width,
-        height: help_height,
-    };
-
-    let help_text = vec![
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Yellow)),
-            Span::raw(": Focus Events  "),
-            Span::styled("N", Style::default().fg(Color::Yellow)),
-            Span::raw(": New  "),
-            Span::styled("/", Style::default().fg(Color::Yellow)),
-            Span::raw(": Search"),
-        ]),
-    ];
-    f.render_widget(Paragraph::new(help_text), help_area);
 }
 
 // Helper function to render cursor for input fields
@@ -1835,7 +1807,12 @@ fn render_week_view(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let mode_text = match app.mode {
-        AppMode::Normal => "NORMAL",
+        AppMode::Normal => {
+            match app.panel_focus {
+                PanelFocus::Calendar => "NORMAL - CALENDAR",
+                PanelFocus::DayView => "NORMAL - DAY VIEW",
+            }
+        }
         AppMode::CreateEvent => "CREATE EVENT",
         AppMode::EditEvent => "EDIT EVENT",
         AppMode::ViewEvent => "VIEW EVENT",
@@ -1853,6 +1830,12 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
     );
     
     let style = match app.mode {
+        AppMode::Normal => {
+            match app.panel_focus {
+                PanelFocus::DayView => Style::default().bg(Color::Cyan).fg(Color::Black),
+                _ => Style::default().bg(Color::DarkGray).fg(Color::White),
+            }
+        }
         AppMode::EventListFocused => Style::default().bg(Color::Cyan).fg(Color::Black),
         AppMode::Search => Style::default().bg(Color::Yellow).fg(Color::Black),
         AppMode::Help => Style::default().bg(Color::Green).fg(Color::Black),
@@ -1865,7 +1848,7 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(status_bar, area);
 }
 
-fn render_help_modal(f: &mut Frame) {
+fn render_help_modal(f: &mut Frame, app: &App) {
     let area = centered_rect(70, 80, f.area());
 
     let block = Block::default()
@@ -1889,7 +1872,7 @@ fn render_help_modal(f: &mut Frame) {
         Line::from(Span::styled("Event Management", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
         Line::from("  n: Create new event"),
         Line::from("  /: Search events"),
-        Line::from("  Tab: Focus event list panel"),
+        Line::from("  Tab: Toggle focus between calendar and day view panels"),
         Line::from("  Enter: (in event list) Edit selected event"),
         Line::from(""),
         Line::from(Span::styled("Event List Panel (when focused with Tab)", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
@@ -1917,6 +1900,9 @@ fn render_help_modal(f: &mut Frame) {
         Line::from("  q: Quit application"),
         Line::from("  [number] + arrow: Move by multiple units (vim-style)"),
         Line::from(""),
+        Line::from(Span::styled("Help Navigation", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        Line::from("  Up/Down: Scroll help text"),
+        Line::from(""),
         Line::from(vec![
             Span::styled("Press ", Style::default()),
             Span::styled("Esc", Style::default().fg(Color::Cyan)),
@@ -1926,6 +1912,7 @@ fn render_help_modal(f: &mut Frame) {
 
     let paragraph = Paragraph::new(help_text)
         .wrap(Wrap { trim: false })
+        .scroll((app.help_scroll, 0))
         .style(Style::default().fg(Color::White));
 
     f.render_widget(paragraph, inner);
@@ -2114,8 +2101,11 @@ fn run_app<B: ratatui::backend::Backend>(
                     }
                     KeyCode::Char(c) if c.is_ascii_digit() => {
                         // Build up number buffer for vim-style numeric prefixes
-                        if app.number_buffer.len() < MAX_BUFFER_LEN {
-                            app.number_buffer.push(c);
+                        // Only process digits when calendar panel is focused
+                        if matches!(app.panel_focus, PanelFocus::Calendar) {
+                            if app.number_buffer.len() < MAX_BUFFER_LEN {
+                                app.number_buffer.push(c);
+                            }
                         }
                     }
                     KeyCode::Char('e') | KeyCode::Char('E') => {
@@ -2123,27 +2113,35 @@ fn run_app<B: ratatui::backend::Backend>(
                         app.number_buffer.clear();
                     }
                     KeyCode::Left => {
-                        let count = app.get_count();
-                        app.move_selection_left_by(count);
-                        app.number_buffer.clear();
+                        if matches!(app.panel_focus, PanelFocus::Calendar) {
+                            let count = app.get_count();
+                            app.move_selection_left_by(count);
+                            app.number_buffer.clear();
+                        }
                     }
                     KeyCode::Right => {
-                        let count = app.get_count();
-                        app.move_selection_right_by(count);
-                        app.number_buffer.clear();
+                        if matches!(app.panel_focus, PanelFocus::Calendar) {
+                            let count = app.get_count();
+                            app.move_selection_right_by(count);
+                            app.number_buffer.clear();
+                        }
                     }
                     KeyCode::Up => {
-                        let count = app.get_count();
-                        app.move_selection_up_by(count);
-                        app.number_buffer.clear();
+                        if matches!(app.panel_focus, PanelFocus::Calendar) {
+                            let count = app.get_count();
+                            app.move_selection_up_by(count);
+                            app.number_buffer.clear();
+                        }
                     }
                     KeyCode::Down => {
-                        let count = app.get_count();
-                        app.move_selection_down_by(count);
-                        app.number_buffer.clear();
+                        if matches!(app.panel_focus, PanelFocus::Calendar) {
+                            let count = app.get_count();
+                            app.move_selection_down_by(count);
+                            app.number_buffer.clear();
+                        }
                     }
                     KeyCode::Tab => {
-                        app.focus_event_list();
+                        app.toggle_panel_focus();
                         app.number_buffer.clear();
                     }
                     KeyCode::Enter => {
@@ -2268,6 +2266,13 @@ fn run_app<B: ratatui::backend::Backend>(
                 AppMode::Help => match key.code {
                     KeyCode::Esc => {
                         app.mode = AppMode::Normal;
+                        app.help_scroll = 0;
+                    }
+                    KeyCode::Up => {
+                        app.help_scroll = app.help_scroll.saturating_sub(1);
+                    }
+                    KeyCode::Down => {
+                        app.help_scroll = app.help_scroll.saturating_add(1);
                     }
                     _ => {}
                 },
@@ -2304,6 +2309,12 @@ fn run_app<B: ratatui::backend::Backend>(
                     }
                     KeyCode::Enter => {
                         app.start_edit_event();
+                    }
+                    KeyCode::Char('n') | KeyCode::Char('N') => {
+                        app.start_create_event();
+                    }
+                    KeyCode::Char('/') => {
+                        app.start_search();
                     }
                     _ => {}
                 },
