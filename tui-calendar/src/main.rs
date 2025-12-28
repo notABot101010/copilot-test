@@ -40,6 +40,7 @@ enum AppMode {
     EditEvent,
     ViewEvent,
     ConfirmDelete,
+    WeekView,
 }
 
 enum CreateEventField {
@@ -481,6 +482,37 @@ impl App {
             .min(MAX_COUNT)
     }
 
+    fn toggle_week_view(&mut self) {
+        match self.mode {
+            AppMode::Normal => {
+                self.mode = AppMode::WeekView;
+            }
+            AppMode::WeekView => {
+                self.mode = AppMode::Normal;
+            }
+            _ => {}
+        }
+    }
+
+    fn get_week_dates(&self) -> Vec<NaiveDate> {
+        let mut dates = Vec::new();
+        let weekday = self.selected_date.weekday().num_days_from_sunday();
+        
+        // Get the start of the week (Sunday)
+        let week_start = self.selected_date
+            .checked_sub_days(chrono::Days::new(weekday as u64))
+            .unwrap_or(self.selected_date);
+        
+        // Get all 7 days of the week
+        for i in 0..7 {
+            if let Some(date) = week_start.checked_add_days(chrono::Days::new(i)) {
+                dates.push(date);
+            }
+        }
+        
+        dates
+    }
+
     fn handle_create_event_input(&mut self, key_event: &Event) {
         match self.create_event_field {
             CreateEventField::Title => {
@@ -535,13 +567,20 @@ impl App {
 }
 
 fn ui(f: &mut Frame, app: &mut App) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
-        .split(f.area());
+    match app.mode {
+        AppMode::WeekView => {
+            render_week_view(f, app, f.area());
+        }
+        _ => {
+            let chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+                .split(f.area());
 
-    render_calendar(f, app, chunks[0]);
-    render_day_view(f, app, chunks[1]);
+            render_calendar(f, app, chunks[0]);
+            render_day_view(f, app, chunks[1]);
+        }
+    }
 
     match app.mode {
         AppMode::CreateEvent => render_create_event_modal(f, app),
@@ -703,6 +742,8 @@ fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled("Arrows", Style::default().fg(Color::Yellow)),
             Span::raw(": Navigate  "),
+            Span::styled("W", Style::default().fg(Color::Yellow)),
+            Span::raw(": Week View  "),
             Span::styled("Ctrl+N", Style::default().fg(Color::Yellow)),
             Span::raw(": New  "),
             Span::styled("Ctrl+T", Style::default().fg(Color::Yellow)),
@@ -1460,6 +1501,184 @@ fn render_confirm_delete_modal(f: &mut Frame, _app: &App) {
     f.render_widget(paragraph, inner);
 }
 
+fn render_week_view(f: &mut Frame, app: &App, area: Rect) {
+    let week_dates = app.get_week_dates();
+    
+    // Get week range for title
+    let week_start = week_dates.first().unwrap();
+    let week_end = week_dates.last().unwrap();
+    
+    let title = format!(
+        " Week View - {} to {} ",
+        week_start.format("%Y-%m-%d"),
+        week_end.format("%Y-%m-%d")
+    );
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .title_alignment(Alignment::Center);
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    if inner.height < 10 || inner.width < 40 {
+        return;
+    }
+
+    // Create layout for 7 days
+    let day_width = inner.width / 7;
+    let header_height = 2;
+    let help_height = 2;
+    
+    // Render day headers
+    let mut header_x = inner.x;
+    let weekday_labels = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    
+    for (idx, date) in week_dates.iter().enumerate() {
+        let is_today = *date == app.current_date;
+        let is_selected = *date == app.selected_date;
+        
+        let header_area = Rect {
+            x: header_x,
+            y: inner.y,
+            width: day_width.min(inner.x + inner.width - header_x),
+            height: header_height,
+        };
+        
+        let day_label = format!("{}", weekday_labels[idx]);
+        let date_label = format!("{}", date.format("%m/%d"));
+        
+        let header_style = if is_selected {
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        } else if is_today {
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+        
+        let header_text = vec![
+            Line::from(Span::styled(&day_label[0..3], header_style)),
+            Line::from(Span::styled(date_label, header_style)),
+        ];
+        
+        f.render_widget(
+            Paragraph::new(header_text).alignment(Alignment::Center),
+            header_area
+        );
+        
+        header_x += day_width;
+    }
+    
+    // Render events for each day
+    let events_area_height = inner.height.saturating_sub(header_height + help_height);
+    let mut day_x = inner.x;
+    
+    for date in week_dates.iter() {
+        let events = app.get_events_for_date(*date);
+        let is_selected = *date == app.selected_date;
+        
+        let day_area = Rect {
+            x: day_x,
+            y: inner.y + header_height,
+            width: day_width.min(inner.x + inner.width - day_x),
+            height: events_area_height,
+        };
+        
+        // Draw border for this day
+        let border_style = if is_selected {
+            Style::default().fg(Color::Cyan)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
+        
+        let day_block = Block::default()
+            .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
+            .border_style(border_style);
+        
+        let day_inner = day_block.inner(day_area);
+        f.render_widget(day_block, day_area);
+        
+        // Render events for this day
+        if !events.is_empty() {
+            let mut event_lines = Vec::new();
+            let max_events = (day_inner.height as usize).min(events.len());
+            
+            for event in events.iter().take(max_events) {
+                let time_str = if let (Some(start), Some(end)) = (event.start_time, event.end_time) {
+                    format!("{}-{}", start.format("%H:%M"), end.format("%H:%M"))
+                } else if let Some(start) = event.start_time {
+                    format!("{}", start.format("%H:%M"))
+                } else {
+                    "All Day".to_string()
+                };
+                
+                let available_width = day_inner.width.saturating_sub(2) as usize;
+                let title = if event.title.chars().count() > available_width {
+                    format!("{}…", event.title.chars().take(available_width.saturating_sub(1)).collect::<String>())
+                } else {
+                    event.title.clone()
+                };
+                
+                // Choose color based on category
+                let event_color = event.category.as_ref().and_then(|cat| {
+                    match cat.to_lowercase().as_str() {
+                        "work" => Some(Color::Cyan),
+                        "personal" => Some(Color::Green),
+                        "meeting" => Some(Color::Yellow),
+                        "important" => Some(Color::Red),
+                        _ => None,
+                    }
+                }).unwrap_or(Color::White);
+                
+                event_lines.push(Line::from(Span::styled(
+                    time_str,
+                    Style::default().fg(Color::Gray)
+                )));
+                event_lines.push(Line::from(Span::styled(
+                    title,
+                    Style::default().fg(event_color).add_modifier(Modifier::BOLD)
+                )));
+            }
+            
+            if events.len() > max_events {
+                let more_count = events.len() - max_events;
+                event_lines.push(Line::from(Span::styled(
+                    format!("+{} more", more_count),
+                    Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC)
+                )));
+            }
+            
+            f.render_widget(Paragraph::new(event_lines), day_inner);
+        }
+        
+        day_x += day_width;
+    }
+    
+    // Render help text
+    let help_area = Rect {
+        x: inner.x,
+        y: inner.y + inner.height.saturating_sub(help_height),
+        width: inner.width,
+        height: help_height,
+    };
+
+    let help_text = vec![
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("W", Style::default().fg(Color::Yellow)),
+            Span::raw(": Toggle Week View  "),
+            Span::styled("Ctrl+N", Style::default().fg(Color::Yellow)),
+            Span::raw(": New Event  "),
+            Span::styled("←/→", Style::default().fg(Color::Yellow)),
+            Span::raw(": Prev/Next Week  "),
+            Span::styled("Q", Style::default().fg(Color::Yellow)),
+            Span::raw(": Quit"),
+        ]),
+    ];
+    f.render_widget(Paragraph::new(help_text), help_area);
+}
+
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -1529,6 +1748,10 @@ fn run_app<B: ratatui::backend::Backend>(
                         app.selected_date = app.current_date;
                         app.number_buffer.clear();
                     }
+                    KeyCode::Char('w') | KeyCode::Char('W') => {
+                        app.toggle_week_view();
+                        app.number_buffer.clear();
+                    }
                     KeyCode::Char(c) if c.is_ascii_digit() => {
                         // Build up number buffer for vim-style numeric prefixes
                         if app.number_buffer.len() < MAX_BUFFER_LEN {
@@ -1581,6 +1804,36 @@ fn run_app<B: ratatui::backend::Backend>(
                     }
                     KeyCode::Esc => {
                         app.number_buffer.clear();
+                    }
+                    _ => {}
+                },
+                AppMode::WeekView => match key.code {
+                    KeyCode::Char('q') | KeyCode::Char('Q') => {
+                        return Ok(());
+                    }
+                    KeyCode::Char('w') | KeyCode::Char('W') => {
+                        app.toggle_week_view();
+                    }
+                    KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.start_create_event();
+                    }
+                    KeyCode::Char('t') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.selected_date = app.current_date;
+                    }
+                    KeyCode::Left => {
+                        // Move to previous week
+                        if let Some(new_date) = app.selected_date.checked_sub_days(chrono::Days::new(7)) {
+                            app.selected_date = new_date;
+                        }
+                    }
+                    KeyCode::Right => {
+                        // Move to next week
+                        if let Some(new_date) = app.selected_date.checked_add_days(chrono::Days::new(7)) {
+                            app.selected_date = new_date;
+                        }
+                    }
+                    KeyCode::Esc => {
+                        app.toggle_week_view();
                     }
                     _ => {}
                 },
