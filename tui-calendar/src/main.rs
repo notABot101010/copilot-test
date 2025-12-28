@@ -24,6 +24,8 @@ const MIN_YEAR: i32 = 1900;
 const MAX_YEAR: i32 = 3000;
 const MAX_COUNT: usize = 9999;
 const MAX_BUFFER_LEN: usize = 4;
+const SELECTION_MARKER_WIDTH: usize = 6;
+const TIMED_EVENT_MARKER_WIDTH: usize = 10;
 
 #[derive(Clone, Debug)]
 struct CalendarEvent {
@@ -171,6 +173,14 @@ impl App {
 
     fn get_selected_date_events(&self) -> Vec<&CalendarEvent> {
         self.get_events_for_date(self.selected_date)
+    }
+
+    fn get_all_day_events<'a>(&self, events: &'a [&CalendarEvent]) -> Vec<&'a CalendarEvent> {
+        events
+            .iter()
+            .copied()
+            .filter(|e| e.start_time.is_none())
+            .collect()
     }
 
     fn move_to_previous_month(&mut self) {
@@ -1089,11 +1099,7 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
     let mut event_line_idx = 0; // Track which event we're rendering
     
     // Add all-day events and multi-day events at the top
-    let all_day_events: Vec<&CalendarEvent> = events
-        .iter()
-        .copied()
-        .filter(|e| e.start_time.is_none())
-        .collect();
+    let all_day_events = app.get_all_day_events(&events);
     
     if !all_day_events.is_empty() {
         let mut all_day_lines = vec![
@@ -1102,7 +1108,7 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
         
         for event in all_day_events {
             let is_selected = selected_idx == Some(event_line_idx);
-            let available_width = inner.width.saturating_sub(6) as usize; // Extra space for selection marker
+            let available_width = inner.width.saturating_sub(SELECTION_MARKER_WIDTH as u16) as usize; // Extra space for selection marker
             let title = truncate_text(&event.title, available_width);
             
             // Show date range for multi-day events
@@ -1191,7 +1197,7 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
                     "      ".to_string()
                 };
                 
-                let available_width = inner.width.saturating_sub(10) as usize; // Extra space for marker
+                let available_width = inner.width.saturating_sub(TIMED_EVENT_MARKER_WIDTH as u16) as usize; // Extra space for marker
                 let title = truncate_text(&event.title, available_width);
                 
                 // Use helper function for category color
