@@ -2465,3 +2465,83 @@ fn main() -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_events_in_display_order() {
+        // Create a test app with some events
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        
+        // Create test events in a specific order that differs from display order
+        let event1 = CalendarEvent {
+            id: 1,
+            title: "Morning Meeting".to_string(),
+            description: "".to_string(),
+            start_date: date,
+            end_date: None,
+            start_time: Some(NaiveTime::from_hms_opt(9, 0, 0).unwrap()),
+            end_time: Some(NaiveTime::from_hms_opt(10, 0, 0).unwrap()),
+            category: None,
+        };
+        
+        let event2 = CalendarEvent {
+            id: 2,
+            title: "All Day Event".to_string(),
+            description: "".to_string(),
+            start_date: date,
+            end_date: None,
+            start_time: None,
+            end_time: None,
+            category: None,
+        };
+        
+        let event3 = CalendarEvent {
+            id: 3,
+            title: "Afternoon Meeting".to_string(),
+            description: "".to_string(),
+            start_date: date,
+            end_date: None,
+            start_time: Some(NaiveTime::from_hms_opt(14, 0, 0).unwrap()),
+            end_time: Some(NaiveTime::from_hms_opt(15, 0, 0).unwrap()),
+            category: None,
+        };
+        
+        let event4 = CalendarEvent {
+            id: 4,
+            title: "Another All Day".to_string(),
+            description: "".to_string(),
+            start_date: date,
+            end_date: None,
+            start_time: None,
+            end_time: None,
+            category: None,
+        };
+        
+        // Create app with events in mixed order
+        let mut app = App::new().unwrap();
+        app.events = vec![event1.clone(), event2.clone(), event3.clone(), event4.clone()];
+        app.selected_date = date;
+        
+        // Get events in display order
+        let display_order = app.get_events_in_display_order();
+        
+        // Verify order: all-day events first, then timed events sorted by time
+        assert_eq!(display_order.len(), 4);
+        
+        // First two should be all-day events (no start_time)
+        assert!(display_order[0].start_time.is_none(), "First event should be all-day");
+        assert!(display_order[1].start_time.is_none(), "Second event should be all-day");
+        
+        // Next two should be timed events in chronological order
+        assert_eq!(display_order[2].id, 1, "Third event should be Morning Meeting (9am)");
+        assert_eq!(display_order[3].id, 3, "Fourth event should be Afternoon Meeting (2pm)");
+        
+        // Verify the timed events are in time order
+        if let (Some(t1), Some(t2)) = (display_order[2].start_time, display_order[3].start_time) {
+            assert!(t1 < t2, "Timed events should be in chronological order");
+        }
+    }
+}
