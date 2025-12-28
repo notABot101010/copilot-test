@@ -506,95 +506,98 @@ fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
     let weekday_of_first = first_of_month.weekday().num_days_from_sunday() as usize;
     let days_in_month = days_in_month(year, month);
 
+    // Calculate grid dimensions
+    let cell_width = (inner.width / 7).max(12); // At least 12 chars wide per cell
+    let cell_height = 5; // Fixed height for each day cell (box)
+    let header_height = 1;
+    let help_height = 2;
+    
     // Render weekday headers
     let header_area = Rect {
         x: inner.x,
         y: inner.y,
         width: inner.width,
-        height: 1,
+        height: header_height,
     };
 
-    let weekdays = vec![
-        Span::styled("Su ", Style::default().fg(Color::Yellow)),
-        Span::styled("Mo ", Style::default().fg(Color::Yellow)),
-        Span::styled("Tu ", Style::default().fg(Color::Yellow)),
-        Span::styled("We ", Style::default().fg(Color::Yellow)),
-        Span::styled("Th ", Style::default().fg(Color::Yellow)),
-        Span::styled("Fr ", Style::default().fg(Color::Yellow)),
-        Span::styled("Sa ", Style::default().fg(Color::Yellow)),
-    ];
-    let header_line = Line::from(weekdays);
+    let mut weekday_spans = Vec::new();
+    let weekday_labels = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    for label in weekday_labels.iter() {
+        let shortened = &label[0..2.min(label.len())];
+        let padded = format!("{:^width$}", shortened, width = cell_width as usize);
+        weekday_spans.push(Span::styled(padded, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+    }
+    let header_line = Line::from(weekday_spans);
     f.render_widget(Paragraph::new(header_line), header_area);
 
-    // Render days
+    // Render calendar grid with boxes
     let grid_area = Rect {
         x: inner.x,
-        y: inner.y + 2,
+        y: inner.y + header_height + 1,
         width: inner.width,
-        height: inner.height.saturating_sub(2),
+        height: inner.height.saturating_sub(header_height + help_height + 1),
     };
 
-    let mut lines = Vec::new();
-    let mut current_line = Vec::new();
+    // Calculate number of weeks to display
+    let total_cells = weekday_of_first + days_in_month as usize;
+    let num_weeks = (total_cells + 6) / 7; // Round up
 
-    // Add empty cells for days before the first of the month
-    for _ in 0..weekday_of_first {
-        current_line.push(Span::raw("   "));
-    }
+    let mut day_counter = 1;
+    let mut current_weekday = weekday_of_first;
 
-    // Add days of the month
-    for day in 1..=days_in_month {
-        let date = match NaiveDate::from_ymd_opt(year, month, day) {
-            Some(d) => d,
-            None => continue, // Skip invalid dates
-        };
-        let is_today = date == app.current_date;
-        let is_selected = date == app.selected_date;
-        let has_events = !app.get_events_for_date(date).is_empty();
+    // Render each week row
+    for week in 0..num_weeks.min(6) {
+        let week_y = grid_area.y + (week as u16 * cell_height);
+        if week_y + cell_height > grid_area.y + grid_area.height {
+            break;
+        }
 
-        let day_str = if has_events {
-            format!("{:2}*", day)
-        } else {
-            format!("{:2} ", day)
-        };
+        // Render each day in the week
+        for weekday in 0..7 {
+            let cell_x = grid_area.x + (weekday as u16 * cell_width);
+            
+            // Check if we should render a day
+            let should_render_day = if week == 0 {
+                weekday >= weekday_of_first && day_counter <= days_in_month
+            } else {
+                day_counter <= days_in_month
+            };
 
-        let style = if is_selected {
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Cyan)
-                .add_modifier(Modifier::BOLD)
-        } else if is_today {
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD)
-        } else if has_events {
-            Style::default().fg(Color::Magenta)
-        } else {
-            Style::default()
-        };
+            if should_render_day {
+                let date = match NaiveDate::from_ymd_opt(year, month, day_counter) {
+                    Some(d) => d,
+                    None => {
+                        day_counter += 1;
+                        continue;
+                    }
+                };
 
-        current_line.push(Span::styled(day_str, style));
+                let is_today = date == app.current_date;
+                let is_selected = date == app.selected_date;
+                let events = app.get_events_for_date(date);
 
-        if (weekday_of_first + day as usize) % 7 == 0 {
-            lines.push(Line::from(current_line.clone()));
-            current_line.clear();
+                // Render day cell box
+                let cell_area = Rect {
+                    x: cell_x,
+                    y: week_y,
+                    width: cell_width.min(grid_area.x + grid_area.width - cell_x),
+                    height: cell_height,
+                };
+
+                render_day_cell(f, cell_area, day_counter, is_today, is_selected, &events);
+                day_counter += 1;
+            }
+            
+            current_weekday = (current_weekday + 1) % 7;
         }
     }
-
-    // Add the last line if it has content
-    if !current_line.is_empty() {
-        lines.push(Line::from(current_line));
-    }
-
-    let calendar_text = Text::from(lines);
-    f.render_widget(Paragraph::new(calendar_text), grid_area);
 
     // Render help text
     let help_area = Rect {
         x: inner.x,
-        y: inner.y + inner.height.saturating_sub(3),
+        y: inner.y + inner.height.saturating_sub(help_height),
         width: inner.width,
-        height: 2,
+        height: help_height,
     };
 
     let help_text = vec![
@@ -609,6 +612,103 @@ fn render_calendar(f: &mut Frame, app: &App, area: Rect) {
         ]),
     ];
     f.render_widget(Paragraph::new(help_text), help_area);
+}
+
+fn render_day_cell(f: &mut Frame, area: Rect, day: u32, is_today: bool, is_selected: bool, events: &[&CalendarEvent]) {
+    if area.width < 3 || area.height < 2 {
+        return;
+    }
+
+    // Determine box style based on state
+    let (border_style, bg_color) = if is_selected {
+        (Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD), Some(Color::Blue))
+    } else if is_today {
+        (Style::default().fg(Color::Green).add_modifier(Modifier::BOLD), None)
+    } else if !events.is_empty() {
+        (Style::default().fg(Color::Magenta), None)
+    } else {
+        (Style::default().fg(Color::Gray), None)
+    };
+
+    // Create block for day cell
+    let mut block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(border_style);
+    
+    if let Some(bg) = bg_color {
+        block = block.style(Style::default().bg(bg));
+    }
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    // Render day number at the top
+    let day_text = format!("{:>2}", day);
+    let day_style = if is_selected {
+        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+    } else if is_today {
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+    };
+
+    if inner.height > 0 {
+        let day_area = Rect {
+            x: inner.x,
+            y: inner.y,
+            width: inner.width,
+            height: 1,
+        };
+        f.render_widget(
+            Paragraph::new(day_text).style(day_style).alignment(Alignment::Right),
+            day_area
+        );
+    }
+
+    // Render event previews (up to 2 events)
+    if !events.is_empty() && inner.height > 1 {
+        let events_area = Rect {
+            x: inner.x,
+            y: inner.y + 1,
+            width: inner.width,
+            height: inner.height.saturating_sub(1),
+        };
+
+        let mut event_lines = Vec::new();
+        for (i, event) in events.iter().take(2).enumerate() {
+            if i < events_area.height as usize {
+                let time_str = event.time
+                    .map(|t| format!("{} ", t.format("%H:%M")))
+                    .unwrap_or_default();
+                
+                let available_width = events_area.width as usize;
+                let max_title_len = available_width.saturating_sub(time_str.len()).max(1);
+                
+                let title = if event.title.len() > max_title_len {
+                    format!("{}…", &event.title[0..max_title_len.saturating_sub(1)])
+                } else {
+                    event.title.clone()
+                };
+                
+                let event_text = format!("{}{}", time_str, title);
+                event_lines.push(Line::from(Span::styled(
+                    event_text,
+                    Style::default().fg(Color::White)
+                )));
+            }
+        }
+
+        // Show "+N more" if there are more events
+        if events.len() > 2 && event_lines.len() < events_area.height as usize {
+            let more_count = events.len() - 2;
+            event_lines.push(Line::from(Span::styled(
+                format!("+{} more", more_count),
+                Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC)
+            )));
+        }
+
+        f.render_widget(Paragraph::new(event_lines), events_area);
+    }
 }
 
 fn render_event_list(f: &mut Frame, app: &mut App, area: Rect) {
