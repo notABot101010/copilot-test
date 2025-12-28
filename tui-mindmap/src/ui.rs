@@ -154,12 +154,16 @@ impl<'a> Canvas<'a> {
         let mut y = y0 as i32;
 
         loop {
-            if x >= 0 && y >= 0 && (x as u16) < area.width && (y as u16) < area.height {
-                let cell_x = area.x + x as u16;
-                let cell_y = area.y + y as u16;
-                if cell_x < buf.area.width && cell_y < buf.area.height {
-                    if let Some(cell) = buf.cell_mut((cell_x, cell_y)) {
-                        cell.set_symbol("─").set_fg(Color::DarkGray);
+            if x >= 0 && y >= 0 {
+                let ux = x as u16;
+                let uy = y as u16;
+                if ux < area.width && uy < area.height {
+                    let cell_x = area.x + ux;
+                    let cell_y = area.y + uy;
+                    if cell_x < buf.area.width && cell_y < buf.area.height {
+                        if let Some(cell) = buf.cell_mut((cell_x, cell_y)) {
+                            cell.set_symbol("─").set_fg(Color::DarkGray);
+                        }
                     }
                 }
             }
@@ -370,4 +374,3 @@ impl<'a> Widget for SearchBox<'a> {
         paragraph.render(inner, buf);
     }
 }
-
