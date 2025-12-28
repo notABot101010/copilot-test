@@ -495,7 +495,7 @@ impl App {
     }
 
     fn get_week_dates(&self) -> Vec<NaiveDate> {
-        let mut dates = Vec::new();
+        let mut dates = Vec::with_capacity(7);
         let weekday = self.selected_date.weekday().num_days_from_sunday();
         
         // Get the start of the week (Sunday)
@@ -503,11 +503,19 @@ impl App {
             .checked_sub_days(chrono::Days::new(weekday as u64))
             .unwrap_or(self.selected_date);
         
-        // Get all 7 days of the week
+        // Get all 7 days of the week - ensure we always get 7 dates
         for i in 0..7 {
-            if let Some(date) = week_start.checked_add_days(chrono::Days::new(i)) {
-                dates.push(date);
-            }
+            let date = week_start
+                .checked_add_days(chrono::Days::new(i))
+                .unwrap_or_else(|| {
+                    // Fallback: if we can't add days, use an approximate calculation
+                    NaiveDate::from_ymd_opt(
+                        week_start.year() + ((week_start.month() + i as u32) / 12) as i32,
+                        ((week_start.month() + i as u32 - 1) % 12) + 1,
+                        week_start.day()
+                    ).unwrap_or(week_start)
+                });
+            dates.push(date);
         }
         
         dates
@@ -563,6 +571,28 @@ impl App {
                 self.edit_event_category.handle_event(key_event);
             }
         }
+    }
+}
+
+// Helper function to get color for a category
+fn category_color(category: Option<&String>) -> Color {
+    category.and_then(|cat| {
+        match cat.to_lowercase().as_str() {
+            "work" => Some(Color::Cyan),
+            "personal" => Some(Color::Green),
+            "meeting" => Some(Color::Yellow),
+            "important" => Some(Color::Red),
+            _ => None,
+        }
+    }).unwrap_or(Color::White)
+}
+
+// Helper function to truncate text with ellipsis
+fn truncate_text(text: &str, max_len: usize) -> String {
+    if text.chars().count() > max_len {
+        format!("{}…", text.chars().take(max_len.saturating_sub(1)).collect::<String>())
+    } else {
+        text.to_string()
     }
 }
 
@@ -831,25 +861,13 @@ fn render_day_cell(f: &mut Frame, area: Rect, day: u32, is_today: bool, is_selec
             let available_width = events_area.width as usize;
             let max_title_len = available_width.saturating_sub(time_str.len()).max(1);
             
-            // Use char-based truncation to handle multi-byte UTF-8 characters safely
-            let title = if event.title.chars().count() > max_title_len {
-                format!("{}…", event.title.chars().take(max_title_len.saturating_sub(1)).collect::<String>())
-            } else {
-                event.title.clone()
-            };
+            // Use helper function for text truncation
+            let title = truncate_text(&event.title, max_title_len);
             
             let event_text = format!("{}{}", time_str, title);
             
-            // Choose color based on category
-            let event_color = event.category.as_ref().and_then(|cat| {
-                match cat.to_lowercase().as_str() {
-                    "work" => Some(Color::Cyan),
-                    "personal" => Some(Color::Green),
-                    "meeting" => Some(Color::Yellow),
-                    "important" => Some(Color::Red),
-                    _ => None,
-                }
-            }).unwrap_or(Color::White);
+            // Use helper function for category color
+            let event_color = category_color(event.category.as_ref());
             
             event_lines.push(Line::from(Span::styled(
                 event_text,
@@ -939,22 +957,10 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
                 };
                 
                 let available_width = inner.width.saturating_sub(8) as usize;
-                let title = if event.title.chars().count() > available_width {
-                    format!("{}…", event.title.chars().take(available_width.saturating_sub(1)).collect::<String>())
-                } else {
-                    event.title.clone()
-                };
+                let title = truncate_text(&event.title, available_width);
                 
-                // Choose color based on category
-                let event_color = event.category.as_ref().and_then(|cat| {
-                    match cat.to_lowercase().as_str() {
-                        "work" => Some(Color::Cyan),
-                        "personal" => Some(Color::Green),
-                        "meeting" => Some(Color::Yellow),
-                        "important" => Some(Color::Red),
-                        _ => None,
-                    }
-                }).unwrap_or(Color::White);
+                // Use helper function for category color
+                let event_color = category_color(event.category.as_ref());
                 
                 lines.push(Line::from(vec![
                     Span::styled(prefix, Style::default().fg(Color::Cyan)),
@@ -979,11 +985,7 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
         
         for event in all_day_events {
             let available_width = inner.width.saturating_sub(4) as usize;
-            let title = if event.title.chars().count() > available_width {
-                format!("{}…", event.title.chars().take(available_width.saturating_sub(1)).collect::<String>())
-            } else {
-                event.title.clone()
-            };
+            let title = truncate_text(&event.title, available_width);
             
             // Show date range for multi-day events
             let date_info = if let Some(end_date) = event.end_date {
@@ -996,16 +998,8 @@ fn render_day_view(f: &mut Frame, app: &mut App, area: Rect) {
                 String::new()
             };
             
-            // Choose color based on category
-            let event_color = event.category.as_ref().and_then(|cat| {
-                match cat.to_lowercase().as_str() {
-                    "work" => Some(Color::Cyan),
-                    "personal" => Some(Color::Green),
-                    "meeting" => Some(Color::Yellow),
-                    "important" => Some(Color::Red),
-                    _ => None,
-                }
-            }).unwrap_or(Color::White);
+            // Use helper function for category color
+            let event_color = category_color(event.category.as_ref());
             
             all_day_lines.push(Line::from(vec![
                 Span::raw("  • "),
@@ -1504,9 +1498,14 @@ fn render_confirm_delete_modal(f: &mut Frame, _app: &App) {
 fn render_week_view(f: &mut Frame, app: &App, area: Rect) {
     let week_dates = app.get_week_dates();
     
+    // Safety check - should always have 7 dates, but handle edge case
+    if week_dates.is_empty() {
+        return;
+    }
+    
     // Get week range for title
-    let week_start = week_dates.first().unwrap();
-    let week_end = week_dates.last().unwrap();
+    let week_start = &week_dates[0];
+    let week_end = &week_dates[week_dates.len() - 1];
     
     let title = format!(
         " Week View - {} to {} ",
@@ -1614,22 +1613,10 @@ fn render_week_view(f: &mut Frame, app: &App, area: Rect) {
                 };
                 
                 let available_width = day_inner.width.saturating_sub(2) as usize;
-                let title = if event.title.chars().count() > available_width {
-                    format!("{}…", event.title.chars().take(available_width.saturating_sub(1)).collect::<String>())
-                } else {
-                    event.title.clone()
-                };
+                let title = truncate_text(&event.title, available_width);
                 
-                // Choose color based on category
-                let event_color = event.category.as_ref().and_then(|cat| {
-                    match cat.to_lowercase().as_str() {
-                        "work" => Some(Color::Cyan),
-                        "personal" => Some(Color::Green),
-                        "meeting" => Some(Color::Yellow),
-                        "important" => Some(Color::Red),
-                        _ => None,
-                    }
-                }).unwrap_or(Color::White);
+                // Use helper function for category color
+                let event_color = category_color(event.category.as_ref());
                 
                 event_lines.push(Line::from(Span::styled(
                     time_str,
