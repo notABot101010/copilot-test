@@ -7,11 +7,11 @@ A terminal-based web browser built with Rust, featuring ratatui for the UI, toki
 ### Core Features
 - **Tab Management**: Multiple tabs with easy switching
 - **URL Navigation**: Full URL bar with cursor support
-- **Favorites/Bookmarks**: Quick access to frequently visited pages
-- **Content Display**: HTML to text rendering for readable content
+- **Content Display**: HTML to text rendering for readable content with centered layout (60% width)
 - **Keyboard-First Design**: All functionality accessible via keyboard
 - **Link Navigation Mode**: Navigate and open links on the page using keyboard
 - **Smart History Navigation**: Go back/forward through pages, or use Backspace for quick back navigation
+- **Image Detection**: Automatically detects images on pages and displays indicators with URLs and alt text
 
 ### Modern Browser Features
 - **History Navigation**: Go back and forward through visited pages
@@ -19,6 +19,10 @@ A terminal-based web browser built with Rust, featuring ratatui for the UI, toki
 - **Status Bar**: Real-time status updates and help text
 - **Scrollable Help Dialog**: Comprehensive keyboard shortcuts reference with scrolling support
 - **Direct Link Navigation**: Type link number and press Enter to navigate, or Ctrl+Enter for new tab
+- **Page Search**: Search within page content with live results (Ctrl+S)
+- **Zoom Control**: Adjust content width for better readability (+/- keys)
+- **Page Refresh**: Refresh current page with Ctrl+R
+- **Centered Content**: Content displayed in 60% width with 20% margins for optimal reading
 
 ## User Interface
 
@@ -28,10 +32,8 @@ A terminal-based web browser built with Rust, featuring ratatui for the UI, toki
 ├─────────────────────────────────────────────┤
 │ URL Bar                                     │
 ├─────────────────────────────────────────────┤
-│ Favorites Bar                               │
-├─────────────────────────────────────────────┤
 │                                             │
-│ Content Area                                │
+│ Content Area (Centered, 60% width)         │
 │                                             │
 ├─────────────────────────────────────────────┤
 │ Status Bar                                  │
@@ -41,7 +43,7 @@ A terminal-based web browser built with Rust, featuring ratatui for the UI, toki
 ## Keyboard Shortcuts
 
 ### Navigation
-- `Tab` - Cycle between panels (Tab Bar → URL Bar → Favorites → Content)
+- `Tab` - Cycle between panels (Tab Bar → URL Bar → Content)
 - `Ctrl+T` - Open new tab
 - `Ctrl+W` - Close current tab
 - `←/→` (in Tab Bar) - Switch between tabs
@@ -51,18 +53,24 @@ A terminal-based web browser built with Rust, featuring ratatui for the UI, toki
 ### URL Bar
 - `Enter` - Navigate to URL
 - `Ctrl+L` - Focus URL bar
+- `Ctrl+R` - Refresh current page
 - `←/→` - Move cursor
 - `Home/End` - Jump to start/end
 - `Backspace/Delete` - Edit URL
 
-### Favorites
-- `Ctrl+F` - Add current page to favorites
-- `←/→` (in Favorites Bar) - Navigate between favorites
-- `Enter` - Open selected favorite
+### Search
+- `Ctrl+S` - Start search in page
+- `n` - Next search result
+- `N` - Previous search result
+- (In search mode):
+  - Type to search as you type
+  - `Enter` - Go to next result
+  - `Esc` - Exit search
 
 ### Content
 - `↑/↓` or `j/k` - Scroll line by line
 - `PgUp/PgDn` - Scroll page by page
+- `+/-` - Zoom in/out (adjust content width)
 - `0-9` - Type link number
 - `Enter` - Navigate to typed link number
 - `Ctrl+Enter` - Open typed link in new tab
@@ -104,8 +112,9 @@ cargo run --release
 5. Links on the page are displayed with numbers like `[1]`, `[2]`, etc.
 6. Type a link number (e.g., `15`) and press `Enter` to navigate to that link
 7. Type a link number and press `Ctrl+Enter` to open it in a new tab
-8. Use `Ctrl+F` to bookmark the current page
-9. Press `Ctrl+H` to see all keyboard shortcuts
+8. Press `Ctrl+S` to search within the current page
+9. Use `+/-` to zoom in/out and adjust content width
+10. Press `Ctrl+H` to see all keyboard shortcuts
 
 ## Technical Details
 
@@ -130,19 +139,19 @@ cargo run --release
 - No JavaScript support (static content only)
 - Basic HTML rendering (converted to plain text)
 - No CSS styling
-- No image display
+- No image display (images are detected and listed with URLs)
 - No form submission
 - No cookie management
 
 ## Future Enhancements
-- [ ] Search within page (Ctrl+S)
 - [ ] Download manager
 - [ ] Cookie support
 - [ ] Form handling
 - [ ] Better HTML rendering
-- [ ] Persistent bookmarks and history
+- [ ] Persistent history
 - [ ] Configuration file
 - [ ] Theme customization
+- [ ] Sixel image rendering (requires terminal support)
 
 ## License
 
