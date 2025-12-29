@@ -26,9 +26,11 @@ The `ratatui-image` library auto-detects and uses the best available protocol:
 - Converts relative URLs to absolute URLs (with validation)
 - Downloads up to 5 images per page by default (configurable via `MAX_IMAGES_PER_PAGE` constant)
 - Shows image loading status (✓ for loaded, ✗ for failed)
-- Displays first loaded image as a preview in the content area
+- **Currently displays first loaded image only** as a preview in the content area (inline rendering of all images is a future enhancement)
 - Images are resized to fit the display area using high-quality Lanczos3 filtering
 - Skips images with invalid URLs
+
+**Note**: Image downloading is currently synchronous, which may cause a brief pause when loading pages with images. Async image loading is planned for a future update.
 
 ### How It Works
 
@@ -84,9 +86,11 @@ If none of these are available, images are shown as text placeholders.
 ## Future Enhancements
 
 Possible improvements for image support:
-- Render all images inline instead of just the first one
+- **Render all images inline instead of just the first one** (current limitation)
+- **Asynchronous image downloading** to avoid UI blocking
 - Add image gallery view mode
 - Support for inline image cycling with keyboard shortcuts
 - Cache downloaded images to disk
 - Support for more image formats (currently supports PNG, JPEG, GIF, etc.)
 - Lazy loading of images as you scroll
+- Helper function to reduce URL resolution duplication
