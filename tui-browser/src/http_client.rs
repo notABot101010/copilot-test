@@ -37,6 +37,26 @@ impl HttpClient {
         })
     }
 
+    pub fn fetch_image(&self, url: &str) -> Result<image::DynamicImage> {
+        self.runtime.block_on(async {
+            let response = self.client
+                .get(url)
+                .send()
+                .await
+                .context("Failed to send image request")?;
+            
+            let bytes = response
+                .bytes()
+                .await
+                .context("Failed to read image response body")?;
+            
+            let img = image::load_from_memory(&bytes)
+                .context("Failed to decode image")?;
+            
+            Ok(img)
+        })
+    }
+
     pub fn render_html_to_text(&self, html: &str) -> String {
         html2text::from_read(html.as_bytes(), 120)
     }

@@ -3,7 +3,7 @@ use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
-    text::Span,
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
@@ -200,14 +200,7 @@ impl ContentArea {
             return 0;
         }
 
-        let lines: Vec<&str> = content.lines().collect();
-        let total_lines = lines.len();
-        let visible_height = centered_area.height as usize;
-
-        let start_line = scroll_offset.min(total_lines.saturating_sub(1));
-        let end_line = (start_line + visible_height).min(total_lines);
-
-        // Build a map of line indices to link numbers for quick lookup
+        // Build a map of original line indices to link numbers
         let mut line_to_link: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
         for (link_idx, link) in links.iter().enumerate() {
             line_to_link.entry(link.line_index)
@@ -215,19 +208,16 @@ impl ContentArea {
                 .push(link_idx + 1);
         }
 
-        for (i, line) in lines[start_line..end_line].iter().enumerate() {
-            let y = centered_area.y + i as u16;
-            let absolute_line_index = start_line + i;
+        // Build styled lines with link numbers and proper wrapping
+        let mut styled_lines: Vec<Line> = Vec::new();
+        for (line_idx, line) in content.lines().enumerate() {
+            let mut spans = Vec::new();
             
-            let mut x_offset = 0;
-            
-            // Check if this line has any links and prepend link numbers
-            if let Some(link_numbers) = line_to_link.get(&absolute_line_index) {
-                // Display link numbers at the start of the line
+            // Add link numbers if this line has links
+            if let Some(link_numbers) = line_to_link.get(&line_idx) {
                 let link_label = if link_numbers.len() == 1 {
                     format!("[{}] ", link_numbers[0])
                 } else {
-                    // Format multiple link numbers efficiently
                     let mut label = String::from("[");
                     for (idx, num) in link_numbers.iter().enumerate() {
                         if idx > 0 {
@@ -238,33 +228,30 @@ impl ContentArea {
                     label.push_str("] ");
                     label
                 };
-                
-                let link_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
-                
-                for (j, ch) in link_label.chars().enumerate() {
-                    if x_offset + j >= centered_area.width as usize {
-                        break;
-                    }
-                    if let Some(cell) = buf.cell_mut((centered_area.x + (x_offset + j) as u16, y)) {
-                        cell.set_char(ch);
-                        cell.set_style(link_style);
-                    }
-                }
-                x_offset += link_label.len();
+                spans.push(Span::styled(
+                    link_label,
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ));
             }
             
-            // Display the line content
-            let line_style = Style::default().fg(Color::White);
-            for (j, ch) in line.chars().enumerate() {
-                if x_offset + j >= centered_area.width as usize {
-                    break;
-                }
-                if let Some(cell) = buf.cell_mut((centered_area.x + (x_offset + j) as u16, y)) {
-                    cell.set_char(ch);
-                    cell.set_style(line_style);
-                }
-            }
+            // Add the line content
+            spans.push(Span::styled(
+                line.to_string(),
+                Style::default().fg(Color::White),
+            ));
+            
+            styled_lines.push(Line::from(spans));
         }
+
+        let total_lines = styled_lines.len();
+
+        // Create paragraph with proper wrapping
+        let paragraph = Paragraph::new(styled_lines)
+            .style(Style::default().fg(Color::White))
+            .wrap(Wrap { trim: false })
+            .scroll((scroll_offset as u16, 0));
+
+        paragraph.render(centered_area, buf);
 
         total_lines
     }
