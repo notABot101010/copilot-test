@@ -658,6 +658,8 @@ impl App {
                     match key.code {
                         KeyCode::Up | KeyCode::Char('k') => self.previous_link(),
                         KeyCode::Down | KeyCode::Char('j') => self.next_link(),
+                        KeyCode::PageUp => self.scroll_content_page_up(),
+                        KeyCode::PageDown => self.scroll_content_page_down(),
                         KeyCode::Enter => self.open_selected_link(),
                         KeyCode::Esc => self.exit_link_navigation_mode(),
                         _ => {}
