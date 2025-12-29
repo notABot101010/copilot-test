@@ -4,4 +4,4 @@ pub mod ui;
 
 // Re-export commonly used types
 pub use http_client::HttpClient;
-pub use models::{Bookmark, HistoryEntry, Link, NavigationHistory, Tab};
+pub use models::{Bookmark, HistoryEntry, ImageInfo, Link, NavigationHistory, Tab};

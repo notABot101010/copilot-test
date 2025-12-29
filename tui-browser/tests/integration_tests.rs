@@ -88,3 +88,17 @@ fn test_link_creation() {
     assert_eq!(link.url, "https://example.com");
     assert_eq!(link.line_index, 5);
 }
+
+#[test]
+fn test_image_info_creation() {
+    // Test ImageInfo creation
+    let image = tui_browser::ImageInfo::new(
+        "https://example.com/image.png".to_string(),
+        "Test Image".to_string(),
+        10,
+    );
+    assert_eq!(image.url, "https://example.com/image.png");
+    assert_eq!(image.alt, "Test Image");
+    assert_eq!(image.line_index, 10);
+    assert!(image.data.is_none()); // Initially no image data
+}
