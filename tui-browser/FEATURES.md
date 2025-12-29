@@ -23,11 +23,12 @@ The `ratatui-image` library auto-detects and uses the best available protocol:
 ### Features
 
 - Automatically extracts images from HTML `<img>` tags
-- Converts relative URLs to absolute URLs
-- Downloads up to 5 images per page (configurable)
+- Converts relative URLs to absolute URLs (with validation)
+- Downloads up to 5 images per page by default (configurable via `MAX_IMAGES_PER_PAGE` constant)
 - Shows image loading status (✓ for loaded, ✗ for failed)
 - Displays first loaded image as a preview in the content area
 - Images are resized to fit the display area using high-quality Lanczos3 filtering
+- Skips images with invalid URLs
 
 ### How It Works
 
