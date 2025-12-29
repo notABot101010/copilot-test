@@ -46,6 +46,10 @@ struct App {
     link_number_input: String,
     content_viewport_height: usize,
     content_width_percent: f32,
+    search_mode: bool,
+    search_query: String,
+    search_results: Vec<usize>,
+    current_search_result: usize,
 }
 
 impl App {
@@ -69,6 +73,10 @@ impl App {
             link_number_input: String::new(),
             content_viewport_height: DEFAULT_VIEWPORT_HEIGHT,
             content_width_percent: 0.6,
+            search_mode: false,
+            search_query: String::new(),
+            search_results: Vec::new(),
+            current_search_result: 0,
         })
     }
 
@@ -165,8 +173,11 @@ impl App {
                 // Extract links from HTML
                 let links = Self::extract_links(&html, &text_content);
                 
+                // Detect and insert image indicators
+                let text_with_images = Self::insert_image_indicators(&html, &text_content);
+                
                 let tab = self.current_tab_mut();
-                tab.content = text_content;
+                tab.content = text_with_images;
                 tab.loading = false;
                 tab.scroll_offset = 0;
                 tab.title = title.clone();
@@ -199,6 +210,88 @@ impl App {
                 let title_start = start + 7;
                 let title_end = start + end;
                 return Some(html[title_start..title_end].trim().to_string());
+            }
+        }
+        None
+    }
+
+    fn insert_image_indicators(html: &str, text_content: &str) -> String {
+        let lower = html.to_lowercase();
+        let mut image_urls = Vec::new();
+        
+        // Find all <img> tags
+        let mut pos = 0;
+        while let Some(start_pos) = lower[pos..].find("<img") {
+            let abs_start = pos + start_pos;
+            if let Some(end) = lower[abs_start..].find('>') {
+                let abs_end = abs_start + end;
+                let img_tag = &html[abs_start..abs_end + 1];
+                
+                // Extract src attribute
+                if let Some(src) = Self::extract_src_from_img(img_tag) {
+                    // Extract alt text if available
+                    let alt = Self::extract_alt_from_img(img_tag).unwrap_or_else(|| "Image".to_string());
+                    image_urls.push((src, alt));
+                }
+                
+                pos = abs_end + 1;
+            } else {
+                break;
+            }
+        }
+        
+        // If no images found, return original text
+        if image_urls.is_empty() {
+            return text_content.to_string();
+        }
+        
+        // Insert image indicators at the beginning of the content
+        let mut result = String::new();
+        result.push_str("═══ Images Found on this Page ═══\n");
+        for (idx, (url, alt)) in image_urls.iter().enumerate() {
+            result.push_str(&format!("🖼️  [Image {}] {} ({})\n", idx + 1, alt, url));
+        }
+        result.push_str("═════════════════════════════════\n\n");
+        result.push_str(text_content);
+        
+        result
+    }
+
+    fn extract_src_from_img(img_tag: &str) -> Option<String> {
+        let src_pattern_double = "src=\"";
+        let src_pattern_single = "src='";
+        
+        let (src_start, quote_char) = if let Some(pos) = img_tag.to_lowercase().find(src_pattern_double) {
+            (Some(pos + src_pattern_double.len()), '"')
+        } else if let Some(pos) = img_tag.to_lowercase().find(src_pattern_single) {
+            (Some(pos + src_pattern_single.len()), '\'')
+        } else {
+            return None;
+        };
+        
+        if let Some(src_value_start) = src_start {
+            if let Some(src_end) = img_tag[src_value_start..].find(quote_char) {
+                return Some(img_tag[src_value_start..src_value_start + src_end].to_string());
+            }
+        }
+        None
+    }
+
+    fn extract_alt_from_img(img_tag: &str) -> Option<String> {
+        let alt_pattern_double = "alt=\"";
+        let alt_pattern_single = "alt='";
+        
+        let (alt_start, quote_char) = if let Some(pos) = img_tag.to_lowercase().find(alt_pattern_double) {
+            (Some(pos + alt_pattern_double.len()), '"')
+        } else if let Some(pos) = img_tag.to_lowercase().find(alt_pattern_single) {
+            (Some(pos + alt_pattern_single.len()), '\'')
+        } else {
+            return None;
+        };
+        
+        if let Some(alt_value_start) = alt_start {
+            if let Some(alt_end) = img_tag[alt_value_start..].find(quote_char) {
+                return Some(img_tag[alt_value_start..alt_value_start + alt_end].to_string());
             }
         }
         None
@@ -432,7 +525,124 @@ impl App {
         self.navigate_to_url();
     }
 
+    fn start_search(&mut self) {
+        self.search_mode = true;
+        self.search_query.clear();
+        self.search_results.clear();
+        self.current_search_result = 0;
+        self.status_message = "Search: (type to search, Enter to find next, Esc to cancel)".to_string();
+    }
+
+    fn search_in_content(&mut self) {
+        if self.search_query.is_empty() {
+            self.search_results.clear();
+            return;
+        }
+
+        let content = self.current_tab().content.clone();
+        let query_lower = self.search_query.to_lowercase();
+        self.search_results.clear();
+
+        for (line_idx, line) in content.lines().enumerate() {
+            if line.to_lowercase().contains(&query_lower) {
+                self.search_results.push(line_idx);
+            }
+        }
+
+        if !self.search_results.is_empty() {
+            self.current_search_result = 0;
+            let line_idx = self.search_results[0];
+            self.current_tab_mut().scroll_offset = line_idx;
+            self.status_message = format!(
+                "Found {} result(s) for '{}' - Match 1/{}",
+                self.search_results.len(),
+                self.search_query,
+                self.search_results.len()
+            );
+        } else {
+            self.status_message = format!("No results found for '{}'", self.search_query);
+        }
+    }
+
+    fn next_search_result(&mut self) {
+        if self.search_results.is_empty() {
+            self.status_message = "No search results".to_string();
+            return;
+        }
+
+        self.current_search_result = (self.current_search_result + 1) % self.search_results.len();
+        let line_idx = self.search_results[self.current_search_result];
+        self.current_tab_mut().scroll_offset = line_idx;
+        self.status_message = format!(
+            "Match {}/{} for '{}'",
+            self.current_search_result + 1,
+            self.search_results.len(),
+            self.search_query
+        );
+    }
+
+    fn previous_search_result(&mut self) {
+        if self.search_results.is_empty() {
+            self.status_message = "No search results".to_string();
+            return;
+        }
+
+        if self.current_search_result == 0 {
+            self.current_search_result = self.search_results.len() - 1;
+        } else {
+            self.current_search_result -= 1;
+        }
+        let line_idx = self.search_results[self.current_search_result];
+        self.current_tab_mut().scroll_offset = line_idx;
+        self.status_message = format!(
+            "Match {}/{} for '{}'",
+            self.current_search_result + 1,
+            self.search_results.len(),
+            self.search_query
+        );
+    }
+
     fn handle_key_event(&mut self, key: event::KeyEvent) {
+        // Search mode handling
+        if self.search_mode {
+            match key.code {
+                KeyCode::Esc => {
+                    self.search_mode = false;
+                    self.search_query.clear();
+                    self.search_results.clear();
+                    self.status_message = "Search cancelled".to_string();
+                }
+                KeyCode::Enter => {
+                    if !self.search_results.is_empty() {
+                        self.next_search_result();
+                    } else {
+                        self.search_in_content();
+                    }
+                }
+                KeyCode::Char(c) => {
+                    self.search_query.push(c);
+                    self.search_in_content();
+                }
+                KeyCode::Backspace => {
+                    if !self.search_query.is_empty() {
+                        self.search_query.pop();
+                        self.search_in_content();
+                    } else {
+                        self.search_mode = false;
+                        self.status_message = "Search cancelled".to_string();
+                    }
+                }
+                KeyCode::Up if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.previous_search_result();
+                }
+                KeyCode::Down if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.next_search_result();
+                }
+                _ => {}
+            }
+            return;
+        }
+
         // Help dialog handling
         if self.show_help {
             match key.code {
@@ -491,6 +701,10 @@ impl App {
                 }
                 KeyCode::Char('r') => {
                     self.refresh_page();
+                    return;
+                }
+                KeyCode::Char('s') => {
+                    self.start_search();
                     return;
                 }
                 _ => {}
@@ -558,6 +772,16 @@ impl App {
                     KeyCode::PageDown => self.scroll_content_page_down(),
                     KeyCode::Char('+') | KeyCode::Char('=') => self.zoom_in(),
                     KeyCode::Char('-') | KeyCode::Char('_') => self.zoom_out(),
+                    KeyCode::Char('n') => {
+                        if !self.search_results.is_empty() {
+                            self.next_search_result();
+                        }
+                    }
+                    KeyCode::Char('N') => {
+                        if !self.search_results.is_empty() {
+                            self.previous_search_result();
+                        }
+                    }
                     KeyCode::Enter => {
                         // Navigate to link by number
                         if !self.link_number_input.is_empty() {
