@@ -2,6 +2,13 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Debug, Clone)]
+pub struct Link {
+    pub text: String,
+    pub url: String,
+    pub line_index: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tab {
     pub id: Uuid,

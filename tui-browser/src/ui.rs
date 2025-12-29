@@ -226,7 +226,8 @@ impl ContentArea {
         content: &str,
         scroll_offset: usize,
         is_focused: bool,
-        selected_link_line: Option<usize>,
+        is_loading: bool,
+        links: &[crate::Link],
     ) -> usize {
         let border_style = if is_focused {
             Style::default().fg(Color::Yellow)
@@ -236,11 +237,23 @@ impl ContentArea {
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(" Content (↑/↓: Scroll | PgUp/PgDn: Page | Enter: Links) ")
+            .title(" Content (↑/↓: Scroll | PgUp/PgDn: Page | Type number+Enter: Navigate link) ")
             .style(border_style);
 
         let inner_area = block.inner(area);
         block.render(area, buf);
+
+        // Show loading indicator
+        if is_loading {
+            let loading_msg = "Loading page, please wait...";
+            let paragraph = Paragraph::new(loading_msg)
+                .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                .alignment(Alignment::Center)
+                .wrap(Wrap { trim: true });
+            
+            paragraph.render(inner_area, buf);
+            return 0;
+        }
 
         if content.is_empty() {
             let empty_msg = "No content loaded. Enter a URL and press Enter to navigate.";
@@ -260,23 +273,53 @@ impl ContentArea {
         let start_line = scroll_offset.min(total_lines.saturating_sub(1));
         let end_line = (start_line + visible_height).min(total_lines);
 
+        // Build a map of line indices to link numbers for quick lookup
+        let mut line_to_link: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+        for (link_idx, link) in links.iter().enumerate() {
+            line_to_link.entry(link.line_index)
+                .or_insert_with(Vec::new)
+                .push(link_idx + 1);
+        }
+
         for (i, line) in lines[start_line..end_line].iter().enumerate() {
             let y = inner_area.y + i as u16;
             let absolute_line_index = start_line + i;
             
-            // Check if this line should be highlighted
-            let is_selected = selected_link_line == Some(absolute_line_index);
-            let line_style = if is_selected {
-                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            };
+            let mut x_offset = 0;
             
+            // Check if this line has any links and prepend link numbers
+            if let Some(link_numbers) = line_to_link.get(&absolute_line_index) {
+                // Display link numbers at the start of the line
+                let link_label = if link_numbers.len() == 1 {
+                    format!("[{}] ", link_numbers[0])
+                } else {
+                    format!("[{}] ", link_numbers.iter()
+                        .map(|n| n.to_string())
+                        .collect::<Vec<_>>()
+                        .join(","))
+                };
+                
+                let link_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+                
+                for (j, ch) in link_label.chars().enumerate() {
+                    if x_offset + j >= inner_area.width as usize {
+                        break;
+                    }
+                    if let Some(cell) = buf.cell_mut((inner_area.x + (x_offset + j) as u16, y)) {
+                        cell.set_char(ch);
+                        cell.set_style(link_style);
+                    }
+                }
+                x_offset += link_label.len();
+            }
+            
+            // Display the line content
+            let line_style = Style::default().fg(Color::White);
             for (j, ch) in line.chars().enumerate() {
-                if j >= inner_area.width as usize {
+                if x_offset + j >= inner_area.width as usize {
                     break;
                 }
-                if let Some(cell) = buf.cell_mut((inner_area.x + j as u16, y)) {
+                if let Some(cell) = buf.cell_mut((inner_area.x + (x_offset + j) as u16, y)) {
                     cell.set_char(ch);
                     cell.set_style(line_style);
                 }
@@ -384,15 +427,13 @@ impl HelpDialog {
             "Content:",
             "  ↑/↓ or j/k   - Scroll line by line",
             "  PgUp/PgDn    - Scroll page by page",
-            "  Enter        - Enter link navigation mode",
-            "  Backspace    - Go back in history",
-            "  Ctrl+S       - Search in page (TODO)",
-            "",
-            "Link Navigation Mode:",
-            "  ↑/↓          - Navigate between links",
-            "  PgUp/PgDn    - Scroll page content",
-            "  Enter        - Open selected link",
-            "  Esc          - Exit link navigation mode",
+            "  0-9          - Type link number",
+            "  Enter        - Navigate to typed link number",
+            "  Ctrl+Enter   - Open typed link in new tab",
+            "  Backspace    - Clear link number or go back",
+            "  Esc          - Clear link number",
+            "  Ctrl+←       - Go back in history",
+            "  Ctrl+→       - Go forward in history",
             "",
             "General:",
             "  Ctrl+H       - Show this help",
