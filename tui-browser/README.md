@@ -7,11 +7,11 @@ A terminal-based web browser built with Rust, featuring ratatui for the UI, toki
 ### Core Features
 - **Tab Management**: Multiple tabs with easy switching
 - **URL Navigation**: Full URL bar with cursor support
-- **Content Display**: HTML to text rendering for readable content with centered layout (60% width)
+- **Content Display**: HTML to text rendering with proper text wrapping (no cut-off text!)
+- **Image Support**: Sixel/Kitty/iTerm2 inline image rendering for supported terminals
 - **Keyboard-First Design**: All functionality accessible via keyboard
 - **Link Navigation Mode**: Navigate and open links on the page using keyboard
 - **Smart History Navigation**: Go back/forward through pages, or use Backspace for quick back navigation
-- **Image Detection**: Automatically detects images on pages and displays indicators with URLs and alt text
 
 ### Modern Browser Features
 - **History Navigation**: Go back and forward through visited pages
@@ -124,6 +124,8 @@ cargo run --release
 - **tokio** (1.42) - Async runtime
 - **reqwest** (0.12) - HTTP client
 - **html2text** (0.12) - HTML to plain text conversion
+- **ratatui-image** (1.0) - Multi-protocol terminal image rendering (sixel, kitty, iTerm2)
+- **image** (0.25) - Image decoding and manipulation
 - **serde** (1.0) - Serialization framework
 - **chrono** (0.4) - Date and time handling
 - **uuid** (1.0) - UUID generation
@@ -139,9 +141,13 @@ cargo run --release
 - No JavaScript support (static content only)
 - Basic HTML rendering (converted to plain text)
 - No CSS styling
-- No image display (images are detected and listed with URLs)
+- Limited image rendering (first loaded image only, requires terminal with sixel/kitty/iTerm2 support)
 - No form submission
 - No cookie management
+
+## Image Support
+
+The browser now supports inline image rendering using the sixel protocol (and other protocols like Kitty and iTerm2). See [FEATURES.md](FEATURES.md) for detailed information about image support.
 
 ## Future Enhancements
 - [ ] Download manager
@@ -151,7 +157,10 @@ cargo run --release
 - [ ] Persistent history
 - [ ] Configuration file
 - [ ] Theme customization
-- [ ] Sixel image rendering (requires terminal support)
+- [x] ~~Sixel image rendering~~ (implemented!)
+- [ ] Render all images inline (currently only first image)
+- [ ] Image gallery view mode
+- [ ] Lazy loading for images
 
 ## License
 
