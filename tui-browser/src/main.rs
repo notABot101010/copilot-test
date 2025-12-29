@@ -20,6 +20,8 @@ use ui::{ContentArea, FavoritesBar, HelpDialog, StatusBar, TabBar, UrlBar};
 
 const SCROLL_STEP: usize = 1;
 const PAGE_SCROLL_STEP: usize = 10;
+const DEFAULT_VIEWPORT_HEIGHT: usize = 10;
+const BORDER_HEIGHT: u16 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FocusPanel {
@@ -78,7 +80,7 @@ impl App {
             link_navigation_mode: false,
             current_links: Vec::new(),
             selected_link_index: None,
-            content_viewport_height: 10,
+            content_viewport_height: DEFAULT_VIEWPORT_HEIGHT,
         })
     }
 
@@ -420,11 +422,12 @@ impl App {
         let viewport_height = self.content_viewport_height;
         let tab = self.current_tab_mut();
         
-        // If line is above the visible area, scroll up to show it
+        // If line is above the visible area, scroll up to show it at the top
         if line_index < tab.scroll_offset {
             tab.scroll_offset = line_index;
         }
-        // If line is below the visible area, scroll down to show it
+        // If line is below the visible area, scroll down to show it near the bottom
+        // Keep one line of margin to provide context
         else if line_index >= tab.scroll_offset + viewport_height {
             tab.scroll_offset = line_index.saturating_sub(viewport_height - 1);
         }
@@ -735,8 +738,9 @@ fn run_app<B: ratatui::backend::Backend>(
                 ])
                 .split(f.area());
 
-            // Update content viewport height (subtract 2 for borders)
-            app.content_viewport_height = chunks[3].height.saturating_sub(2) as usize;
+            // Update content viewport height
+            // Subtract border height (top and bottom borders) from total area
+            app.content_viewport_height = chunks[3].height.saturating_sub(BORDER_HEIGHT) as usize;
 
             // Render tab bar
             TabBar::render(
