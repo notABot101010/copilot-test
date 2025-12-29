@@ -9,6 +9,25 @@ pub struct Link {
     pub line_index: usize,
 }
 
+#[derive(Debug, Clone)]
+pub struct ImageInfo {
+    pub url: String,
+    pub alt: String,
+    pub data: Option<image::DynamicImage>,
+    pub line_index: usize,
+}
+
+impl ImageInfo {
+    pub fn new(url: String, alt: String, line_index: usize) -> Self {
+        Self {
+            url,
+            alt,
+            data: None,
+            line_index,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tab {
     pub id: Uuid,

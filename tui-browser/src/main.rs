@@ -9,12 +9,13 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use http_client::HttpClient;
-use models::{HistoryEntry, Link, NavigationHistory, Tab};
+use models::{HistoryEntry, ImageInfo, Link, NavigationHistory, Tab};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     Terminal,
 };
+use ratatui_image::{picker::Picker, protocol::StatefulProtocol};
 use std::io;
 use ui::{ContentArea, HelpDialog, StatusBar, TabBar, UrlBar};
 
@@ -43,6 +44,7 @@ struct App {
     help_scroll_offset: usize,
     status_message: String,
     current_links: Vec<Link>,
+    current_images: Vec<ImageInfo>,
     link_number_input: String,
     content_viewport_height: usize,
     content_width_percent: f32,
@@ -50,6 +52,7 @@ struct App {
     search_query: String,
     search_results: Vec<usize>,
     current_search_result: usize,
+    image_picker: Option<Picker>,
 }
 
 impl App {
@@ -70,6 +73,7 @@ impl App {
             help_scroll_offset: 0,
             status_message: "Welcome to TUI Browser! Press Ctrl+H for help.".to_string(),
             current_links: Vec::new(),
+            current_images: Vec::new(),
             link_number_input: String::new(),
             content_viewport_height: DEFAULT_VIEWPORT_HEIGHT,
             content_width_percent: 0.6,
@@ -77,6 +81,7 @@ impl App {
             search_query: String::new(),
             search_results: Vec::new(),
             current_search_result: 0,
+            image_picker: None,
         })
     }
 
@@ -173,8 +178,21 @@ impl App {
                 // Extract links from HTML
                 let links = Self::extract_links(&html, &text_content);
                 
-                // Detect and insert image indicators
-                let text_with_images = Self::insert_image_indicators(&html, &text_content);
+                // Extract images from HTML
+                let mut images = Self::extract_images(&html, &url);
+                
+                // Download and decode images (limit to first 5 for performance)
+                let max_images = 5;
+                let total_images = images.len();
+                for (idx, image_info) in images.iter_mut().take(max_images).enumerate() {
+                    if let Ok(img_data) = self.http_client.fetch_image(&image_info.url) {
+                        image_info.data = Some(img_data);
+                        self.status_message = format!("Loading images... ({}/{})", idx + 1, total_images.min(max_images));
+                    }
+                }
+                
+                // Insert image placeholders in text
+                let text_with_images = Self::insert_image_placeholders(&images, &text_content);
                 
                 let tab = self.current_tab_mut();
                 tab.content = text_with_images;
@@ -182,14 +200,15 @@ impl App {
                 tab.scroll_offset = 0;
                 tab.title = title.clone();
                 
-                // Update current links
+                // Update current links and images
                 self.current_links = links;
+                self.current_images = images;
                 
                 // Add to history
                 let entry = HistoryEntry::new(url.clone(), title.clone());
                 self.history.add_entry(entry);
                 
-                self.status_message = format!("Loaded: {}", title);
+                self.status_message = format!("Loaded: {} ({} images)", title, self.current_images.len());
             }
             Err(err) => {
                 let tab = self.current_tab_mut();
@@ -197,6 +216,7 @@ impl App {
                 tab.content = format!("Error loading page:\n\n{}", err);
                 tab.title = "Error".to_string();
                 self.current_links.clear();
+                self.current_images.clear();
                 self.status_message = format!("Error: {}", err);
             }
         }
@@ -215,9 +235,9 @@ impl App {
         None
     }
 
-    fn insert_image_indicators(html: &str, text_content: &str) -> String {
+    fn extract_images(html: &str, base_url: &str) -> Vec<ImageInfo> {
         let lower = html.to_lowercase();
-        let mut image_urls = Vec::new();
+        let mut images = Vec::new();
         
         // Find all <img> tags
         let mut pos = 0;
@@ -229,9 +249,39 @@ impl App {
                 
                 // Extract src attribute
                 if let Some(src) = Self::extract_src_from_img(img_tag) {
+                    // Convert relative URLs to absolute
+                    let absolute_url = if src.starts_with("http://") || src.starts_with("https://") {
+                        src
+                    } else if src.starts_with("//") {
+                        format!("https:{}", src)
+                    } else if src.starts_with('/') {
+                        // Absolute path
+                        if let Ok(parsed) = url::Url::parse(base_url) {
+                            if let Some(host) = parsed.host_str() {
+                                let scheme = parsed.scheme();
+                                format!("{}://{}{}", scheme, host, src)
+                            } else {
+                                src
+                            }
+                        } else {
+                            src
+                        }
+                    } else {
+                        // Relative path
+                        if let Ok(parsed) = url::Url::parse(base_url) {
+                            if let Ok(joined) = parsed.join(&src) {
+                                joined.to_string()
+                            } else {
+                                src
+                            }
+                        } else {
+                            src
+                        }
+                    };
+                    
                     // Extract alt text if available
                     let alt = Self::extract_alt_from_img(img_tag).unwrap_or_else(|| "Image".to_string());
-                    image_urls.push((src, alt));
+                    images.push(ImageInfo::new(absolute_url, alt, 0));
                 }
                 
                 pos = abs_end + 1;
@@ -240,18 +290,28 @@ impl App {
             }
         }
         
+        images
+    }
+
+    fn insert_image_placeholders(images: &[ImageInfo], text_content: &str) -> String {
         // If no images found, return original text
-        if image_urls.is_empty() {
+        if images.is_empty() {
             return text_content.to_string();
         }
         
-        // Insert image indicators at the beginning of the content
+        // Insert image placeholders at the beginning of the content
         let mut result = String::new();
-        result.push_str("═══ Images Found on this Page ═══\n");
-        for (idx, (url, alt)) in image_urls.iter().enumerate() {
-            result.push_str(&format!("🖼️  [Image {}] {} ({})\n", idx + 1, alt, url));
+        result.push_str("═══ Images on this Page ═══\n");
+        for (idx, image) in images.iter().enumerate() {
+            let status = if image.data.is_some() { "✓" } else { "✗" };
+            result.push_str(&format!("{} [IMG {}] {}\n", status, idx + 1, image.alt));
+            
+            // Add placeholder lines for the image to be rendered
+            if image.data.is_some() {
+                result.push_str(&format!("[IMAGE_PLACEHOLDER_{}]\n", idx + 1));
+            }
         }
-        result.push_str("═════════════════════════════════\n\n");
+        result.push_str("═══════════════════════════\n\n");
         result.push_str(text_content);
         
         result
