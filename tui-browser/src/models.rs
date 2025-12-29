@@ -24,6 +24,7 @@ impl Tab {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_url(url: String) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -33,6 +34,11 @@ impl Tab {
             loading: true,
             scroll_offset: 0,
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn is_empty(&self) -> bool {
+        self.content.is_empty() && self.url.is_empty()
     }
 }
 

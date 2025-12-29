@@ -244,26 +244,32 @@ impl App {
     }
 
     fn go_back(&mut self) {
+        if !self.history.can_go_back() {
+            self.status_message = "No previous page in history".to_string();
+            return;
+        }
+        
         if let Some(entry) = self.history.go_back() {
             let url = entry.url.clone();
             let title = entry.title.clone();
             self.url_input = url;
             self.navigate_to_url();
             self.status_message = format!("Back: {}", title);
-        } else {
-            self.status_message = "No previous page in history".to_string();
         }
     }
 
     fn go_forward(&mut self) {
+        if !self.history.can_go_forward() {
+            self.status_message = "No next page in history".to_string();
+            return;
+        }
+        
         if let Some(entry) = self.history.go_forward() {
             let url = entry.url.clone();
             let title = entry.title.clone();
             self.url_input = url;
             self.navigate_to_url();
             self.status_message = format!("Forward: {}", title);
-        } else {
-            self.status_message = "No next page in history".to_string();
         }
     }
 
