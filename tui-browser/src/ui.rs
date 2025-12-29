@@ -270,8 +270,8 @@ impl ContentArea {
             
             if !loaded_images.is_empty() {
                 // Render first image in a small preview area at the bottom
-                // This is a simplified approach - in a full implementation,
-                // we'd render images inline with the text
+                // TODO: Implement full inline rendering for all images
+                // Currently only the first image is displayed as a preview
                 let image_height = 10.min(centered_area.height / 3);
                 if centered_area.height > image_height + 2 {
                     let image_area = Rect {

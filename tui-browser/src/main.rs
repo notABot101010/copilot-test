@@ -183,6 +183,7 @@ impl App {
                 let mut images = Self::extract_images(&html, &url);
                 
                 // Download and decode images (limit for performance)
+                // TODO: Make this asynchronous to avoid blocking the UI thread
                 let total_images = images.len();
                 for (idx, image_info) in images.iter_mut().take(MAX_IMAGES_PER_PAGE).enumerate() {
                     if let Ok(img_data) = self.http_client.fetch_image(&image_info.url) {
