@@ -9,7 +9,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use http_client::HttpClient;
-use models::{Bookmark, HistoryEntry, NavigationHistory, Tab};
+use models::{Bookmark, HistoryEntry, Link, NavigationHistory, Tab};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
@@ -31,13 +31,6 @@ enum FocusPanel {
     Content,
 }
 
-#[derive(Debug, Clone)]
-struct Link {
-    text: String,
-    url: String,
-    line_index: usize,
-}
-
 struct App {
     tabs: Vec<Tab>,
     current_tab_index: usize,
@@ -52,9 +45,8 @@ struct App {
     show_help: bool,
     help_scroll_offset: usize,
     status_message: String,
-    link_navigation_mode: bool,
     current_links: Vec<Link>,
-    selected_link_index: Option<usize>,
+    link_number_input: String,
     content_viewport_height: usize,
 }
 
@@ -77,9 +69,8 @@ impl App {
             show_help: false,
             help_scroll_offset: 0,
             status_message: "Welcome to TUI Browser! Press Ctrl+H for help.".to_string(),
-            link_navigation_mode: false,
             current_links: Vec::new(),
-            selected_link_index: None,
+            link_number_input: String::new(),
             content_viewport_height: DEFAULT_VIEWPORT_HEIGHT,
         })
     }
@@ -238,8 +229,6 @@ impl App {
                 
                 // Update current links
                 self.current_links = links;
-                self.link_navigation_mode = false;
-                self.selected_link_index = None;
                 
                 // Add to history
                 let entry = HistoryEntry::new(url.clone(), title.clone());
@@ -392,117 +381,41 @@ impl App {
         links
     }
 
-    fn enter_link_navigation_mode(&mut self) {
-        if !self.current_links.is_empty() {
-            self.link_navigation_mode = true;
-            self.selected_link_index = Some(0);
-            
-            // Ensure the first link is visible
-            if let Some(link) = self.current_links.get(0) {
-                self.ensure_line_visible(link.line_index);
-            }
-            
-            self.status_message = format!(
-                "Link navigation mode: {}/{} links. Use ↑/↓ to navigate, Enter to open, Esc to exit.",
-                1,
-                self.current_links.len()
-            );
-        } else {
-            self.status_message = "No links found on this page".to_string();
+    fn open_link_by_number(&mut self, link_number: usize, open_in_new_tab: bool) {
+        if link_number == 0 || link_number > self.current_links.len() {
+            self.status_message = format!("Invalid link number. Please enter 1-{}", self.current_links.len());
+            return;
         }
-    }
 
-    fn exit_link_navigation_mode(&mut self) {
-        self.link_navigation_mode = false;
-        self.selected_link_index = None;
-        self.status_message = "Exited link navigation mode".to_string();
-    }
-
-    fn ensure_line_visible(&mut self, line_index: usize) {
-        let viewport_height = self.content_viewport_height;
-        let tab = self.current_tab_mut();
-        
-        // If line is above the visible area, scroll up to show it at the top
-        if line_index < tab.scroll_offset {
-            tab.scroll_offset = line_index;
-        }
-        // If line is below the visible area, scroll down to show it near the bottom
-        // Keep one line of margin to provide context
-        else if line_index >= tab.scroll_offset + viewport_height {
-            tab.scroll_offset = line_index.saturating_sub(viewport_height - 1);
-        }
-    }
-
-    fn next_link(&mut self) {
-        if let Some(idx) = self.selected_link_index {
-            let new_idx = (idx + 1) % self.current_links.len();
-            self.selected_link_index = Some(new_idx);
+        let link_index = link_number - 1;
+        if let Some(link) = self.current_links.get(link_index) {
+            let mut url = link.url.clone();
             
-            // Ensure the selected link is visible
-            if let Some(link) = self.current_links.get(new_idx) {
-                self.ensure_line_visible(link.line_index);
-            }
-            
-            self.status_message = format!(
-                "Link {}/{}: {}",
-                new_idx + 1,
-                self.current_links.len(),
-                self.current_links[new_idx].text
-            );
-        }
-    }
-
-    fn previous_link(&mut self) {
-        if let Some(idx) = self.selected_link_index {
-            let new_idx = if idx == 0 {
-                self.current_links.len() - 1
-            } else {
-                idx - 1
-            };
-            self.selected_link_index = Some(new_idx);
-            
-            // Ensure the selected link is visible
-            if let Some(link) = self.current_links.get(new_idx) {
-                self.ensure_line_visible(link.line_index);
-            }
-            
-            self.status_message = format!(
-                "Link {}/{}: {}",
-                new_idx + 1,
-                self.current_links.len(),
-                self.current_links[new_idx].text
-            );
-        }
-    }
-
-    fn open_selected_link(&mut self) {
-        if let Some(idx) = self.selected_link_index {
-            if let Some(link) = self.current_links.get(idx) {
-                let mut url = link.url.clone();
-                
-                // Handle relative URLs
-                let current_url = &self.current_tab().url;
-                if url.starts_with('/') {
-                    // Absolute path - need to construct full URL
-                    if let Ok(parsed) = url::Url::parse(current_url) {
-                        if let Some(host) = parsed.host_str() {
-                            let scheme = parsed.scheme();
-                            url = format!("{}://{}{}", scheme, host, url);
-                        }
-                    }
-                } else if !url.starts_with("http://") && !url.starts_with("https://") {
-                    // Relative path
-                    if let Ok(parsed) = url::Url::parse(current_url) {
-                        if let Ok(joined) = parsed.join(&url) {
-                            url = joined.to_string();
-                        }
+            // Handle relative URLs
+            let current_url = &self.current_tab().url;
+            if url.starts_with('/') {
+                // Absolute path - need to construct full URL
+                if let Ok(parsed) = url::Url::parse(current_url) {
+                    if let Some(host) = parsed.host_str() {
+                        let scheme = parsed.scheme();
+                        url = format!("{}://{}{}", scheme, host, url);
                     }
                 }
-                
-                self.url_input = url;
-                self.exit_link_navigation_mode();
-                self.navigate_to_url();
+            } else if !url.starts_with("http://") && !url.starts_with("https://") {
+                // Relative path
+                if let Ok(parsed) = url::Url::parse(current_url) {
+                    if let Ok(joined) = parsed.join(&url) {
+                        url = joined.to_string();
+                    }
+                }
             }
+            
+            if open_in_new_tab {
+                self.open_new_tab();
+            }
+            
+            self.url_input = url;
+            self.navigate_to_url();
         }
     }
 
@@ -690,31 +603,54 @@ impl App {
                 }
             }
             FocusPanel::Content => {
-                // Handle link navigation mode
-                if self.link_navigation_mode {
-                    match key.code {
-                        KeyCode::Up | KeyCode::Char('k') => self.previous_link(),
-                        KeyCode::Down | KeyCode::Char('j') => self.next_link(),
-                        KeyCode::PageUp => self.scroll_content_page_up(),
-                        KeyCode::PageDown => self.scroll_content_page_down(),
-                        KeyCode::Enter => self.open_selected_link(),
-                        KeyCode::Esc => self.exit_link_navigation_mode(),
-                        _ => {}
-                    }
-                } else {
-                    match key.code {
-                        KeyCode::Up | KeyCode::Char('k') => self.scroll_content_up(),
-                        KeyCode::Down | KeyCode::Char('j') => self.scroll_content_down(),
-                        KeyCode::PageUp => self.scroll_content_page_up(),
-                        KeyCode::PageDown => self.scroll_content_page_down(),
-                        KeyCode::Enter => self.enter_link_navigation_mode(),
-                        KeyCode::Backspace => self.go_back(),
-                        KeyCode::Tab => self.cycle_focus(),
-                        KeyCode::Char('q') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            self.should_quit = true;
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => self.scroll_content_up(),
+                    KeyCode::Down | KeyCode::Char('j') => self.scroll_content_down(),
+                    KeyCode::PageUp => self.scroll_content_page_up(),
+                    KeyCode::PageDown => self.scroll_content_page_down(),
+                    KeyCode::Enter => {
+                        // Navigate to link by number
+                        if !self.link_number_input.is_empty() {
+                            if let Ok(link_num) = self.link_number_input.parse::<usize>() {
+                                let open_in_new_tab = key.modifiers.contains(KeyModifiers::CONTROL);
+                                self.open_link_by_number(link_num, open_in_new_tab);
+                            } else {
+                                self.status_message = "Invalid link number".to_string();
+                            }
+                            self.link_number_input.clear();
+                        } else if !self.current_links.is_empty() {
+                            self.status_message = format!("Type a link number (1-{}) and press Enter to navigate", self.current_links.len());
+                        } else {
+                            self.status_message = "No links found on this page".to_string();
                         }
-                        _ => {}
                     }
+                    KeyCode::Backspace => {
+                        if !self.link_number_input.is_empty() {
+                            self.link_number_input.pop();
+                            self.status_message = if self.link_number_input.is_empty() {
+                                "Link number cleared".to_string()
+                            } else {
+                                format!("Link number: {}", self.link_number_input)
+                            };
+                        } else {
+                            self.go_back();
+                        }
+                    }
+                    KeyCode::Tab => self.cycle_focus(),
+                    KeyCode::Char(c) if c.is_ascii_digit() => {
+                        self.link_number_input.push(c);
+                        self.status_message = format!("Link number: {} (press Enter to navigate, Ctrl+Enter for new tab)", self.link_number_input);
+                    }
+                    KeyCode::Char('q') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.should_quit = true;
+                    }
+                    KeyCode::Esc => {
+                        if !self.link_number_input.is_empty() {
+                            self.link_number_input.clear();
+                            self.status_message = "Link number cleared".to_string();
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -771,18 +707,14 @@ fn run_app<B: ratatui::backend::Backend>(
 
             // Render content area
             let tab = app.current_tab();
-            let selected_link_line = if app.link_navigation_mode {
-                app.selected_link_index.and_then(|idx| app.current_links.get(idx).map(|link| link.line_index))
-            } else {
-                None
-            };
             ContentArea::render(
                 chunks[3],
                 f.buffer_mut(),
                 &tab.content,
                 tab.scroll_offset,
                 app.focused_panel == FocusPanel::Content,
-                selected_link_line,
+                tab.loading,
+                &app.current_links,
             );
 
             // Render status bar
