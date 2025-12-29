@@ -226,6 +226,7 @@ impl ContentArea {
         content: &str,
         scroll_offset: usize,
         is_focused: bool,
+        selected_link_line: Option<usize>,
     ) -> usize {
         let border_style = if is_focused {
             Style::default().fg(Color::Yellow)
@@ -235,7 +236,7 @@ impl ContentArea {
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(" Content (↑/↓: Scroll | PgUp/PgDn: Page) ")
+            .title(" Content (↑/↓: Scroll | PgUp/PgDn: Page | Enter: Links) ")
             .style(border_style);
 
         let inner_area = block.inner(area);
@@ -261,6 +262,15 @@ impl ContentArea {
 
         for (i, line) in lines[start_line..end_line].iter().enumerate() {
             let y = inner_area.y + i as u16;
+            let absolute_line_index = start_line + i;
+            
+            // Check if this line should be highlighted
+            let is_selected = selected_link_line == Some(absolute_line_index);
+            let line_style = if is_selected {
+                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
             
             for (j, ch) in line.chars().enumerate() {
                 if j >= inner_area.width as usize {
@@ -268,7 +278,7 @@ impl ContentArea {
                 }
                 if let Some(cell) = buf.cell_mut((inner_area.x + j as u16, y)) {
                     cell.set_char(ch);
-                    cell.set_style(Style::default().fg(Color::White));
+                    cell.set_style(line_style);
                 }
             }
         }
@@ -322,7 +332,7 @@ impl StatusBar {
 pub struct HelpDialog;
 
 impl HelpDialog {
-    pub fn render(area: Rect, buf: &mut Buffer) {
+    pub fn render(area: Rect, buf: &mut Buffer, scroll_offset: usize) {
         // Create a centered dialog
         let dialog_width = 60.min(area.width.saturating_sub(4));
         let dialog_height = 20.min(area.height.saturating_sub(4));
@@ -349,7 +359,7 @@ impl HelpDialog {
 
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(" Keyboard Shortcuts (Esc: Close) ")
+            .title(" Keyboard Shortcuts (↑/↓: Scroll | Esc: Close) ")
             .style(Style::default().fg(Color::Cyan).bg(Color::Black));
 
         let inner_area = block.inner(dialog_area);
@@ -374,18 +384,26 @@ impl HelpDialog {
             "Content:",
             "  ↑/↓ or j/k   - Scroll line by line",
             "  PgUp/PgDn    - Scroll page by page",
+            "  Enter        - Enter link navigation mode",
+            "  Backspace    - Go back in history",
             "  Ctrl+S       - Search in page (TODO)",
+            "",
+            "Link Navigation Mode:",
+            "  ↑/↓          - Navigate between links",
+            "  Enter        - Open selected link",
+            "  Esc          - Exit link navigation mode",
             "",
             "General:",
             "  Ctrl+H       - Show this help",
             "  Ctrl+Q or q  - Quit browser",
         ];
 
-        for (i, line) in help_text.iter().enumerate() {
-            if i >= inner_area.height as usize {
-                break;
-            }
-            
+        let visible_height = inner_area.height as usize;
+        let total_lines = help_text.len();
+        let start_line = scroll_offset.min(total_lines.saturating_sub(visible_height));
+        let end_line = (start_line + visible_height).min(total_lines);
+
+        for (i, line) in help_text[start_line..end_line].iter().enumerate() {
             let y = inner_area.y + i as u16;
             let style = if line.ends_with(':') {
                 Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)

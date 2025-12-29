@@ -29,6 +29,13 @@ enum FocusPanel {
     Content,
 }
 
+#[derive(Debug, Clone)]
+struct Link {
+    text: String,
+    url: String,
+    line_index: usize,
+}
+
 struct App {
     tabs: Vec<Tab>,
     current_tab_index: usize,
@@ -41,7 +48,11 @@ struct App {
     http_client: HttpClient,
     history: NavigationHistory,
     show_help: bool,
+    help_scroll_offset: usize,
     status_message: String,
+    link_navigation_mode: bool,
+    current_links: Vec<Link>,
+    selected_link_index: Option<usize>,
 }
 
 impl App {
@@ -61,7 +72,11 @@ impl App {
             http_client: HttpClient::new()?,
             history: NavigationHistory::new(),
             show_help: false,
+            help_scroll_offset: 0,
             status_message: "Welcome to TUI Browser! Press Ctrl+H for help.".to_string(),
+            link_navigation_mode: false,
+            current_links: Vec::new(),
+            selected_link_index: None,
         })
     }
 
@@ -208,11 +223,19 @@ impl App {
                 // Extract title from HTML (simple approach)
                 let title = Self::extract_title(&html).unwrap_or_else(|| url.clone());
                 
+                // Extract links from HTML
+                let links = Self::extract_links(&html, &text_content);
+                
                 let tab = self.current_tab_mut();
                 tab.content = text_content;
                 tab.loading = false;
                 tab.scroll_offset = 0;
                 tab.title = title.clone();
+                
+                // Update current links
+                self.current_links = links;
+                self.link_navigation_mode = false;
+                self.selected_link_index = None;
                 
                 // Add to history
                 let entry = HistoryEntry::new(url.clone(), title.clone());
@@ -225,6 +248,7 @@ impl App {
                 tab.loading = false;
                 tab.content = format!("Error loading page:\n\n{}", err);
                 tab.title = "Error".to_string();
+                self.current_links.clear();
                 self.status_message = format!("Error: {}", err);
             }
         }
@@ -241,6 +265,139 @@ impl App {
             }
         }
         None
+    }
+
+    fn extract_links(html: &str, content: &str) -> Vec<Link> {
+        let mut links = Vec::new();
+        let lower = html.to_lowercase();
+        let content_lines: Vec<&str> = content.lines().collect();
+        
+        let mut pos = 0;
+        while let Some(start) = lower[pos..].find("<a ") {
+            let abs_start = pos + start;
+            if let Some(end) = lower[abs_start..].find("</a>") {
+                let abs_end = abs_start + end;
+                let link_html = &html[abs_start..abs_end + 4];
+                
+                // Extract href
+                if let Some(href_start) = link_html.to_lowercase().find("href=\"") {
+                    let href_value_start = href_start + 6;
+                    if let Some(href_end) = link_html[href_value_start..].find('"') {
+                        let url = link_html[href_value_start..href_value_start + href_end].to_string();
+                        
+                        // Extract link text
+                        if let Some(text_start) = link_html.find('>') {
+                            let text_end = link_html.len() - 4; // remove </a>
+                            let text = link_html[text_start + 1..text_end].trim().to_string();
+                            
+                            // Find approximate line in content
+                            let mut line_index = 0;
+                            for (idx, line) in content_lines.iter().enumerate() {
+                                if line.contains(&text) {
+                                    line_index = idx;
+                                    break;
+                                }
+                            }
+                            
+                            if !url.is_empty() && !text.is_empty() {
+                                links.push(Link {
+                                    text,
+                                    url,
+                                    line_index,
+                                });
+                            }
+                        }
+                    }
+                }
+                
+                pos = abs_end + 4;
+            } else {
+                break;
+            }
+        }
+        
+        links
+    }
+
+    fn enter_link_navigation_mode(&mut self) {
+        if !self.current_links.is_empty() {
+            self.link_navigation_mode = true;
+            self.selected_link_index = Some(0);
+            self.status_message = format!(
+                "Link navigation mode: {}/{} links. Use ↑/↓ to navigate, Enter to open, Esc to exit.",
+                1,
+                self.current_links.len()
+            );
+        } else {
+            self.status_message = "No links found on this page".to_string();
+        }
+    }
+
+    fn exit_link_navigation_mode(&mut self) {
+        self.link_navigation_mode = false;
+        self.selected_link_index = None;
+        self.status_message = "Exited link navigation mode".to_string();
+    }
+
+    fn next_link(&mut self) {
+        if let Some(idx) = self.selected_link_index {
+            let new_idx = (idx + 1) % self.current_links.len();
+            self.selected_link_index = Some(new_idx);
+            self.status_message = format!(
+                "Link {}/{}: {}",
+                new_idx + 1,
+                self.current_links.len(),
+                self.current_links[new_idx].text
+            );
+        }
+    }
+
+    fn previous_link(&mut self) {
+        if let Some(idx) = self.selected_link_index {
+            let new_idx = if idx == 0 {
+                self.current_links.len() - 1
+            } else {
+                idx - 1
+            };
+            self.selected_link_index = Some(new_idx);
+            self.status_message = format!(
+                "Link {}/{}: {}",
+                new_idx + 1,
+                self.current_links.len(),
+                self.current_links[new_idx].text
+            );
+        }
+    }
+
+    fn open_selected_link(&mut self) {
+        if let Some(idx) = self.selected_link_index {
+            if let Some(link) = self.current_links.get(idx) {
+                let mut url = link.url.clone();
+                
+                // Handle relative URLs
+                let current_url = &self.current_tab().url;
+                if url.starts_with('/') {
+                    // Absolute path - need to construct full URL
+                    if let Ok(parsed) = url::Url::parse(current_url) {
+                        if let Some(host) = parsed.host_str() {
+                            let scheme = parsed.scheme();
+                            url = format!("{}://{}{}", scheme, host, url);
+                        }
+                    }
+                } else if !url.starts_with("http://") && !url.starts_with("https://") {
+                    // Relative path
+                    if let Ok(parsed) = url::Url::parse(current_url) {
+                        if let Ok(joined) = parsed.join(&url) {
+                            url = joined.to_string();
+                        }
+                    }
+                }
+                
+                self.url_input = url;
+                self.exit_link_navigation_mode();
+                self.navigate_to_url();
+            }
+        }
     }
 
     fn go_back(&mut self) {
@@ -296,8 +453,24 @@ impl App {
     fn handle_key_event(&mut self, key: event::KeyEvent) {
         // Help dialog handling
         if self.show_help {
-            if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
-                self.show_help = false;
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    self.show_help = false;
+                    self.help_scroll_offset = 0;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.help_scroll_offset = self.help_scroll_offset.saturating_sub(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.help_scroll_offset = self.help_scroll_offset.saturating_add(1);
+                }
+                KeyCode::PageUp => {
+                    self.help_scroll_offset = self.help_scroll_offset.saturating_sub(PAGE_SCROLL_STEP);
+                }
+                KeyCode::PageDown => {
+                    self.help_scroll_offset = self.help_scroll_offset.saturating_add(PAGE_SCROLL_STEP);
+                }
+                _ => {}
             }
             return;
         }
@@ -411,16 +584,29 @@ impl App {
                 }
             }
             FocusPanel::Content => {
-                match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => self.scroll_content_up(),
-                    KeyCode::Down | KeyCode::Char('j') => self.scroll_content_down(),
-                    KeyCode::PageUp => self.scroll_content_page_up(),
-                    KeyCode::PageDown => self.scroll_content_page_down(),
-                    KeyCode::Tab => self.cycle_focus(),
-                    KeyCode::Char('q') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.should_quit = true;
+                // Handle link navigation mode
+                if self.link_navigation_mode {
+                    match key.code {
+                        KeyCode::Up | KeyCode::Char('k') => self.previous_link(),
+                        KeyCode::Down | KeyCode::Char('j') => self.next_link(),
+                        KeyCode::Enter => self.open_selected_link(),
+                        KeyCode::Esc => self.exit_link_navigation_mode(),
+                        _ => {}
                     }
-                    _ => {}
+                } else {
+                    match key.code {
+                        KeyCode::Up | KeyCode::Char('k') => self.scroll_content_up(),
+                        KeyCode::Down | KeyCode::Char('j') => self.scroll_content_down(),
+                        KeyCode::PageUp => self.scroll_content_page_up(),
+                        KeyCode::PageDown => self.scroll_content_page_down(),
+                        KeyCode::Enter => self.enter_link_navigation_mode(),
+                        KeyCode::Backspace => self.go_back(),
+                        KeyCode::Tab => self.cycle_focus(),
+                        KeyCode::Char('q') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            self.should_quit = true;
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
@@ -473,12 +659,18 @@ fn run_app<B: ratatui::backend::Backend>(
 
             // Render content area
             let tab = app.current_tab();
+            let selected_link_line = if app.link_navigation_mode {
+                app.selected_link_index.and_then(|idx| app.current_links.get(idx).map(|link| link.line_index))
+            } else {
+                None
+            };
             ContentArea::render(
                 chunks[3],
                 f.buffer_mut(),
                 &tab.content,
                 tab.scroll_offset,
                 app.focused_panel == FocusPanel::Content,
+                selected_link_line,
             );
 
             // Render status bar
@@ -492,7 +684,7 @@ fn run_app<B: ratatui::backend::Backend>(
 
             // Render help dialog if shown
             if app.show_help {
-                HelpDialog::render(f.area(), f.buffer_mut());
+                HelpDialog::render(f.area(), f.buffer_mut(), app.help_scroll_offset);
             }
         })?;
 
