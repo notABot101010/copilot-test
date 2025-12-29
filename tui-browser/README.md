@@ -15,10 +15,10 @@ A terminal-based web browser built with Rust, featuring ratatui for the UI, toki
 
 ### Modern Browser Features
 - **History Navigation**: Go back and forward through visited pages
-- **Loading Indicators**: Visual feedback when pages are loading
+- **Loading Indicators**: Visual feedback when pages are loading (in content area and tab)
 - **Status Bar**: Real-time status updates and help text
 - **Scrollable Help Dialog**: Comprehensive keyboard shortcuts reference with scrolling support
-- **Link Extraction and Navigation**: Automatically extracts links from HTML and allows keyboard navigation
+- **Direct Link Navigation**: Type link number and press Enter to navigate, or Ctrl+Enter for new tab
 
 ## User Interface
 
@@ -63,13 +63,13 @@ A terminal-based web browser built with Rust, featuring ratatui for the UI, toki
 ### Content
 - `↑/↓` or `j/k` - Scroll line by line
 - `PgUp/PgDn` - Scroll page by page
-- `Enter` - Enter link navigation mode
-- `Backspace` - Go back to previous page
-- **Link Navigation Mode** (after pressing Enter):
-  - `↑/↓` - Navigate between links on the page
-  - `PgUp/PgDn` - Scroll the page content
-  - `Enter` - Open selected link
-  - `Esc` - Exit link navigation mode
+- `0-9` - Type link number
+- `Enter` - Navigate to typed link number
+- `Ctrl+Enter` - Open typed link in new tab
+- `Backspace` - Clear link number or go back to previous page
+- `Esc` - Clear link number
+- **Link Navigation**: Links are displayed with numbers like `[1]`, `[2]`, etc. Type the number and press Enter to navigate
+- **Note**: When pages are loading, a "Loading page, please wait..." message is displayed
 
 ### General
 - `Ctrl+H` - Show/hide help dialog
@@ -101,8 +101,11 @@ cargo run --release
 2. Press `Tab` to focus the URL bar (or `Ctrl+L`)
 3. Type a URL (e.g., `example.com` or `https://example.com`)
 4. Press `Enter` to navigate
-5. Use `Ctrl+F` to bookmark the current page
-6. Press `Ctrl+H` to see all keyboard shortcuts
+5. Links on the page are displayed with numbers like `[1]`, `[2]`, etc.
+6. Type a link number (e.g., `15`) and press `Enter` to navigate to that link
+7. Type a link number and press `Ctrl+Enter` to open it in a new tab
+8. Use `Ctrl+F` to bookmark the current page
+9. Press `Ctrl+H` to see all keyboard shortcuts
 
 ## Technical Details
 
