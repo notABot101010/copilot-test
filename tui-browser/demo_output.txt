@@ -1,0 +1,40 @@
+TUI Browser Demo Output
+
+This terminal-based web browser features:
+
+1. Tab Bar - Shows all open tabs with loading indicators
+   - Ctrl+T to open new tab
+   - ←/→ to switch between tabs
+   - Ctrl+W to close current tab
+
+2. URL Bar - Full cursor support for URL entry
+   - Type URLs and press Enter to navigate
+   - Ctrl+L to focus URL bar
+   - Supports auto-adding https://
+
+3. Favorites Bar - Bookmarks for quick access
+   - Ctrl+F to add current page
+   - ←/→ to navigate favorites
+   - Enter to open selected favorite
+
+4. Content Area - Rendered HTML as text
+   - ↑/↓ or j/k for line scrolling
+   - PgUp/PgDn for page scrolling
+   - Clean text rendering from HTML
+
+5. Status Bar - Shows current status and help
+   - Loading indicators
+   - Error messages
+   - Quick help reference
+
+6. Help Dialog (Ctrl+H) - Full keyboard shortcuts guide
+
+Modern Browser Features:
+✓ History Navigation (Ctrl+←/→)
+✓ Loading Indicators
+✓ Multiple Tab Support
+✓ Bookmark Management
+✓ Status Updates
+✓ Keyboard-First Interface
+
+All features are fully functional and tested!

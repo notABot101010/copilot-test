@@ -5,6 +5,10 @@ edition = "2021"
 description = "A terminal-based web browser using ratatui, tokio and reqwest"
 license = "MIT"
 
+[lib]
+name = "tui_browser"
+path = "src/lib.rs"
+
 [[bin]]
 name = "tui-browser"
 path = "src/main.rs"
