@@ -75,3 +75,16 @@ fn test_html_to_text_rendering() {
     assert!(text.contains("Hello"));
     assert!(text.contains("World"));
 }
+
+#[test]
+fn test_link_creation() {
+    // Test Link creation
+    let link = tui_browser::Link {
+        text: "Example Link".to_string(),
+        url: "https://example.com".to_string(),
+        line_index: 5,
+    };
+    assert_eq!(link.text, "Example Link");
+    assert_eq!(link.url, "https://example.com");
+    assert_eq!(link.line_index, 5);
+}
