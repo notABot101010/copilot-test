@@ -67,6 +67,7 @@ A terminal-based web browser built with Rust, featuring ratatui for the UI, toki
 - `Backspace` - Go back to previous page
 - **Link Navigation Mode** (after pressing Enter):
   - `↑/↓` - Navigate between links on the page
+  - `PgUp/PgDn` - Scroll the page content
   - `Enter` - Open selected link
   - `Esc` - Exit link navigation mode
 

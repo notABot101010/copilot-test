@@ -390,6 +390,7 @@ impl HelpDialog {
             "",
             "Link Navigation Mode:",
             "  ↑/↓          - Navigate between links",
+            "  PgUp/PgDn    - Scroll page content",
             "  Enter        - Open selected link",
             "  Esc          - Exit link navigation mode",
             "",
