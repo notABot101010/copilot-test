@@ -887,7 +887,10 @@ impl App {
 fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     mut app: App,
-) -> Result<()> {
+) -> Result<()> 
+where
+    <B as ratatui::backend::Backend>::Error: Send + Sync + 'static,
+{
     loop {
         terminal.draw(|f| {
             let chunks = Layout::default()
