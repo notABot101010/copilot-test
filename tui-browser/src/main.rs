@@ -60,7 +60,7 @@ impl App {
     fn new() -> Result<Self> {
         let mut tabs = Vec::new();
         tabs.push(Tab::new());
-        
+
         Ok(Self {
             tabs,
             current_tab_index: 0,
@@ -153,7 +153,7 @@ impl App {
         }
 
         let url = self.url_input.trim().to_string();
-        
+
         // Add http:// if no protocol specified
         let url = if !url.starts_with("http://") && !url.starts_with("https://") {
             format!("https://{}", url)
@@ -162,7 +162,7 @@ impl App {
         };
 
         self.status_message = format!("Loading {}...", url);
-        
+
         let tab = self.current_tab_mut();
         tab.url = url.clone();
         tab.loading = true;
@@ -172,16 +172,16 @@ impl App {
         match self.http_client.fetch_page(&url) {
             Ok(html) => {
                 let text_content = self.http_client.render_html_to_text(&html);
-                
+
                 // Extract title from HTML (simple approach)
                 let title = Self::extract_title(&html).unwrap_or_else(|| url.clone());
-                
+
                 // Extract links from HTML
                 let links = Self::extract_links(&html, &text_content);
-                
+
                 // Extract images from HTML
                 let mut images = Self::extract_images(&html, &url);
-                
+
                 // Download and decode images (limit for performance)
                 // TODO: Make this asynchronous to avoid blocking the UI thread
                 let total_images = images.len();
@@ -191,24 +191,24 @@ impl App {
                         self.status_message = format!("Loading images... ({}/{})", idx + 1, total_images.min(MAX_IMAGES_PER_PAGE));
                     }
                 }
-                
+
                 // Insert image placeholders in text
                 let text_with_images = Self::insert_image_placeholders(&images, &text_content);
-                
+
                 let tab = self.current_tab_mut();
                 tab.content = text_with_images;
                 tab.loading = false;
                 tab.scroll_offset = 0;
                 tab.title = title.clone();
-                
+
                 // Update current links and images
                 self.current_links = links;
                 self.current_images = images;
-                
+
                 // Add to history
                 let entry = HistoryEntry::new(url.clone(), title.clone());
                 self.history.add_entry(entry);
-                
+
                 self.status_message = format!("Loaded: {} ({} images)", title, self.current_images.len());
             }
             Err(err) => {
@@ -239,7 +239,7 @@ impl App {
     fn extract_images(html: &str, base_url: &str) -> Vec<ImageInfo> {
         let lower = html.to_lowercase();
         let mut images = Vec::new();
-        
+
         // Find all <img> tags
         let mut pos = 0;
         while let Some(start_pos) = lower[pos..].find("<img") {
@@ -247,7 +247,7 @@ impl App {
             if let Some(end) = lower[abs_start..].find('>') {
                 let abs_end = abs_start + end;
                 let img_tag = &html[abs_start..abs_end + 1];
-                
+
                 // Extract src attribute
                 if let Some(src) = Self::extract_src_from_img(img_tag) {
                     // Convert relative URLs to absolute
@@ -268,7 +268,7 @@ impl App {
                             parsed.join(&src).ok().map(|joined| joined.to_string())
                         })
                     };
-                    
+
                     // Only add images with valid URLs
                     if let Some(valid_url) = absolute_url {
                         // Extract alt text if available
@@ -276,13 +276,13 @@ impl App {
                         images.push(ImageInfo::new(valid_url, alt, 0));
                     }
                 }
-                
+
                 pos = abs_end + 1;
             } else {
                 break;
             }
         }
-        
+
         images
     }
 
@@ -291,14 +291,14 @@ impl App {
         if images.is_empty() {
             return text_content.to_string();
         }
-        
+
         // Insert image placeholders at the beginning of the content
         let mut result = String::new();
         result.push_str("═══ Images on this Page ═══\n");
         for (idx, image) in images.iter().enumerate() {
             let status = if image.data.is_some() { "✓" } else { "✗" };
             result.push_str(&format!("{} [IMG {}] {}\n", status, idx + 1, image.alt));
-            
+
             // Add placeholder lines for the image to be rendered
             if image.data.is_some() {
                 result.push_str(&format!("[IMAGE_PLACEHOLDER_{}]\n", idx + 1));
@@ -306,14 +306,14 @@ impl App {
         }
         result.push_str("═══════════════════════════\n\n");
         result.push_str(text_content);
-        
+
         result
     }
 
     fn extract_src_from_img(img_tag: &str) -> Option<String> {
         let src_pattern_double = "src=\"";
         let src_pattern_single = "src='";
-        
+
         let (src_start, quote_char) = if let Some(pos) = img_tag.to_lowercase().find(src_pattern_double) {
             (Some(pos + src_pattern_double.len()), '"')
         } else if let Some(pos) = img_tag.to_lowercase().find(src_pattern_single) {
@@ -321,7 +321,7 @@ impl App {
         } else {
             return None;
         };
-        
+
         if let Some(src_value_start) = src_start {
             if let Some(src_end) = img_tag[src_value_start..].find(quote_char) {
                 return Some(img_tag[src_value_start..src_value_start + src_end].to_string());
@@ -333,7 +333,7 @@ impl App {
     fn extract_alt_from_img(img_tag: &str) -> Option<String> {
         let alt_pattern_double = "alt=\"";
         let alt_pattern_single = "alt='";
-        
+
         let (alt_start, quote_char) = if let Some(pos) = img_tag.to_lowercase().find(alt_pattern_double) {
             (Some(pos + alt_pattern_double.len()), '"')
         } else if let Some(pos) = img_tag.to_lowercase().find(alt_pattern_single) {
@@ -341,7 +341,7 @@ impl App {
         } else {
             return None;
         };
-        
+
         if let Some(alt_value_start) = alt_start {
             if let Some(alt_end) = img_tag[alt_value_start..].find(quote_char) {
                 return Some(img_tag[alt_value_start..alt_value_start + alt_end].to_string());
@@ -353,7 +353,7 @@ impl App {
     fn extract_href_from_link(link_html: &str) -> Option<String> {
         let href_pattern_double = "href=\"";
         let href_pattern_single = "href='";
-        
+
         let (href_start, quote_char) = if let Some(pos) = link_html.to_lowercase().find(href_pattern_double) {
             (Some(pos + href_pattern_double.len()), '"')
         } else if let Some(pos) = link_html.to_lowercase().find(href_pattern_single) {
@@ -361,7 +361,7 @@ impl App {
         } else {
             (None, '"')
         };
-        
+
         if let Some(href_value_start) = href_start {
             if let Some(href_end) = link_html[href_value_start..].find(quote_char) {
                 return Some(link_html[href_value_start..href_value_start + href_end].to_string());
@@ -398,28 +398,28 @@ impl App {
         let text_words: Vec<String> = text.split_whitespace()
             .map(|w| w.to_lowercase())
             .collect();
-        
+
         let mut line_index = 0;
         let mut best_match = 0;
-        
+
         for (idx, line) in content_lines.iter().enumerate() {
             // Strategy 1: Exact match
             if line.contains(text) {
                 return idx;
             }
-            
+
             // Strategy 2: Word-based matching with pre-computed lowercase words
             let line_lower = line.to_lowercase();
             let matches = text_words.iter()
                 .filter(|word| line_lower.contains(word.as_str()))
                 .count();
-            
+
             if matches > best_match {
                 best_match = matches;
                 line_index = idx;
             }
         }
-        
+
         line_index
     }
 
@@ -427,7 +427,7 @@ impl App {
         let mut links = Vec::new();
         let lower = html.to_lowercase();
         let content_lines: Vec<&str> = content.lines().collect();
-        
+
         let mut pos = 0;
         while let Some(start_pos) = lower[pos..].find("<a") {
             let abs_start = pos + start_pos;
@@ -443,15 +443,15 @@ impl App {
                     }
                 }
             }
-            
+
             if let Some(end) = lower[abs_start..].find("</a>") {
                 let abs_end = abs_start + end;
                 let link_html = &html[abs_start..abs_end + 4];
-                
+
                 if let Some(url) = Self::extract_href_from_link(link_html) {
                     if let Some(text) = Self::extract_text_from_link(link_html) {
                         let line_index = Self::find_line_index_for_text(&text, &content_lines);
-                        
+
                         if !url.is_empty() {
                             links.push(Link {
                                 text,
@@ -461,13 +461,13 @@ impl App {
                         }
                     }
                 }
-                
+
                 pos = abs_end + 4;
             } else {
                 break;
             }
         }
-        
+
         links
     }
 
@@ -480,7 +480,7 @@ impl App {
         let link_index = link_number - 1;
         if let Some(link) = self.current_links.get(link_index) {
             let mut url = link.url.clone();
-            
+
             // Handle relative URLs
             let current_url = &self.current_tab().url;
             if url.starts_with('/') {
@@ -499,11 +499,11 @@ impl App {
                     }
                 }
             }
-            
+
             if open_in_new_tab {
                 self.open_new_tab();
             }
-            
+
             self.url_input = url;
             self.navigate_to_url();
         }
@@ -514,7 +514,7 @@ impl App {
             self.status_message = "No previous page in history".to_string();
             return;
         }
-        
+
         if let Some(entry) = self.history.go_back() {
             let url = entry.url.clone();
             let title = entry.title.clone();
@@ -529,7 +529,7 @@ impl App {
             self.status_message = "No next page in history".to_string();
             return;
         }
-        
+
         if let Some(entry) = self.history.go_forward() {
             let url = entry.url.clone();
             let title = entry.title.clone();
@@ -887,7 +887,7 @@ impl App {
 fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     mut app: App,
-) -> Result<()> 
+) -> Result<()>
 where
     <B as ratatui::backend::Backend>::Error: Send + Sync + 'static,
 {
@@ -977,10 +977,10 @@ fn main() -> Result<()> {
 
     // Create app with image picker
     let mut app = App::new()?;
-    
+
     // Initialize image picker (tries different protocols: sixel, kitty, iterm2)
-    app.image_picker = Picker::from_termios().ok();
-    
+    app.image_picker = Picker::from_query_stdio().ok();
+
     let res = run_app(&mut terminal, app);
 
     // Restore terminal

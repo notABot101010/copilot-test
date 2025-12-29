@@ -46,7 +46,7 @@ impl TabBar {
 
         for (idx, tab) in tabs.iter().enumerate() {
             let is_selected = idx == selected_index;
-            
+
             let tab_style = if is_selected {
                 Style::default()
                     .fg(Color::Black)
@@ -65,7 +65,7 @@ impl TabBar {
             }
 
             let tab_span = Span::styled(tab_text, tab_style);
-            
+
             // Draw the tab
             for (i, ch) in tab_span.content.chars().enumerate() {
                 if x_offset + i as u16 >= inner_area.x + inner_area.width {
@@ -177,7 +177,7 @@ impl ContentArea {
         // Calculate centered content area with dynamic width and margins
         let content_width = (inner_area.width as f32 * width_percent) as u16;
         let margin_width = (inner_area.width as f32 * (1.0 - width_percent) / 2.0) as u16;
-        
+
         let centered_area = Rect {
             x: inner_area.x + margin_width,
             y: inner_area.y,
@@ -192,7 +192,7 @@ impl ContentArea {
                 .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
                 .alignment(Alignment::Center)
                 .wrap(Wrap { trim: true });
-            
+
             paragraph.render(centered_area, buf);
             return 0;
         }
@@ -203,7 +203,7 @@ impl ContentArea {
                 .style(Style::default().fg(Color::DarkGray))
                 .alignment(Alignment::Center)
                 .wrap(Wrap { trim: true });
-            
+
             paragraph.render(centered_area, buf);
             return 0;
         }
@@ -220,7 +220,7 @@ impl ContentArea {
         let mut styled_lines: Vec<Line> = Vec::new();
         for (line_idx, line) in content.lines().enumerate() {
             let mut spans = Vec::new();
-            
+
             // Add link numbers if this line has links
             if let Some(link_numbers) = line_to_link.get(&line_idx) {
                 let link_label = if link_numbers.len() == 1 {
@@ -241,13 +241,13 @@ impl ContentArea {
                     Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
                 ));
             }
-            
+
             // Add the line content
             spans.push(Span::styled(
                 line.to_string(),
                 Style::default().fg(Color::White),
             ));
-            
+
             styled_lines.push(Line::from(spans));
         }
 
@@ -267,7 +267,7 @@ impl ContentArea {
             let loaded_images: Vec<&ImageInfo> = images.iter()
                 .filter(|img| img.data.is_some())
                 .collect();
-            
+
             if !loaded_images.is_empty() {
                 // Render first image in a small preview area at the bottom
                 // TODO: Implement full inline rendering for all images
@@ -280,7 +280,7 @@ impl ContentArea {
                         width: centered_area.width.min(40),
                         height: image_height,
                     };
-                    
+
                     if let Some(first_image) = loaded_images.first() {
                         if let Some(img_data) = &first_image.data {
                             // Create a resized version that fits the area
@@ -290,9 +290,9 @@ impl ContentArea {
                                 image_area.height as u32 * CELL_TO_PIXEL_HEIGHT,
                                 image::imageops::FilterType::Lanczos3
                             );
-                            
+
                             let mut image_state = picker.new_resize_protocol(resized);
-                            let image_widget = StatefulImage::new(None);
+                            let image_widget = StatefulImage::new();
                             image_widget.render(image_area, buf, &mut image_state);
                         }
                     }
@@ -353,10 +353,10 @@ impl HelpDialog {
         // Create a centered dialog
         let dialog_width = 60.min(area.width.saturating_sub(4));
         let dialog_height = 20.min(area.height.saturating_sub(4));
-        
+
         let dialog_x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
         let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
-        
+
         let dialog_area = Rect {
             x: dialog_x,
             y: dialog_y,
