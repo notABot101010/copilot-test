@@ -273,29 +273,76 @@ impl App {
         let content_lines: Vec<&str> = content.lines().collect();
         
         let mut pos = 0;
-        while let Some(start) = lower[pos..].find("<a ") {
-            let abs_start = pos + start;
+        while let Some(start_pos) = lower[pos..].find("<a") {
+            let abs_start = pos + start_pos;
+            // Check if it's actually an anchor tag (followed by space, >, newline, or tab)
+            let next_char_pos = abs_start + 2;
+            if next_char_pos < html.len() {
+                let next_char = html.chars().nth(next_char_pos).unwrap_or(' ');
+                if !matches!(next_char, ' ' | '>' | '\n' | '\t') {
+                    pos = abs_start + 2;
+                    continue;
+                }
+            }
+            
             if let Some(end) = lower[abs_start..].find("</a>") {
                 let abs_end = abs_start + end;
                 let link_html = &html[abs_start..abs_end + 4];
                 
-                // Extract href
-                if let Some(href_start) = link_html.to_lowercase().find("href=\"") {
-                    let href_value_start = href_start + 6;
-                    if let Some(href_end) = link_html[href_value_start..].find('"') {
+                // Extract href (handle both single and double quotes)
+                let href_pattern_double = "href=\"";
+                let href_pattern_single = "href='";
+                
+                let (href_start, quote_char) = if let Some(pos) = link_html.to_lowercase().find(href_pattern_double) {
+                    (Some(pos + href_pattern_double.len()), '"')
+                } else if let Some(pos) = link_html.to_lowercase().find(href_pattern_single) {
+                    (Some(pos + href_pattern_single.len()), '\'')
+                } else {
+                    (None, '"')
+                };
+                
+                if let Some(href_value_start) = href_start {
+                    if let Some(href_end) = link_html[href_value_start..].find(quote_char) {
                         let url = link_html[href_value_start..href_value_start + href_end].to_string();
                         
-                        // Extract link text
+                        // Extract link text (strip HTML tags)
                         if let Some(text_start) = link_html.find('>') {
                             let text_end = link_html.len() - 4; // remove </a>
-                            let text = link_html[text_start + 1..text_end].trim().to_string();
+                            let raw_text = &link_html[text_start + 1..text_end];
+                            // Simple HTML tag stripping
+                            let mut text = String::new();
+                            let mut in_tag = false;
+                            for ch in raw_text.chars() {
+                                if ch == '<' {
+                                    in_tag = true;
+                                } else if ch == '>' {
+                                    in_tag = false;
+                                } else if !in_tag {
+                                    text.push(ch);
+                                }
+                            }
+                            let text = text.trim().to_string();
                             
-                            // Find approximate line in content
+                            // Find approximate line in content using multiple strategies
                             let mut line_index = 0;
+                            let mut best_match = 0;
+                            let text_words: Vec<&str> = text.split_whitespace().collect();
+                            
                             for (idx, line) in content_lines.iter().enumerate() {
+                                // Strategy 1: Exact match
                                 if line.contains(&text) {
                                     line_index = idx;
                                     break;
+                                }
+                                // Strategy 2: Word-based matching
+                                let line_lower = line.to_lowercase();
+                                let matches = text_words.iter().filter(|word| {
+                                    line_lower.contains(&word.to_lowercase())
+                                }).count();
+                                
+                                if matches > best_match {
+                                    best_match = matches;
+                                    line_index = idx;
                                 }
                             }
                             
