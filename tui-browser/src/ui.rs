@@ -293,10 +293,16 @@ impl ContentArea {
                 let link_label = if link_numbers.len() == 1 {
                     format!("[{}] ", link_numbers[0])
                 } else {
-                    format!("[{}] ", link_numbers.iter()
-                        .map(|n| n.to_string())
-                        .collect::<Vec<_>>()
-                        .join(","))
+                    // Format multiple link numbers efficiently
+                    let mut label = String::from("[");
+                    for (idx, num) in link_numbers.iter().enumerate() {
+                        if idx > 0 {
+                            label.push(',');
+                        }
+                        label.push_str(&num.to_string());
+                    }
+                    label.push_str("] ");
+                    label
                 };
                 
                 let link_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
