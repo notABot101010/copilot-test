@@ -53,6 +53,7 @@ struct App {
     link_navigation_mode: bool,
     current_links: Vec<Link>,
     selected_link_index: Option<usize>,
+    content_viewport_height: usize,
 }
 
 impl App {
@@ -77,6 +78,7 @@ impl App {
             link_navigation_mode: false,
             current_links: Vec::new(),
             selected_link_index: None,
+            content_viewport_height: 10,
         })
     }
 
@@ -392,6 +394,12 @@ impl App {
         if !self.current_links.is_empty() {
             self.link_navigation_mode = true;
             self.selected_link_index = Some(0);
+            
+            // Ensure the first link is visible
+            if let Some(link) = self.current_links.get(0) {
+                self.ensure_line_visible(link.line_index);
+            }
+            
             self.status_message = format!(
                 "Link navigation mode: {}/{} links. Use ↑/↓ to navigate, Enter to open, Esc to exit.",
                 1,
@@ -408,10 +416,30 @@ impl App {
         self.status_message = "Exited link navigation mode".to_string();
     }
 
+    fn ensure_line_visible(&mut self, line_index: usize) {
+        let viewport_height = self.content_viewport_height;
+        let tab = self.current_tab_mut();
+        
+        // If line is above the visible area, scroll up to show it
+        if line_index < tab.scroll_offset {
+            tab.scroll_offset = line_index;
+        }
+        // If line is below the visible area, scroll down to show it
+        else if line_index >= tab.scroll_offset + viewport_height {
+            tab.scroll_offset = line_index.saturating_sub(viewport_height - 1);
+        }
+    }
+
     fn next_link(&mut self) {
         if let Some(idx) = self.selected_link_index {
             let new_idx = (idx + 1) % self.current_links.len();
             self.selected_link_index = Some(new_idx);
+            
+            // Ensure the selected link is visible
+            if let Some(link) = self.current_links.get(new_idx) {
+                self.ensure_line_visible(link.line_index);
+            }
+            
             self.status_message = format!(
                 "Link {}/{}: {}",
                 new_idx + 1,
@@ -429,6 +457,12 @@ impl App {
                 idx - 1
             };
             self.selected_link_index = Some(new_idx);
+            
+            // Ensure the selected link is visible
+            if let Some(link) = self.current_links.get(new_idx) {
+                self.ensure_line_visible(link.line_index);
+            }
+            
             self.status_message = format!(
                 "Link {}/{}: {}",
                 new_idx + 1,
@@ -700,6 +734,9 @@ fn run_app<B: ratatui::backend::Backend>(
                     Constraint::Length(3), // Status bar
                 ])
                 .split(f.area());
+
+            // Update content viewport height (subtract 2 for borders)
+            app.content_viewport_height = chunks[3].height.saturating_sub(2) as usize;
 
             // Render tab bar
             TabBar::render(
