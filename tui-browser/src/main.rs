@@ -15,7 +15,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     Terminal,
 };
-use ratatui_image::{picker::Picker, protocol::StatefulProtocol};
+use ratatui_image::{picker::Picker};
 use std::io;
 use ui::{ContentArea, HelpDialog, StatusBar, TabBar, UrlBar};
 
@@ -930,15 +930,19 @@ fn run_app<B: ratatui::backend::Backend>(
             );
 
             // Render content area
-            let tab = app.current_tab();
+            let tab_content = app.current_tab().content.clone();
+            let tab_scroll = app.current_tab().scroll_offset;
+            let tab_loading = app.current_tab().loading;
             ContentArea::render(
                 chunks[2],
                 f.buffer_mut(),
-                &tab.content,
-                tab.scroll_offset,
+                &tab_content,
+                tab_scroll,
                 app.focused_panel == FocusPanel::Content,
-                tab.loading,
+                tab_loading,
                 &app.current_links,
+                &app.current_images,
+                &mut app.image_picker,
                 app.content_width_percent,
             );
 
@@ -975,8 +979,12 @@ fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Create app and run it
-    let app = App::new()?;
+    // Create app with image picker
+    let mut app = App::new()?;
+    
+    // Initialize image picker (tries different protocols: sixel, kitty, iterm2)
+    app.image_picker = Picker::from_termios().ok();
+    
     let res = run_app(&mut terminal, app);
 
     // Restore terminal

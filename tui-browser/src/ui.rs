@@ -1,11 +1,12 @@
-use crate::models::Tab;
+use crate::models::{ImageInfo, Tab};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Widget, Wrap},
+    widgets::{Block, Borders, Paragraph, StatefulWidget, Widget, Wrap},
 };
+use ratatui_image::{picker::Picker, StatefulImage};
 
 pub struct TabBar;
 
@@ -150,6 +151,8 @@ impl ContentArea {
         is_focused: bool,
         is_loading: bool,
         links: &[crate::Link],
+        images: &[ImageInfo],
+        image_picker: &mut Option<Picker>,
         width_percent: f32,
     ) -> usize {
         let border_style = if is_focused {
@@ -252,6 +255,44 @@ impl ContentArea {
             .scroll((scroll_offset as u16, 0));
 
         paragraph.render(centered_area, buf);
+
+        // Render images if available and if picker is initialized
+        if let Some(picker) = image_picker {
+            // Find images with data
+            let loaded_images: Vec<&ImageInfo> = images.iter()
+                .filter(|img| img.data.is_some())
+                .collect();
+            
+            if !loaded_images.is_empty() {
+                // Render first image in a small preview area at the bottom
+                // This is a simplified approach - in a full implementation,
+                // we'd render images inline with the text
+                let image_height = 10.min(centered_area.height / 3);
+                if centered_area.height > image_height + 2 {
+                    let image_area = Rect {
+                        x: centered_area.x,
+                        y: centered_area.y + centered_area.height - image_height,
+                        width: centered_area.width.min(40),
+                        height: image_height,
+                    };
+                    
+                    if let Some(first_image) = loaded_images.first() {
+                        if let Some(img_data) = &first_image.data {
+                            // Create a resized version that fits the area
+                            let resized = img_data.resize(
+                                image_area.width as u32 * 2,
+                                image_area.height as u32 * 4,
+                                image::imageops::FilterType::Lanczos3
+                            );
+                            
+                            let mut image_state = picker.new_resize_protocol(resized);
+                            let image_widget = StatefulImage::new(None);
+                            image_widget.render(image_area, buf, &mut image_state);
+                        }
+                    }
+                }
+            }
+        }
 
         total_lines
     }
