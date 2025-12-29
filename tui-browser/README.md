@@ -10,12 +10,15 @@ A terminal-based web browser built with Rust, featuring ratatui for the UI, toki
 - **Favorites/Bookmarks**: Quick access to frequently visited pages
 - **Content Display**: HTML to text rendering for readable content
 - **Keyboard-First Design**: All functionality accessible via keyboard
+- **Link Navigation Mode**: Navigate and open links on the page using keyboard
+- **Smart History Navigation**: Go back/forward through pages, or use Backspace for quick back navigation
 
 ### Modern Browser Features
 - **History Navigation**: Go back and forward through visited pages
 - **Loading Indicators**: Visual feedback when pages are loading
 - **Status Bar**: Real-time status updates and help text
-- **Help Dialog**: Comprehensive keyboard shortcuts reference
+- **Scrollable Help Dialog**: Comprehensive keyboard shortcuts reference with scrolling support
+- **Link Extraction and Navigation**: Automatically extracts links from HTML and allows keyboard navigation
 
 ## User Interface
 
@@ -60,9 +63,17 @@ A terminal-based web browser built with Rust, featuring ratatui for the UI, toki
 ### Content
 - `↑/↓` or `j/k` - Scroll line by line
 - `PgUp/PgDn` - Scroll page by page
+- `Enter` - Enter link navigation mode
+- `Backspace` - Go back to previous page
+- **Link Navigation Mode** (after pressing Enter):
+  - `↑/↓` - Navigate between links on the page
+  - `Enter` - Open selected link
+  - `Esc` - Exit link navigation mode
 
 ### General
 - `Ctrl+H` - Show/hide help dialog
+  - In help dialog: `↑/↓` or `j/k` - Scroll through help text
+  - In help dialog: `PgUp/PgDn` - Scroll page by page
 - `Ctrl+Q` or `q` - Quit browser
 - `Esc` - Close dialog or return to content
 
