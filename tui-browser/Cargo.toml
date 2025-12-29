@@ -25,3 +25,5 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 html2text = "0.12"
 url = "2.5"
+image = "0.25"
+viuer = "0.8"

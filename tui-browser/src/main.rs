@@ -9,14 +9,14 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use http_client::HttpClient;
-use models::{Bookmark, HistoryEntry, Link, NavigationHistory, Tab};
+use models::{HistoryEntry, Link, NavigationHistory, Tab};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     Terminal,
 };
 use std::io;
-use ui::{ContentArea, FavoritesBar, HelpDialog, StatusBar, TabBar, UrlBar};
+use ui::{ContentArea, HelpDialog, StatusBar, TabBar, UrlBar};
 
 const SCROLL_STEP: usize = 1;
 const PAGE_SCROLL_STEP: usize = 10;
@@ -27,15 +27,12 @@ const BORDER_HEIGHT: u16 = 2;
 enum FocusPanel {
     TabBar,
     UrlBar,
-    FavoritesBar,
     Content,
 }
 
 struct App {
     tabs: Vec<Tab>,
     current_tab_index: usize,
-    bookmarks: Vec<Bookmark>,
-    selected_bookmark_index: Option<usize>,
     focused_panel: FocusPanel,
     url_input: String,
     url_cursor_position: usize,
@@ -48,6 +45,7 @@ struct App {
     current_links: Vec<Link>,
     link_number_input: String,
     content_viewport_height: usize,
+    content_width_percent: f32,
 }
 
 impl App {
@@ -58,8 +56,6 @@ impl App {
         Ok(Self {
             tabs,
             current_tab_index: 0,
-            bookmarks: Vec::new(),
-            selected_bookmark_index: None,
             focused_panel: FocusPanel::UrlBar,
             url_input: String::new(),
             url_cursor_position: 0,
@@ -72,6 +68,7 @@ impl App {
             current_links: Vec::new(),
             link_number_input: String::new(),
             content_viewport_height: DEFAULT_VIEWPORT_HEIGHT,
+            content_width_percent: 0.6,
         })
     }
 
@@ -130,62 +127,9 @@ impl App {
     fn cycle_focus(&mut self) {
         self.focused_panel = match self.focused_panel {
             FocusPanel::TabBar => FocusPanel::UrlBar,
-            FocusPanel::UrlBar => FocusPanel::FavoritesBar,
-            FocusPanel::FavoritesBar => FocusPanel::Content,
+            FocusPanel::UrlBar => FocusPanel::Content,
             FocusPanel::Content => FocusPanel::TabBar,
         };
-    }
-
-    fn add_bookmark(&mut self) {
-        let tab = self.current_tab();
-        if !tab.url.is_empty() {
-            let title = tab.title.clone();
-            let url = tab.url.clone();
-            let bookmark = Bookmark::new(title.clone(), url);
-            self.bookmarks.push(bookmark);
-            self.status_message = format!("Added '{}' to favorites", title);
-        } else {
-            self.status_message = "No page loaded to bookmark".to_string();
-        }
-    }
-
-    fn next_bookmark(&mut self) {
-        if self.bookmarks.is_empty() {
-            return;
-        }
-
-        self.selected_bookmark_index = Some(
-            self.selected_bookmark_index
-                .map(|i| (i + 1) % self.bookmarks.len())
-                .unwrap_or(0),
-        );
-    }
-
-    fn previous_bookmark(&mut self) {
-        if self.bookmarks.is_empty() {
-            return;
-        }
-
-        self.selected_bookmark_index = Some(
-            self.selected_bookmark_index
-                .map(|i| {
-                    if i == 0 {
-                        self.bookmarks.len() - 1
-                    } else {
-                        i - 1
-                    }
-                })
-                .unwrap_or(0),
-        );
-    }
-
-    fn open_selected_bookmark(&mut self) {
-        if let Some(idx) = self.selected_bookmark_index {
-            if let Some(bookmark) = self.bookmarks.get(idx) {
-                self.url_input = bookmark.url.clone();
-                self.navigate_to_url();
-            }
-        }
     }
 
     fn navigate_to_url(&mut self) {
@@ -469,6 +413,25 @@ impl App {
         tab.scroll_offset = tab.scroll_offset.saturating_add(PAGE_SCROLL_STEP);
     }
 
+    fn zoom_in(&mut self) {
+        self.content_width_percent = (self.content_width_percent + 0.1).min(1.0);
+        self.status_message = format!("Zoom: {}%", (self.content_width_percent * 100.0) as u32);
+    }
+
+    fn zoom_out(&mut self) {
+        self.content_width_percent = (self.content_width_percent - 0.1).max(0.3);
+        self.status_message = format!("Zoom: {}%", (self.content_width_percent * 100.0) as u32);
+    }
+
+    fn refresh_page(&mut self) {
+        if self.current_tab().url.is_empty() {
+            self.status_message = "No page to refresh".to_string();
+            return;
+        }
+        self.status_message = "Refreshing page...".to_string();
+        self.navigate_to_url();
+    }
+
     fn handle_key_event(&mut self, key: event::KeyEvent) {
         // Help dialog handling
         if self.show_help {
@@ -509,10 +472,6 @@ impl App {
                     self.close_current_tab();
                     return;
                 }
-                KeyCode::Char('f') => {
-                    self.add_bookmark();
-                    return;
-                }
                 KeyCode::Char('l') => {
                     self.focused_panel = FocusPanel::UrlBar;
                     self.update_url_bar_from_current_tab();
@@ -528,6 +487,10 @@ impl App {
                 }
                 KeyCode::Right => {
                     self.go_forward();
+                    return;
+                }
+                KeyCode::Char('r') => {
+                    self.refresh_page();
                     return;
                 }
                 _ => {}
@@ -587,27 +550,14 @@ impl App {
                     _ => {}
                 }
             }
-            FocusPanel::FavoritesBar => {
-                match key.code {
-                    KeyCode::Left => self.previous_bookmark(),
-                    KeyCode::Right => self.next_bookmark(),
-                    KeyCode::Enter => {
-                        self.open_selected_bookmark();
-                        self.focused_panel = FocusPanel::Content;
-                    }
-                    KeyCode::Tab => self.cycle_focus(),
-                    KeyCode::Esc => {
-                        self.focused_panel = FocusPanel::Content;
-                    }
-                    _ => {}
-                }
-            }
             FocusPanel::Content => {
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => self.scroll_content_up(),
                     KeyCode::Down | KeyCode::Char('j') => self.scroll_content_down(),
                     KeyCode::PageUp => self.scroll_content_page_up(),
                     KeyCode::PageDown => self.scroll_content_page_down(),
+                    KeyCode::Char('+') | KeyCode::Char('=') => self.zoom_in(),
+                    KeyCode::Char('-') | KeyCode::Char('_') => self.zoom_out(),
                     KeyCode::Enter => {
                         // Navigate to link by number
                         if !self.link_number_input.is_empty() {
@@ -668,7 +618,6 @@ fn run_app<B: ratatui::backend::Backend>(
                 .constraints([
                     Constraint::Length(3), // Tab bar
                     Constraint::Length(3), // URL bar
-                    Constraint::Length(3), // Favorites bar
                     Constraint::Min(5),    // Content area
                     Constraint::Length(3), // Status bar
                 ])
@@ -676,7 +625,7 @@ fn run_app<B: ratatui::backend::Backend>(
 
             // Update content viewport height
             // Subtract border height (top and bottom borders) from total area
-            app.content_viewport_height = chunks[3].height.saturating_sub(BORDER_HEIGHT) as usize;
+            app.content_viewport_height = chunks[2].height.saturating_sub(BORDER_HEIGHT) as usize;
 
             // Render tab bar
             TabBar::render(
@@ -696,31 +645,23 @@ fn run_app<B: ratatui::backend::Backend>(
                 app.focused_panel == FocusPanel::UrlBar,
             );
 
-            // Render favorites bar
-            FavoritesBar::render(
-                chunks[2],
-                f.buffer_mut(),
-                &app.bookmarks,
-                app.selected_bookmark_index,
-                app.focused_panel == FocusPanel::FavoritesBar,
-            );
-
             // Render content area
             let tab = app.current_tab();
             ContentArea::render(
-                chunks[3],
+                chunks[2],
                 f.buffer_mut(),
                 &tab.content,
                 tab.scroll_offset,
                 app.focused_panel == FocusPanel::Content,
                 tab.loading,
                 &app.current_links,
+                app.content_width_percent,
             );
 
             // Render status bar
             let help_text = "Ctrl+H: Help | Ctrl+Q: Quit";
             StatusBar::render(
-                chunks[4],
+                chunks[3],
                 f.buffer_mut(),
                 &app.status_message,
                 help_text,

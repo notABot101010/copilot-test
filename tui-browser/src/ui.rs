@@ -1,4 +1,4 @@
-use crate::models::{Bookmark, Tab};
+use crate::models::Tab;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Rect},
@@ -139,84 +139,6 @@ impl UrlBar {
     }
 }
 
-pub struct FavoritesBar;
-
-impl FavoritesBar {
-    pub fn render(
-        area: Rect,
-        buf: &mut Buffer,
-        bookmarks: &[Bookmark],
-        selected_index: Option<usize>,
-        is_focused: bool,
-    ) {
-        let border_style = if is_focused {
-            Style::default().fg(Color::Yellow)
-        } else {
-            Style::default().fg(Color::White)
-        };
-
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(" Favorites (Ctrl+F: Add | ←/→: Navigate | Enter: Open) ")
-            .style(border_style);
-
-        let inner_area = block.inner(area);
-        block.render(area, buf);
-
-        if bookmarks.is_empty() {
-            let empty_msg = "No bookmarks yet. Press Ctrl+F to add current page.";
-            let empty_span = Span::styled(empty_msg, Style::default().fg(Color::DarkGray));
-            
-            for (i, ch) in empty_span.content.chars().enumerate() {
-                if i >= inner_area.width as usize {
-                    break;
-                }
-                if let Some(cell) = buf.cell_mut((inner_area.x + i as u16, inner_area.y)) {
-                    cell.set_char(ch);
-                    cell.set_style(Style::default().fg(Color::DarkGray));
-                }
-            }
-            return;
-        }
-
-        let mut x_offset = inner_area.x;
-        let y = inner_area.y;
-
-        for (idx, bookmark) in bookmarks.iter().enumerate() {
-            let is_selected = Some(idx) == selected_index;
-            
-            let bookmark_style = if is_selected {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::Cyan)
-            };
-
-            let bookmark_text = format!(" ★ {} ", bookmark.title);
-            let bookmark_width = bookmark_text.len() as u16;
-
-            if x_offset + bookmark_width > inner_area.x + inner_area.width {
-                break;
-            }
-
-            // Draw the bookmark
-            for (i, ch) in bookmark_text.chars().enumerate() {
-                if x_offset + i as u16 >= inner_area.x + inner_area.width {
-                    break;
-                }
-                if let Some(cell) = buf.cell_mut((x_offset + i as u16, y)) {
-                    cell.set_char(ch);
-                    cell.set_style(bookmark_style);
-                }
-            }
-
-            x_offset += bookmark_width + 2;
-        }
-    }
-}
-
 pub struct ContentArea;
 
 impl ContentArea {
@@ -228,6 +150,7 @@ impl ContentArea {
         is_focused: bool,
         is_loading: bool,
         links: &[crate::Link],
+        width_percent: f32,
     ) -> usize {
         let border_style = if is_focused {
             Style::default().fg(Color::Yellow)
@@ -243,6 +166,17 @@ impl ContentArea {
         let inner_area = block.inner(area);
         block.render(area, buf);
 
+        // Calculate centered content area with dynamic width and margins
+        let content_width = (inner_area.width as f32 * width_percent) as u16;
+        let margin_width = (inner_area.width as f32 * (1.0 - width_percent) / 2.0) as u16;
+        
+        let centered_area = Rect {
+            x: inner_area.x + margin_width,
+            y: inner_area.y,
+            width: content_width,
+            height: inner_area.height,
+        };
+
         // Show loading indicator
         if is_loading {
             let loading_msg = "Loading page, please wait...";
@@ -251,7 +185,7 @@ impl ContentArea {
                 .alignment(Alignment::Center)
                 .wrap(Wrap { trim: true });
             
-            paragraph.render(inner_area, buf);
+            paragraph.render(centered_area, buf);
             return 0;
         }
 
@@ -262,13 +196,13 @@ impl ContentArea {
                 .alignment(Alignment::Center)
                 .wrap(Wrap { trim: true });
             
-            paragraph.render(inner_area, buf);
+            paragraph.render(centered_area, buf);
             return 0;
         }
 
         let lines: Vec<&str> = content.lines().collect();
         let total_lines = lines.len();
-        let visible_height = inner_area.height as usize;
+        let visible_height = centered_area.height as usize;
 
         let start_line = scroll_offset.min(total_lines.saturating_sub(1));
         let end_line = (start_line + visible_height).min(total_lines);
@@ -282,7 +216,7 @@ impl ContentArea {
         }
 
         for (i, line) in lines[start_line..end_line].iter().enumerate() {
-            let y = inner_area.y + i as u16;
+            let y = centered_area.y + i as u16;
             let absolute_line_index = start_line + i;
             
             let mut x_offset = 0;
@@ -308,10 +242,10 @@ impl ContentArea {
                 let link_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
                 
                 for (j, ch) in link_label.chars().enumerate() {
-                    if x_offset + j >= inner_area.width as usize {
+                    if x_offset + j >= centered_area.width as usize {
                         break;
                     }
-                    if let Some(cell) = buf.cell_mut((inner_area.x + (x_offset + j) as u16, y)) {
+                    if let Some(cell) = buf.cell_mut((centered_area.x + (x_offset + j) as u16, y)) {
                         cell.set_char(ch);
                         cell.set_style(link_style);
                     }
@@ -322,10 +256,10 @@ impl ContentArea {
             // Display the line content
             let line_style = Style::default().fg(Color::White);
             for (j, ch) in line.chars().enumerate() {
-                if x_offset + j >= inner_area.width as usize {
+                if x_offset + j >= centered_area.width as usize {
                     break;
                 }
-                if let Some(cell) = buf.cell_mut((inner_area.x + (x_offset + j) as u16, y)) {
+                if let Some(cell) = buf.cell_mut((centered_area.x + (x_offset + j) as u16, y)) {
                     cell.set_char(ch);
                     cell.set_style(line_style);
                 }
@@ -424,11 +358,7 @@ impl HelpDialog {
             "URL Bar:",
             "  Enter        - Navigate to URL",
             "  Ctrl+L       - Focus URL bar",
-            "",
-            "Favorites:",
-            "  Ctrl+F       - Add current page to favorites",
-            "  ←/→ (favs)   - Navigate favorites",
-            "  Enter        - Open selected favorite",
+            "  Ctrl+R       - Refresh current page",
             "",
             "Content:",
             "  ↑/↓ or j/k   - Scroll line by line",
@@ -440,6 +370,7 @@ impl HelpDialog {
             "  Esc          - Clear link number",
             "  Ctrl+←       - Go back in history",
             "  Ctrl+→       - Go forward in history",
+            "  +/-          - Zoom in/out (adjust text width)",
             "",
             "General:",
             "  Ctrl+H       - Show this help",
