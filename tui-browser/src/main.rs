@@ -23,6 +23,7 @@ const SCROLL_STEP: usize = 1;
 const PAGE_SCROLL_STEP: usize = 10;
 const DEFAULT_VIEWPORT_HEIGHT: usize = 10;
 const BORDER_HEIGHT: u16 = 2;
+const MAX_IMAGES_PER_PAGE: usize = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FocusPanel {
@@ -181,13 +182,12 @@ impl App {
                 // Extract images from HTML
                 let mut images = Self::extract_images(&html, &url);
                 
-                // Download and decode images (limit to first 5 for performance)
-                let max_images = 5;
+                // Download and decode images (limit for performance)
                 let total_images = images.len();
-                for (idx, image_info) in images.iter_mut().take(max_images).enumerate() {
+                for (idx, image_info) in images.iter_mut().take(MAX_IMAGES_PER_PAGE).enumerate() {
                     if let Ok(img_data) = self.http_client.fetch_image(&image_info.url) {
                         image_info.data = Some(img_data);
-                        self.status_message = format!("Loading images... ({}/{})", idx + 1, total_images.min(max_images));
+                        self.status_message = format!("Loading images... ({}/{})", idx + 1, total_images.min(MAX_IMAGES_PER_PAGE));
                     }
                 }
                 
@@ -251,37 +251,29 @@ impl App {
                 if let Some(src) = Self::extract_src_from_img(img_tag) {
                     // Convert relative URLs to absolute
                     let absolute_url = if src.starts_with("http://") || src.starts_with("https://") {
-                        src
+                        Some(src)
                     } else if src.starts_with("//") {
-                        format!("https:{}", src)
+                        Some(format!("https:{}", src))
                     } else if src.starts_with('/') {
                         // Absolute path
-                        if let Ok(parsed) = url::Url::parse(base_url) {
-                            if let Some(host) = parsed.host_str() {
-                                let scheme = parsed.scheme();
-                                format!("{}://{}{}", scheme, host, src)
-                            } else {
-                                src
-                            }
-                        } else {
-                            src
-                        }
+                        url::Url::parse(base_url).ok().and_then(|parsed| {
+                            parsed.host_str().map(|host| {
+                                format!("{}://{}{}", parsed.scheme(), host, src)
+                            })
+                        })
                     } else {
                         // Relative path
-                        if let Ok(parsed) = url::Url::parse(base_url) {
-                            if let Ok(joined) = parsed.join(&src) {
-                                joined.to_string()
-                            } else {
-                                src
-                            }
-                        } else {
-                            src
-                        }
+                        url::Url::parse(base_url).ok().and_then(|parsed| {
+                            parsed.join(&src).ok().map(|joined| joined.to_string())
+                        })
                     };
                     
-                    // Extract alt text if available
-                    let alt = Self::extract_alt_from_img(img_tag).unwrap_or_else(|| "Image".to_string());
-                    images.push(ImageInfo::new(absolute_url, alt, 0));
+                    // Only add images with valid URLs
+                    if let Some(valid_url) = absolute_url {
+                        // Extract alt text if available
+                        let alt = Self::extract_alt_from_img(img_tag).unwrap_or_else(|| "Image".to_string());
+                        images.push(ImageInfo::new(valid_url, alt, 0));
+                    }
                 }
                 
                 pos = abs_end + 1;

@@ -8,6 +8,11 @@ use ratatui::{
 };
 use ratatui_image::{picker::Picker, StatefulImage};
 
+// Image rendering constants
+// Terminal cells to pixels conversion: typically 1 cell = 2 pixels wide, 4 pixels tall
+const CELL_TO_PIXEL_WIDTH: u32 = 2;
+const CELL_TO_PIXEL_HEIGHT: u32 = 4;
+
 pub struct TabBar;
 
 impl TabBar {
@@ -279,9 +284,10 @@ impl ContentArea {
                     if let Some(first_image) = loaded_images.first() {
                         if let Some(img_data) = &first_image.data {
                             // Create a resized version that fits the area
+                            // Convert terminal cell dimensions to pixel dimensions
                             let resized = img_data.resize(
-                                image_area.width as u32 * 2,
-                                image_area.height as u32 * 4,
+                                image_area.width as u32 * CELL_TO_PIXEL_WIDTH,
+                                image_area.height as u32 * CELL_TO_PIXEL_HEIGHT,
                                 image::imageops::FilterType::Lanczos3
                             );
                             
