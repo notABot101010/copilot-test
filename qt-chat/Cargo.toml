@@ -11,6 +11,5 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
-
-[build-dependencies]
+cstr = "0.2"[build-dependencies]
 cpp_build = "0.5"
