@@ -1970,7 +1970,7 @@ func (a *app) withRepoClone(ctx context.Context, project *Project, branch string
 	if err != nil {
 		return err
 	}
-	tmpDir, err := os.MkdirTemp("", "copilot-project-*")
+	tmpDir, err := os.MkdirTemp("", "repo-worktree-*")
 	if err != nil {
 		return err
 	}

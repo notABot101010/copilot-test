@@ -195,7 +195,7 @@ function ProjectsPanel() {
   }, [load])
 
   const submit = async () => {
-    if (!orgID || !orgs.some((org) => String(org.id) === orgID)) return
+    if (!orgID) return
     await createProject(Number(orgID), name)
     setName('')
     await load()
@@ -209,7 +209,7 @@ function ProjectsPanel() {
           <Select
             label="Organization"
             data={orgs.map((org) => ({ value: String(org.id), label: org.name }))}
-            value={orgID ?? ''}
+            value={orgID}
             onChange={setOrgID}
           />
           <TextInput label="Project name" value={name} onChange={(e) => setName(e.currentTarget.value)} />
