@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -92,21 +94,58 @@ func newStore() *Store {
 }
 
 type app struct {
-	store      *Store
-	reposRoot  string
-	staticRoot string
-	gitBinary  string
+	store       *Store
+	reposRoot   string
+	staticRoot  string
+	gitBinary   string
+	httpBaseURL string
 }
 
 var repoNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+var lfsOIDPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 const gitCommandTimeout = 10 * time.Minute
+
+// lfsObjectRef is a single object entry used in LFS batch requests and responses.
+type lfsObjectRef struct {
+	OID  string `json:"oid"`
+	Size int64  `json:"size"`
+}
+
+type lfsBatchRequest struct {
+	Operation string         `json:"operation"`
+	Objects   []lfsObjectRef `json:"objects"`
+}
+
+type lfsAction struct {
+	Href   string            `json:"href"`
+	Header map[string]string `json:"header,omitempty"`
+}
+
+type lfsObjectError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+type lfsObjectResponse struct {
+	OID           string               `json:"oid"`
+	Size          int64                `json:"size"`
+	Authenticated bool                 `json:"authenticated,omitempty"`
+	Actions       map[string]lfsAction `json:"actions,omitempty"`
+	Error         *lfsObjectError      `json:"error,omitempty"`
+}
+
+type lfsBatchResponse struct {
+	Transfer string              `json:"transfer"`
+	Objects  []lfsObjectResponse `json:"objects"`
+}
 
 func main() {
 	httpPort := envOrDefault("HTTP_PORT", "8080")
 	sshPort := envOrDefault("SSH_PORT", "2222")
 	reposRoot := envOrDefault("REPOS_ROOT", "./data/repos")
 	staticRoot := envOrDefault("STATIC_ROOT", "./frontend/dist")
+	httpBaseURL := envOrDefault("HTTP_BASE_URL", "http://localhost:"+envOrDefault("HTTP_PORT", "8080"))
 	gitBinary, err := exec.LookPath("git")
 	if err != nil {
 		log.Fatalf("git binary not found: %v", err)
@@ -121,7 +160,7 @@ func main() {
 		log.Fatalf("failed to create repos root: %v", err)
 	}
 
-	a := &app{store: newStore(), reposRoot: reposRoot, staticRoot: staticRoot, gitBinary: gitBinary}
+	a := &app{store: newStore(), reposRoot: reposRoot, staticRoot: staticRoot, gitBinary: gitBinary, httpBaseURL: strings.TrimRight(httpBaseURL, "/")}
 	httpServer := &http.Server{
 		Addr:              ":" + httpPort,
 		Handler:           a.httpRouter(),
@@ -224,6 +263,13 @@ func (a *app) sshServer(addr string) *gliderssh.Server {
 
 func (a *app) handleSSHSession(s gliderssh.Session) {
 	cmd := s.Command()
+
+	// git-lfs-authenticate takes three arguments: command, repo path, operation.
+	if len(cmd) == 3 && cmd[0] == "git-lfs-authenticate" {
+		a.handleLFSAuthenticate(s, cmd)
+		return
+	}
+
 	if len(cmd) != 2 {
 		_, _ = io.WriteString(s.Stderr(), "expected git command and repository path\n")
 		s.Exit(1)
@@ -623,15 +669,20 @@ func (a *app) addIssueComment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleGitHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodPost {
-		w.Header().Set("Allow", "GET, POST")
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
 	pathInfo := strings.TrimPrefix(r.URL.Path, "/git")
 	if pathInfo == "" || pathInfo == "/" {
 		writeError(w, http.StatusNotFound, "repository path required")
+		return
+	}
+
+	// Route LFS API requests before the standard git method check (LFS uses PUT for uploads).
+	if a.routeLFSRequest(w, r, pathInfo) {
+		return
+	}
+
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		w.Header().Set("Allow", "GET, POST")
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
@@ -741,6 +792,336 @@ func (a *app) isReceivePackRequest(r *http.Request) bool {
 	service := r.URL.Query().Get("service")
 	path := strings.TrimSuffix(r.URL.Path, "/")
 	return service == "git-receive-pack" || strings.HasSuffix(path, "/git-receive-pack")
+}
+
+// ---------------------------------------------------------------------------
+// Git LFS support
+// ---------------------------------------------------------------------------
+
+// lfsObjectPath returns the filesystem path for an LFS object stored under a repository.
+func (a *app) lfsObjectPath(repoPath, oid string) string {
+	return filepath.Join(repoPath, "lfs", "objects", oid[:2], oid[2:4], oid)
+}
+
+// lfsBaseURL returns the base HTTP URL to use in LFS response hrefs.
+// It prefers the configured httpBaseURL but falls back to constructing it from
+// the request Host header, which works for simple single-server deployments.
+func (a *app) lfsBaseURL(r *http.Request) string {
+	if a.httpBaseURL != "" {
+		return a.httpBaseURL
+	}
+	scheme := "http"
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto == "https" {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+// routeLFSRequest inspects pathInfo (the URL path with the "/git" prefix stripped)
+// and, if it matches an LFS endpoint, handles the request and returns true.
+// Returns false when the request is not an LFS request.
+func (a *app) routeLFSRequest(w http.ResponseWriter, r *http.Request, pathInfo string) bool {
+	const batchSuffix = "/info/lfs/objects/batch"
+	const objectsInfix = "/info/lfs/objects/"
+
+	// Batch API: POST /<org>/<project>.git/info/lfs/objects/batch
+	if strings.HasSuffix(pathInfo, batchSuffix) && r.Method == http.MethodPost {
+		repoArg := strings.TrimSuffix(pathInfo, batchSuffix)
+		project, err := a.findProjectByRepoArg(repoArg)
+		if err != nil {
+			writeLFSError(w, http.StatusNotFound, "repository not found")
+			return true
+		}
+		repoPath, err := a.resolveRepoPath(project.RepoRel)
+		if err != nil {
+			writeLFSError(w, http.StatusNotFound, "repository not found")
+			return true
+		}
+		a.handleLFSBatch(w, r, project, repoPath)
+		return true
+	}
+
+	// Object upload/download: GET or PUT /<org>/<project>.git/info/lfs/objects/<oid>
+	if idx := strings.Index(pathInfo, objectsInfix); idx != -1 {
+		oid := pathInfo[idx+len(objectsInfix):]
+		if lfsOIDPattern.MatchString(oid) {
+			repoArg := pathInfo[:idx]
+			project, err := a.findProjectByRepoArg(repoArg)
+			if err != nil {
+				writeLFSError(w, http.StatusNotFound, "repository not found")
+				return true
+			}
+			repoPath, err := a.resolveRepoPath(project.RepoRel)
+			if err != nil {
+				writeLFSError(w, http.StatusNotFound, "repository not found")
+				return true
+			}
+			switch r.Method {
+			case http.MethodGet:
+				a.handleLFSDownload(w, r, repoPath, oid)
+			case http.MethodPut:
+				a.handleLFSUpload(w, r, project, repoPath, oid)
+			default:
+				w.Header().Set("Allow", "GET, PUT")
+				writeLFSError(w, http.StatusMethodNotAllowed, "method not allowed")
+			}
+			return true
+		}
+	}
+
+	return false
+}
+
+func (a *app) handleLFSBatch(w http.ResponseWriter, r *http.Request, project *Project, repoPath string) {
+	w.Header().Set("Content-Type", "application/vnd.git-lfs+json")
+
+	var req lfsBatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "invalid request body"})
+		return
+	}
+
+	if req.Operation != "upload" && req.Operation != "download" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "operation must be upload or download"})
+		return
+	}
+
+	// Uploads require write authorization.
+	if req.Operation == "upload" {
+		username, token, ok := r.BasicAuth()
+		if !ok {
+			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": "credentials required for upload"})
+			return
+		}
+		gitUser, err := a.authenticateHTTPGit(username, token)
+		if err != nil {
+			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": "invalid credentials"})
+			return
+		}
+		if !a.canUserWriteProject(gitUser.ID, project) {
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": "forbidden"})
+			return
+		}
+	}
+
+	baseURL := a.lfsBaseURL(r)
+	repoURLPath := "/git/" + filepath.ToSlash(project.RepoRel)
+
+	objects := make([]lfsObjectResponse, 0, len(req.Objects))
+	for _, obj := range req.Objects {
+		if !lfsOIDPattern.MatchString(obj.OID) {
+			objects = append(objects, lfsObjectResponse{
+				OID:   obj.OID,
+				Size:  obj.Size,
+				Error: &lfsObjectError{Code: http.StatusUnprocessableEntity, Message: "invalid OID"},
+			})
+			continue
+		}
+
+		objPath := a.lfsObjectPath(repoPath, obj.OID)
+		objectURL := baseURL + repoURLPath + "/info/lfs/objects/" + obj.OID
+
+		objResp := lfsObjectResponse{OID: obj.OID, Size: obj.Size}
+		if req.Operation == "upload" {
+			if _, err := os.Stat(objPath); os.IsNotExist(err) {
+				// Object not yet stored; provide an upload action.
+				objResp.Authenticated = true
+				objResp.Actions = map[string]lfsAction{
+					"upload": {
+						Href:   objectURL,
+						Header: map[string]string{"Content-Type": "application/octet-stream"},
+					},
+				}
+			}
+			// If the object already exists no action is needed.
+		} else {
+			if _, err := os.Stat(objPath); os.IsNotExist(err) {
+				objResp.Error = &lfsObjectError{Code: http.StatusNotFound, Message: "object not found"}
+			} else {
+				objResp.Actions = map[string]lfsAction{
+					"download": {Href: objectURL},
+				}
+			}
+		}
+		objects = append(objects, objResp)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(lfsBatchResponse{Transfer: "basic", Objects: objects})
+}
+
+func (a *app) handleLFSDownload(w http.ResponseWriter, _ *http.Request, repoPath, oid string) {
+	objPath := a.lfsObjectPath(repoPath, oid)
+	f, err := os.Open(objPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			w.Header().Set("Content-Type", "application/vnd.git-lfs+json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": "object not found"})
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to read object")
+		return
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to stat object")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, f)
+}
+
+func (a *app) handleLFSUpload(w http.ResponseWriter, r *http.Request, project *Project, repoPath, oid string) {
+	username, token, ok := r.BasicAuth()
+	if !ok {
+		w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+		writeLFSError(w, http.StatusUnauthorized, "credentials required")
+		return
+	}
+	gitUser, err := a.authenticateHTTPGit(username, token)
+	if err != nil {
+		w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+		writeLFSError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+	if !a.canUserWriteProject(gitUser.ID, project) {
+		writeLFSError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	objPath := a.lfsObjectPath(repoPath, oid)
+
+	// Object already present; nothing to do.
+	if _, err := os.Stat(objPath); err == nil {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if err := os.MkdirAll(filepath.Dir(objPath), 0o755); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to prepare object storage")
+		return
+	}
+
+	// Stream into a temp file, verify SHA-256, then rename atomically.
+	tmp, err := os.CreateTemp(filepath.Dir(objPath), "lfs-upload-*")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create temp file")
+		return
+	}
+	tmpPath := tmp.Name()
+	committed := false
+	defer func() {
+		tmp.Close()
+		if !committed {
+			os.Remove(tmpPath)
+		}
+	}()
+
+	h := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(tmp, h), r.Body); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to write object")
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to finalize object")
+		return
+	}
+
+	computed := hex.EncodeToString(h.Sum(nil))
+	if computed != oid {
+		writeLFSError(w, http.StatusUnprocessableEntity, "OID mismatch: content does not match expected SHA-256")
+		return
+	}
+
+	if err := os.Rename(tmpPath, objPath); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to store object")
+		return
+	}
+	committed = true
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleLFSAuthenticate handles the SSH "git-lfs-authenticate <repo> upload|download" command.
+// It returns a JSON payload that git-lfs uses to authenticate subsequent HTTP LFS requests.
+func (a *app) handleLFSAuthenticate(s gliderssh.Session, cmd []string) {
+	// cmd[0] = "git-lfs-authenticate", cmd[1] = repo path, cmd[2] = operation
+	repoArg := strings.Trim(cmd[1], "'\"")
+	operation := cmd[2]
+	if operation != "upload" && operation != "download" {
+		_, _ = io.WriteString(s.Stderr(), "operation must be upload or download\n")
+		s.Exit(1)
+		return
+	}
+
+	project, err := a.findProjectByRepoArg(repoArg)
+	if err != nil {
+		_, _ = io.WriteString(s.Stderr(), "repository not found\n")
+		s.Exit(1)
+		return
+	}
+
+	userID, ok := sshUserIDFromSession(s)
+	if !ok {
+		_, _ = io.WriteString(s.Stderr(), "unauthorized\n")
+		s.Exit(1)
+		return
+	}
+
+	if operation == "upload" && !a.canUserWriteProject(userID, project) {
+		_, _ = io.WriteString(s.Stderr(), "forbidden\n")
+		s.Exit(1)
+		return
+	}
+
+	a.store.mu.RLock()
+	u, ok := a.store.users[userID]
+	a.store.mu.RUnlock()
+	if !ok {
+		_, _ = io.WriteString(s.Stderr(), "user not found\n")
+		s.Exit(1)
+		return
+	}
+
+	lfsHref := a.httpBaseURL + "/git/" + filepath.ToSlash(project.RepoRel) + "/info/lfs"
+	creds := base64.StdEncoding.EncodeToString([]byte(u.Username + ":" + u.Token))
+
+	type lfsAuthResponse struct {
+		Href      string            `json:"href"`
+		Header    map[string]string `json:"header"`
+		ExpiresIn int               `json:"expires_in"`
+	}
+	resp := lfsAuthResponse{
+		Href:      lfsHref,
+		Header:    map[string]string{"Authorization": "Basic " + creds},
+		ExpiresIn: 86400,
+	}
+	if err := json.NewEncoder(s).Encode(resp); err != nil {
+		_, _ = io.WriteString(s.Stderr(), "failed to write response\n")
+		s.Exit(1)
+		return
+	}
+	s.Exit(0)
+}
+
+// writeLFSError writes a JSON error response with the application/vnd.git-lfs+json content type.
+func writeLFSError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/vnd.git-lfs+json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": message})
 }
 
 func (a *app) authenticateHTTPGit(username, token string) (*User, error) {
