@@ -1,4 +1,15 @@
 import {
+  type DragEndEvent,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import { CSS } from '@dnd-kit/utilities'
+import {
   ActionIcon,
   AppShell,
   Autocomplete,
@@ -16,7 +27,7 @@ import {
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { useSignals } from '@preact/signals-react/runtime'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import {
   addIssueComment,
@@ -431,16 +442,163 @@ function RepositoryBrowser() {
   )
 }
 
+type IssueStatus = Issue['status']
+
+const ISSUE_COLUMNS: { status: IssueStatus; title: string; color: string }[] = [
+  { status: 'open', title: 'Open', color: 'green' },
+  { status: 'closed', title: 'Closed', color: 'gray' },
+]
+
+function parseIssueTags(input: string): string[] {
+  const seen = new Set<string>()
+  const tags: string[] = []
+  for (const rawTag of input.split(/[,\n;]+/)) {
+    const tag = rawTag.trim()
+    if (!tag || seen.has(tag)) continue
+    seen.add(tag)
+    tags.push(tag)
+  }
+  return tags
+}
+
+function IssueColumn({
+  status,
+  title,
+  color,
+  children,
+}: {
+  status: IssueStatus
+  title: string
+  color: string
+  children: ReactNode
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id: status })
+  return (
+    <Card
+      ref={setNodeRef}
+      withBorder
+      style={{ width: '100%', backgroundColor: isOver ? '#eef7ff' : undefined, minHeight: 220 }}
+    >
+      <Stack>
+        <Group justify="space-between">
+          <Title order={5}>{title}</Title>
+          <Badge color={color}>{status}</Badge>
+        </Group>
+        {children}
+      </Stack>
+    </Card>
+  )
+}
+
+function DraggableIssueCard({
+  issue,
+  onToggleStatus,
+  tagValue,
+  onTagChange,
+  onSaveTags,
+  commentValue,
+  onCommentChange,
+  onAddComment,
+}: {
+  issue: Issue
+  onToggleStatus: (issue: Issue) => void
+  tagValue: string
+  onTagChange: (value: string) => void
+  onSaveTags: () => void
+  commentValue: string
+  onCommentChange: (value: string) => void
+  onAddComment: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `issue-${issue.id}`,
+    data: { issueId: issue.id, status: issue.status },
+  })
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0.6 : 1,
+  }
+
+  return (
+    <Card ref={setNodeRef} withBorder style={style}>
+      <Stack>
+        <Group justify="space-between">
+          <Text fw={700}>
+            #{issue.id} {issue.title}
+          </Text>
+          <Group>
+            <Badge color={issue.status === 'open' ? 'green' : 'gray'}>{issue.status}</Badge>
+            <ActionIcon variant="light" aria-label={`Toggle status for issue ${issue.id}`} onClick={() => onToggleStatus(issue)}>
+              ↻
+            </ActionIcon>
+            <ActionIcon variant="subtle" aria-label={`Drag issue ${issue.id}`} {...attributes} {...listeners}>
+              ⋮⋮
+            </ActionIcon>
+          </Group>
+        </Group>
+        <Text>{issue.description}</Text>
+        <Group gap="xs">
+          {issue.tags.length === 0 && (
+            <Badge variant="light" color="gray">
+              no tags
+            </Badge>
+          )}
+          {issue.tags.map((tag) => (
+            <Badge key={tag} variant="light">
+              {tag}
+            </Badge>
+          ))}
+        </Group>
+        <Group align="end">
+          <TextInput
+            label="Tags"
+            aria-label={`Tags for issue ${issue.id}`}
+            placeholder="bug, docs"
+            value={tagValue}
+            onChange={(e) => onTagChange(e.currentTarget.value)}
+          />
+          <Button size="xs" variant="light" onClick={onSaveTags}>
+            Save tags
+          </Button>
+        </Group>
+        {issue.comments.map((comment) => (
+          <Text size="sm" key={comment.id}>
+            • {comment.body}
+          </Text>
+        ))}
+        <Group align="end">
+          <TextInput
+            aria-label={`Comment for issue ${issue.id}`}
+            placeholder="Add comment"
+            value={commentValue}
+            onChange={(e) => onCommentChange(e.currentTarget.value)}
+          />
+          <Button size="xs" onClick={onAddComment}>
+            Comment
+          </Button>
+        </Group>
+      </Stack>
+    </Card>
+  )
+}
+
 function IssueBoard() {
   const { projectId } = useParams()
   const pid = Number(projectId)
   const [issues, setIssues] = useState<Issue[]>([])
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [newIssueTags, setNewIssueTags] = useState('')
   const [commentBody, setCommentBody] = useState<Record<number, string>>({})
+  const [tagDrafts, setTagDrafts] = useState<Record<number, string>>({})
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  )
 
   const load = useCallback(async () => {
-    setIssues(await listIssues(pid))
+    const data = await listIssues(pid)
+    setIssues(data)
+    setTagDrafts(Object.fromEntries(data.map((issue) => [issue.id, issue.tags.join(', ')])))
   }, [pid])
   useEffect(() => {
     if (Number.isFinite(pid)) {
@@ -451,9 +609,10 @@ function IssueBoard() {
   }, [pid, load])
 
   const create = async () => {
-    await createIssue(pid, title, description)
+    await createIssue(pid, title, description, parseIssueTags(newIssueTags))
     setTitle('')
     setDescription('')
+    setNewIssueTags('')
     await load()
   }
 
@@ -462,11 +621,27 @@ function IssueBoard() {
     await load()
   }
 
+  const saveTags = async (issueId: number) => {
+    await updateIssue(pid, issueId, { tags: parseIssueTags(tagDrafts[issueId] ?? '') })
+    await load()
+  }
+
   const addComment = async (issueId: number) => {
     const body = commentBody[issueId]?.trim()
     if (!body) return
     await addIssueComment(pid, issueId, body)
     setCommentBody((curr) => ({ ...curr, [issueId]: '' }))
+    await load()
+  }
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const over = event.over?.id
+    if (over !== 'open' && over !== 'closed') return
+    const issueId = Number(event.active.data.current?.issueId)
+    if (!Number.isFinite(issueId)) return
+    const issue = issues.find((item) => item.id === issueId)
+    if (!issue || issue.status === over) return
+    await updateIssue(pid, issue.id, { status: over })
     await load()
   }
 
@@ -485,45 +660,43 @@ function IssueBoard() {
             value={description}
             onChange={(e) => setDescription(e.currentTarget.value)}
           />
+          <TextInput
+            label="Tags"
+            placeholder="bug, docs"
+            value={newIssueTags}
+            onChange={(e) => setNewIssueTags(e.currentTarget.value)}
+          />
           <Button onClick={create}>Open issue</Button>
         </Stack>
       </Card>
 
-      {issues.map((issue) => (
-        <Card key={issue.id} withBorder>
-          <Stack>
-            <Group justify="space-between">
-              <Text fw={700}>
-                #{issue.id} {issue.title}
-              </Text>
-              <Group>
-                <Badge color={issue.status === 'open' ? 'green' : 'gray'}>{issue.status}</Badge>
-                <ActionIcon variant="light" onClick={() => toggleStatus(issue)}>
-                  ↻
-                </ActionIcon>
-              </Group>
-            </Group>
-            <Text>{issue.description}</Text>
-            {issue.comments.map((comment) => (
-              <Text size="sm" key={comment.id}>
-                • {comment.body}
-              </Text>
-            ))}
-            <Group align="end">
-              <TextInput
-                placeholder="Add comment"
-                value={commentBody[issue.id] ?? ''}
-                onChange={(e) =>
-                  setCommentBody((curr) => ({ ...curr, [issue.id]: e.currentTarget.value }))
-                }
-              />
-              <Button size="xs" onClick={() => addComment(issue.id)}>
-                Comment
-              </Button>
-            </Group>
-          </Stack>
-        </Card>
-      ))}
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <Group align="start" grow>
+          {ISSUE_COLUMNS.map((column) => {
+            const columnIssues = issues.filter((issue) => issue.status === column.status)
+            return (
+              <IssueColumn key={column.status} status={column.status} title={column.title} color={column.color}>
+                <Stack>
+                  {columnIssues.map((issue) => (
+                    <DraggableIssueCard
+                      key={issue.id}
+                      issue={issue}
+                      onToggleStatus={toggleStatus}
+                      tagValue={tagDrafts[issue.id] ?? ''}
+                      onTagChange={(value) => setTagDrafts((curr) => ({ ...curr, [issue.id]: value }))}
+                      onSaveTags={() => saveTags(issue.id)}
+                      commentValue={commentBody[issue.id] ?? ''}
+                      onCommentChange={(value) => setCommentBody((curr) => ({ ...curr, [issue.id]: value }))}
+                      onAddComment={() => addComment(issue.id)}
+                    />
+                  ))}
+                  {columnIssues.length === 0 && <Text size="sm">No issues.</Text>}
+                </Stack>
+              </IssueColumn>
+            )
+          })}
+        </Group>
+      </DndContext>
     </Stack>
   )
 }

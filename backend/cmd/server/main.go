@@ -65,6 +65,7 @@ type Issue struct {
 	Title       string         `json:"title"`
 	Description string         `json:"description"`
 	Status      string         `json:"status"`
+	Tags        []string       `json:"tags"`
 	Comments    []IssueComment `json:"comments"`
 	CreatedAt   time.Time      `json:"createdAt"`
 	UpdatedAt   time.Time      `json:"updatedAt"`
@@ -575,6 +576,7 @@ func (a *app) createIssue(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Title       string `json:"title"`
 		Description string `json:"description"`
+		Tags        []string `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -601,6 +603,7 @@ func (a *app) createIssue(w http.ResponseWriter, r *http.Request) {
 		Title:       strings.TrimSpace(req.Title),
 		Description: strings.TrimSpace(req.Description),
 		Status:      "open",
+		Tags:        normalizeIssueTags(req.Tags),
 		Comments:    []IssueComment{},
 		CreatedAt:   now,
 		UpdatedAt:   now,
@@ -646,6 +649,7 @@ func (a *app) updateIssue(w http.ResponseWriter, r *http.Request) {
 		Title       *string `json:"title"`
 		Description *string `json:"description"`
 		Status      *string `json:"status"`
+		Tags        *[]string `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -683,8 +687,28 @@ func (a *app) updateIssue(w http.ResponseWriter, r *http.Request) {
 		}
 		issue.Status = status
 	}
+	if req.Tags != nil {
+		issue.Tags = normalizeIssueTags(*req.Tags)
+	}
 	issue.UpdatedAt = time.Now().UTC()
 	writeJSON(w, http.StatusOK, issue)
+}
+
+func normalizeIssueTags(tags []string) []string {
+	normalized := make([]string, 0, len(tags))
+	seen := make(map[string]struct{}, len(tags))
+	for _, tag := range tags {
+		trimmed := strings.TrimSpace(tag)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
 }
 
 func (a *app) addIssueComment(w http.ResponseWriter, r *http.Request) {

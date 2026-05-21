@@ -37,6 +37,36 @@ func TestRepositoryAndMergeRequestFlow(t *testing.T) {
 	var project Project
 	requestJSON(t, server, http.MethodPost, "/api/orgs/1/projects", user.Token, map[string]string{"name": "demo"}, &project)
 
+	var issue Issue
+	requestJSON(t, server, http.MethodPost, "/api/projects/1/issues", user.Token, map[string]any{
+		"title":       "Bug in README",
+		"description": "Needs update",
+		"tags":        []string{"bug", " docs ", "bug"},
+	}, &issue)
+	if issue.Title != "Bug in README" || issue.Status != "open" {
+		t.Fatalf("unexpected issue payload: %+v", issue)
+	}
+	if len(issue.Tags) != 2 || issue.Tags[0] != "bug" || issue.Tags[1] != "docs" {
+		t.Fatalf("unexpected issue tags: %+v", issue.Tags)
+	}
+
+	requestJSON(t, server, http.MethodPatch, "/api/projects/1/issues/1", user.Token, map[string]any{
+		"status": "closed",
+		"tags":   []string{"maintenance"},
+	}, &issue)
+	if issue.Status != "closed" {
+		t.Fatalf("unexpected issue status: %q", issue.Status)
+	}
+	if len(issue.Tags) != 1 || issue.Tags[0] != "maintenance" {
+		t.Fatalf("unexpected updated tags: %+v", issue.Tags)
+	}
+
+	var issues []Issue
+	requestJSON(t, server, http.MethodGet, "/api/projects/1/issues", "", nil, &issues)
+	if len(issues) != 1 || issues[0].Status != "closed" || len(issues[0].Tags) != 1 || issues[0].Tags[0] != "maintenance" {
+		t.Fatalf("unexpected issues list: %+v", issues)
+	}
+
 	var saved RepoFile
 	requestJSON(t, server, http.MethodPut, "/api/projects/1/repo/file", user.Token, map[string]string{
 		"branch":  "main",
