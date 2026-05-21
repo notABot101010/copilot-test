@@ -30,3 +30,10 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Runtime data
+backend/data/

@@ -17,13 +17,14 @@ export type Issue = {
 type UserResponse = { id: number; username: string; token: string }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers)
+  headers.set('Content-Type', 'application/json')
+  if (authHeaderSignal.value.Authorization) {
+    headers.set('Authorization', authHeaderSignal.value.Authorization)
+  }
   const response = await fetch(`${apiBaseSignal.value}${path}`, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaderSignal.value,
-      ...(init?.headers ?? {}),
-    },
+    headers,
   })
   if (!response.ok) {
     const text = await response.text()

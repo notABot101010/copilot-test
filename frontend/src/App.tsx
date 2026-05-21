@@ -14,8 +14,8 @@ import {
   Title,
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
-import { useSignal } from '@preact/signals-react/runtime'
-import { useEffect, useState } from 'react'
+import { useSignals } from '@preact/signals-react/runtime'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import {
   addIssueComment,
@@ -57,20 +57,18 @@ function App() {
 }
 
 function AuthPill() {
-  const session = useSignal(sessionSignal)
-  return session.value ? (
-    <Badge variant="light">{session.value.username}</Badge>
-  ) : (
-    <Badge color="gray">Guest</Badge>
-  )
+  useSignals()
+  const session = sessionSignal.value
+  return session ? <Badge variant="light">{session.username}</Badge> : <Badge color="gray">Guest</Badge>
 }
 
 function Home() {
-  const session = useSignal(sessionSignal)
+  useSignals()
+  const session = sessionSignal.value
   return (
     <Stack>
-      {!session.value && <Onboard />}
-      {session.value && (
+      {!session && <Onboard />}
+      {session && (
         <>
           <SSHKeyPanel />
           <OrganizationsPanel />
@@ -103,11 +101,12 @@ function Onboard() {
 }
 
 function SSHKeyPanel() {
-  const session = useSignal(sessionSignal)
+  useSignals()
+  const session = sessionSignal.value
   const [key, setKey] = useState('')
   const submit = async () => {
-    if (!session.value) return
-    await addSSHKey(session.value.userId, key)
+    if (!session) return
+    await addSSHKey(session.userId, key)
     setKey('')
     notifications.show({ title: 'SSH key added', message: 'You can now push with SSH.' })
   }
@@ -130,12 +129,11 @@ function SSHKeyPanel() {
 function OrganizationsPanel() {
   const [name, setName] = useState('')
   const [orgs, setOrgs] = useState<Organization[]>([])
-  const load = () =>
-    listOrganizations()
-      .then(setOrgs)
-      .catch(() => undefined)
+  const load = () => listOrganizations().then(setOrgs).catch(() => undefined)
   useEffect(() => {
-    load()
+    queueMicrotask(() => {
+      load()
+    })
   }, [])
   const create = async () => {
     await createOrganization(name)
@@ -167,15 +165,17 @@ function ProjectsPanel() {
   const [orgID, setOrgID] = useState<string | null>(null)
   const navigate = useNavigate()
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const [projectData, orgData] = await Promise.all([listProjects(), listOrganizations()])
     setProjects(projectData)
     setOrgs(orgData)
     if (!orgID && orgData.length > 0) setOrgID(String(orgData[0].id))
-  }
+  }, [orgID])
   useEffect(() => {
-    load().catch(() => undefined)
-  }, [])
+    queueMicrotask(() => {
+      load().catch(() => undefined)
+    })
+  }, [load])
 
   const submit = async () => {
     if (!orgID) return
@@ -227,12 +227,16 @@ function IssueBoard() {
   const [description, setDescription] = useState('')
   const [commentBody, setCommentBody] = useState<Record<number, string>>({})
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setIssues(await listIssues(pid))
-  }
-  useEffect(() => {
-    if (Number.isFinite(pid)) load().catch(() => undefined)
   }, [pid])
+  useEffect(() => {
+    if (Number.isFinite(pid)) {
+      queueMicrotask(() => {
+        load().catch(() => undefined)
+      })
+    }
+  }, [pid, load])
 
   const create = async () => {
     await createIssue(pid, title, description)
