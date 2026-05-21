@@ -60,3 +60,10 @@ docker run --rm -p 8080:8080 -p 2222:2222 git-platform
    - password: token
 5. Push over SSH:
    - remote URL: `ssh://git@localhost:2222/<org>/<project>.git`
+
+## Git transport hardening notes
+
+- Git operations are executed via the resolved system `git` binary (`exec.LookPath("git")`) with an explicit command allowlist.
+- Repository paths are validated and constrained to stay under `REPOS_ROOT` before any Git command executes.
+- SSH and HTTP push (`receive-pack`) enforce authorization so only the owning organization user can write to a project repo.
+- Git subprocesses run with context deadlines to avoid unbounded command execution.

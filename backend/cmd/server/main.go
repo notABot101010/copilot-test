@@ -14,14 +14,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	gliderssh "github.com/gliderlabs/ssh"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	gliderssh "github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh"
 )
 
@@ -94,19 +95,33 @@ type app struct {
 	store      *Store
 	reposRoot  string
 	staticRoot string
+	gitBinary  string
 }
+
+var repoNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+
+const gitCommandTimeout = 10 * time.Minute
 
 func main() {
 	httpPort := envOrDefault("HTTP_PORT", "8080")
 	sshPort := envOrDefault("SSH_PORT", "2222")
 	reposRoot := envOrDefault("REPOS_ROOT", "./data/repos")
 	staticRoot := envOrDefault("STATIC_ROOT", "./frontend/dist")
+	gitBinary, err := exec.LookPath("git")
+	if err != nil {
+		log.Fatalf("git binary not found: %v", err)
+	}
+
+	reposRoot, err = filepath.Abs(reposRoot)
+	if err != nil {
+		log.Fatalf("failed to resolve repos root: %v", err)
+	}
 
 	if err := os.MkdirAll(reposRoot, 0o755); err != nil {
 		log.Fatalf("failed to create repos root: %v", err)
 	}
 
-	a := &app{store: newStore(), reposRoot: reposRoot, staticRoot: staticRoot}
+	a := &app{store: newStore(), reposRoot: reposRoot, staticRoot: staticRoot, gitBinary: gitBinary}
 	httpServer := &http.Server{
 		Addr:              ":" + httpPort,
 		Handler:           a.httpRouter(),
@@ -124,7 +139,7 @@ func main() {
 		errCh <- sshServer.ListenAndServe()
 	}()
 
-	err := <-errCh
+	err = <-errCh
 	log.Fatalf("server stopped: %v", err)
 }
 
@@ -229,9 +244,30 @@ func (a *app) handleSSHSession(s gliderssh.Session) {
 		s.Exit(1)
 		return
 	}
-
-	repoPath := filepath.Join(a.reposRoot, project.RepoRel)
-	execCmd := exec.CommandContext(s.Context(), gitCommand, repoPath)
+	userID, ok := sshUserIDFromSession(s)
+	if !ok {
+		_, _ = io.WriteString(s.Stderr(), "unauthorized\n")
+		s.Exit(1)
+		return
+	}
+	if gitCommand == "git-receive-pack" && !a.canUserWriteProject(userID, project) {
+		_, _ = io.WriteString(s.Stderr(), "forbidden\n")
+		s.Exit(1)
+		return
+	}
+	repoPath, err := a.resolveRepoPath(project.RepoRel)
+	if err != nil {
+		_, _ = io.WriteString(s.Stderr(), "repository not found\n")
+		s.Exit(1)
+		return
+	}
+	ctx, cancel := context.WithTimeout(s.Context(), gitCommandTimeout)
+	defer cancel()
+	gitMode := "upload-pack"
+	if gitCommand == "git-receive-pack" {
+		gitMode = "receive-pack"
+	}
+	execCmd := exec.CommandContext(ctx, a.gitBinary, gitMode, repoPath)
 	execCmd.Stdin = s
 	execCmd.Stdout = s
 	execCmd.Stderr = s.Stderr()
@@ -325,6 +361,10 @@ func (a *app) createOrganization(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
+	if !isValidRepoSegment(name) {
+		writeError(w, http.StatusBadRequest, "invalid organization name")
+		return
+	}
 
 	a.store.mu.Lock()
 	defer a.store.mu.Unlock()
@@ -364,7 +404,7 @@ func (a *app) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	if strings.Contains(name, "/") || strings.Contains(name, "..") {
+	if !isValidRepoSegment(name) {
 		writeError(w, http.StatusBadRequest, "invalid project name")
 		return
 	}
@@ -384,12 +424,18 @@ func (a *app) createProject(w http.ResponseWriter, r *http.Request) {
 	id := a.store.nextProjectID
 	a.store.nextProjectID++
 	repoRel := filepath.Join(org.Name, name+".git")
-	repoPath := filepath.Join(a.reposRoot, repoRel)
+	repoPath, err := a.resolveRepoPath(repoRel)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid repository path")
+		return
+	}
 	if err := os.MkdirAll(filepath.Dir(repoPath), 0o755); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to prepare repository directory")
 		return
 	}
-	if err := exec.Command("git", "init", "--bare", repoPath).Run(); err != nil {
+	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+	defer cancel()
+	if err := exec.CommandContext(ctx, a.gitBinary, "init", "--bare", repoPath).Run(); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to initialize repository")
 		return
 	}
@@ -577,12 +623,25 @@ func (a *app) addIssueComment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleGitHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		w.Header().Set("Allow", "GET, POST")
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
 	pathInfo := strings.TrimPrefix(r.URL.Path, "/git")
 	if pathInfo == "" || pathInfo == "/" {
 		writeError(w, http.StatusNotFound, "repository path required")
 		return
 	}
 
+	project, err := a.findProjectByRepoArg(pathInfo)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "repository not found")
+		return
+	}
+
+	var gitUser *User
 	if a.isReceivePackRequest(r) {
 		username, token, ok := r.BasicAuth()
 		if !ok {
@@ -590,23 +649,26 @@ func (a *app) handleGitHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnauthorized, "basic auth required for push")
 			return
 		}
-		if _, err := a.authenticateHTTPGit(username, token); err != nil {
+		gitUser, err = a.authenticateHTTPGit(username, token)
+		if err != nil {
 			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
 			writeError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
+		if !a.canUserWriteProject(gitUser.ID, project) {
+			writeError(w, http.StatusForbidden, "forbidden")
+			return
+		}
 	}
 
-	if _, err := a.findProjectByRepoArg(pathInfo); err != nil {
-		writeError(w, http.StatusNotFound, "repository not found")
-		return
-	}
-
-	cmd := exec.Command("git", "http-backend")
+	cmdPathInfo := "/" + filepath.ToSlash(project.RepoRel) + strings.TrimPrefix(pathInfo, "/"+project.RepoRel)
+	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, a.gitBinary, "http-backend")
 	cmd.Env = append(os.Environ(),
 		"GIT_PROJECT_ROOT="+a.reposRoot,
 		"GIT_HTTP_EXPORT_ALL=1",
-		"PATH_INFO="+pathInfo,
+		"PATH_INFO="+cmdPathInfo,
 		"QUERY_STRING="+r.URL.RawQuery,
 		"REQUEST_METHOD="+r.Method,
 		"CONTENT_TYPE="+r.Header.Get("Content-Type"),
@@ -702,8 +764,13 @@ func (a *app) findProjectByRepoArg(repoArg string) (*Project, error) {
 	if len(parts) < 2 {
 		return nil, errors.New("invalid repository path")
 	}
-	repo := filepath.Join(parts[0], parts[1])
-	if !strings.HasSuffix(repo, ".git") {
+	org := strings.TrimSpace(parts[0])
+	project := strings.TrimSpace(parts[1])
+	if !isValidRepoSegment(org) || !isValidRepoGitName(project) {
+		return nil, errors.New("invalid repository path")
+	}
+	repo := filepath.Join(org, project)
+	if strings.HasPrefix(filepath.Clean(repo), "..") {
 		return nil, errors.New("invalid repository path")
 	}
 
@@ -715,6 +782,48 @@ func (a *app) findProjectByRepoArg(repoArg string) (*Project, error) {
 		}
 	}
 	return nil, errors.New("project not found")
+}
+
+func isValidRepoSegment(v string) bool {
+	return repoNamePattern.MatchString(v)
+}
+
+func isValidRepoGitName(v string) bool {
+	if !strings.HasSuffix(v, ".git") {
+		return false
+	}
+	return isValidRepoSegment(strings.TrimSuffix(v, ".git"))
+}
+
+func sshUserIDFromSession(s gliderssh.Session) (int, bool) {
+	userID, ok := s.Context().Value("userID").(int)
+	return userID, ok
+}
+
+func (a *app) canUserWriteProject(userID int, project *Project) bool {
+	a.store.mu.RLock()
+	defer a.store.mu.RUnlock()
+	org, ok := a.store.orgs[project.OrgID]
+	if !ok {
+		return false
+	}
+	return org.OwnerID == userID
+}
+
+func (a *app) resolveRepoPath(repoRel string) (string, error) {
+	repoRel = filepath.Clean(strings.TrimSpace(repoRel))
+	if repoRel == "." || repoRel == "" || filepath.IsAbs(repoRel) {
+		return "", errors.New("invalid repository path")
+	}
+	full := filepath.Clean(filepath.Join(a.reposRoot, repoRel))
+	rel, err := filepath.Rel(a.reposRoot, full)
+	if err != nil {
+		return "", errors.New("invalid repository path")
+	}
+	if rel == "." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || rel == ".." {
+		return "", errors.New("invalid repository path")
+	}
+	return full, nil
 }
 
 func (a *app) requireBearerUser(next http.Handler) http.Handler {
