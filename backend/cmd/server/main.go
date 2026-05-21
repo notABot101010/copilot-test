@@ -145,7 +145,7 @@ func main() {
 	sshPort := envOrDefault("SSH_PORT", "2222")
 	reposRoot := envOrDefault("REPOS_ROOT", "./data/repos")
 	staticRoot := envOrDefault("STATIC_ROOT", "./frontend/dist")
-	httpBaseURL := envOrDefault("HTTP_BASE_URL", "http://localhost:"+envOrDefault("HTTP_PORT", "8080"))
+	httpBaseURL := envOrDefault("HTTP_BASE_URL", "http://localhost:"+httpPort)
 	gitBinary, err := exec.LookPath("git")
 	if err != nil {
 		log.Fatalf("git binary not found: %v", err)
@@ -1023,8 +1023,11 @@ func (a *app) handleLFSUpload(w http.ResponseWriter, r *http.Request, project *P
 	}
 	tmpPath := tmp.Name()
 	committed := false
+	closed := false
 	defer func() {
-		tmp.Close()
+		if !closed {
+			tmp.Close()
+		}
 		if !committed {
 			os.Remove(tmpPath)
 		}
@@ -1039,6 +1042,7 @@ func (a *app) handleLFSUpload(w http.ResponseWriter, r *http.Request, project *P
 		writeError(w, http.StatusInternalServerError, "failed to finalize object")
 		return
 	}
+	closed = true
 
 	computed := hex.EncodeToString(h.Sum(nil))
 	if computed != oid {
@@ -1107,7 +1111,7 @@ func (a *app) handleLFSAuthenticate(s gliderssh.Session, cmd []string) {
 	resp := lfsAuthResponse{
 		Href:      lfsHref,
 		Header:    map[string]string{"Authorization": "Basic " + creds},
-		ExpiresIn: 86400,
+		ExpiresIn: 24 * 60 * 60, // 24 hours in seconds
 	}
 	if err := json.NewEncoder(s).Encode(resp); err != nil {
 		_, _ = io.WriteString(s.Stderr(), "failed to write response\n")
