@@ -1,6 +1,7 @@
 import {
   type DragEndEvent,
   DndContext,
+  KeyboardSensor,
   PointerSensor,
   useDraggable,
   useDroppable,
@@ -451,7 +452,7 @@ const ISSUE_COLUMNS: { status: IssueStatus; title: string; color: string }[] = [
 function parseIssueTags(input: string): string[] {
   const seen = new Set<string>()
   const tags: string[] = []
-  for (const rawTag of input.split(',')) {
+  for (const rawTag of input.split(/[,\n;]+/)) {
     const tag = rawTag.trim()
     if (!tag || seen.has(tag)) continue
     seen.add(tag)
@@ -526,10 +527,10 @@ function DraggableIssueCard({
           </Text>
           <Group>
             <Badge color={issue.status === 'open' ? 'green' : 'gray'}>{issue.status}</Badge>
-            <ActionIcon variant="light" onClick={() => onToggleStatus(issue)}>
+            <ActionIcon variant="light" aria-label={`Toggle status for issue ${issue.id}`} onClick={() => onToggleStatus(issue)}>
               ↻
             </ActionIcon>
-            <ActionIcon variant="subtle" {...attributes} {...listeners}>
+            <ActionIcon variant="subtle" aria-label={`Drag issue ${issue.id}`} {...attributes} {...listeners}>
               ⋮⋮
             </ActionIcon>
           </Group>
@@ -589,7 +590,10 @@ function IssueBoard() {
   const [newIssueTags, setNewIssueTags] = useState('')
   const [commentBody, setCommentBody] = useState<Record<number, string>>({})
   const [tagDrafts, setTagDrafts] = useState<Record<number, string>>({})
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  )
 
   const load = useCallback(async () => {
     const data = await listIssues(pid)
