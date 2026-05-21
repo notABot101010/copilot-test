@@ -148,6 +148,167 @@ func TestResolveRepoPathRejectsSymlinkEscape(t *testing.T) {
 	}
 }
 
+func TestRepositoryManagementAPIs(t *testing.T) {
+	t.Parallel()
+
+	gitBinary, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("git not found: %v", err)
+	}
+
+	reposRoot := t.TempDir()
+	staticRoot := t.TempDir()
+	if err := os.MkdirAll(staticRoot, 0o755); err != nil {
+		t.Fatalf("create static root: %v", err)
+	}
+
+	a := &app{store: newStore(), reposRoot: reposRoot, staticRoot: staticRoot, gitBinary: gitBinary, noHooksDir: filepath.Join(reposRoot, ".nohooks")}
+	if err := os.MkdirAll(a.noHooksDir, 0o755); err != nil {
+		t.Fatalf("create no-hooks dir: %v", err)
+	}
+	server := httptest.NewServer(a.httpRouter())
+	defer server.Close()
+
+	var alice User
+	requestJSON(t, server, http.MethodPost, "/api/users", "", map[string]string{"username": "alice"}, &alice)
+
+	var bob User
+	requestJSON(t, server, http.MethodPost, "/api/users", "", map[string]string{"username": "bob"}, &bob)
+
+	var users []User
+	requestJSON(t, server, http.MethodGet, "/api/users", "", nil, &users)
+	if len(users) != 2 {
+		t.Fatalf("expected 2 users, got %+v", users)
+	}
+
+	var org Organization
+	requestJSON(t, server, http.MethodPost, "/api/orgs", alice.Token, map[string]string{"name": "acme"}, &org)
+
+	var member OrganizationMember
+	requestJSON(t, server, http.MethodPost, "/api/orgs/1/members", alice.Token, map[string]any{"userId": bob.ID, "role": "developer"}, &member)
+	if member.Role != "developer" {
+		t.Fatalf("unexpected member role: %+v", member)
+	}
+
+	var members []OrganizationMember
+	requestJSON(t, server, http.MethodGet, "/api/orgs/1/members", "", nil, &members)
+	if len(members) != 2 {
+		t.Fatalf("unexpected org members: %+v", members)
+	}
+
+	requestJSON(t, server, http.MethodPatch, "/api/orgs/1/members/2", alice.Token, map[string]string{"role": "admin"}, &member)
+	if member.Role != "admin" {
+		t.Fatalf("expected admin role, got %+v", member)
+	}
+
+	var project Project
+	requestJSON(t, server, http.MethodPost, "/api/orgs/1/projects", alice.Token, map[string]string{"name": "demo"}, &project)
+	if project.DefaultBranch != "main" {
+		t.Fatalf("unexpected default branch: %+v", project)
+	}
+
+	requestJSON(t, server, http.MethodPut, "/api/projects/1/repo/file", alice.Token, map[string]string{
+		"branch":  "main",
+		"path":    "README.md",
+		"content": "hello\n",
+	}, nil)
+
+	var createdBranch RepoBranch
+	requestJSON(t, server, http.MethodPost, "/api/projects/1/repo/branches", bob.Token, map[string]string{
+		"name":         "feature",
+		"sourceBranch": "main",
+	}, &createdBranch)
+	if createdBranch.Name != "feature" {
+		t.Fatalf("unexpected branch response: %+v", createdBranch)
+	}
+
+	requestJSON(t, server, http.MethodPut, "/api/projects/1/repo/file", bob.Token, map[string]string{
+		"branch":  "feature",
+		"path":    "README.md",
+		"content": "hello\nworld\n",
+	}, nil)
+
+	var commits []RepoCommit
+	requestJSON(t, server, http.MethodGet, "/api/projects/1/repo/commits?branch=feature", "", nil, &commits)
+	if len(commits) == 0 {
+		t.Fatal("expected commit history")
+	}
+
+	var commit RepoCommitDetails
+	requestJSON(t, server, http.MethodGet, "/api/projects/1/repo/commits/"+commits[0].Hash, "", nil, &commit)
+	if commit.Hash == "" || commit.Diff == "" {
+		t.Fatalf("unexpected commit details: %+v", commit)
+	}
+
+	var blame []RepoBlameLine
+	requestJSON(t, server, http.MethodGet, "/api/projects/1/repo/blame?branch=feature&path=README.md", "", nil, &blame)
+	if len(blame) != 2 || blame[1].Content != "world" {
+		t.Fatalf("unexpected blame: %+v", blame)
+	}
+
+	var tag RepoTag
+	requestJSON(t, server, http.MethodPost, "/api/projects/1/repo/tags", bob.Token, map[string]string{
+		"name":   "v1.0.0-feature",
+		"target": "feature",
+	}, &tag)
+	if tag.Name != "v1.0.0-feature" {
+		t.Fatalf("unexpected tag response: %+v", tag)
+	}
+
+	var tags []RepoTag
+	requestJSON(t, server, http.MethodGet, "/api/projects/1/repo/tags", "", nil, &tags)
+	if len(tags) == 0 {
+		t.Fatalf("expected tags, got %+v", tags)
+	}
+
+	var mr MergeRequest
+	requestJSON(t, server, http.MethodPost, "/api/projects/1/merge-requests", bob.Token, map[string]string{
+		"title":        "Add world",
+		"description":  "merge me",
+		"sourceBranch": "feature",
+		"targetBranch": "main",
+	}, &mr)
+	if !mr.Mergeable || mr.HasConflicts {
+		t.Fatalf("unexpected merge request state: %+v", mr)
+	}
+
+	var mergeStatus map[string]bool
+	requestJSON(t, server, http.MethodGet, "/api/projects/1/merge-requests/1/merge-status", "", nil, &mergeStatus)
+	if !mergeStatus["mergeable"] || mergeStatus["hasConflicts"] {
+		t.Fatalf("unexpected merge status: %+v", mergeStatus)
+	}
+
+	requestJSON(t, server, http.MethodPost, "/api/projects/1/merge-requests/1/merge", bob.Token, nil, &mr)
+	if mr.Status != "merged" || mr.MergedCommitID == "" {
+		t.Fatalf("unexpected merged MR: %+v", mr)
+	}
+
+	var file RepoFile
+	requestJSON(t, server, http.MethodGet, "/api/projects/1/repo/file?branch=main&path=README.md", "", nil, &file)
+	if file.Content != "hello\nworld\n" {
+		t.Fatalf("unexpected merged file content: %q", file.Content)
+	}
+
+	requestJSON(t, server, http.MethodDelete, "/api/projects/1/repo/branches/feature", bob.Token, nil, nil)
+
+	requestJSON(t, server, http.MethodPatch, "/api/projects/1/settings", bob.Token, map[string]any{
+		"description":   "demo repository",
+		"defaultBranch": "main",
+		"archived":      true,
+	}, &project)
+	if !project.Archived || project.Description != "demo repository" {
+		t.Fatalf("unexpected project settings: %+v", project)
+	}
+
+	status, body := requestStatus(t, server, http.MethodPost, "/api/projects/1/repo/branches", bob.Token, map[string]string{
+		"name":         "blocked",
+		"sourceBranch": "main",
+	})
+	if status != http.StatusForbidden {
+		t.Fatalf("expected archived repo write to fail, got %d: %s", status, body)
+	}
+}
+
 func TestSaveRepoFileBlocksSymlinkEscape(t *testing.T) {
 	t.Parallel()
 
