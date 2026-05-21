@@ -190,6 +190,7 @@ func TestSaveRepoFileBlocksSymlinkEscape(t *testing.T) {
 
 	worktreeDir := filepath.Join(t.TempDir(), "repo")
 	runGit(t, "", "clone", "--quiet", repoPath, worktreeDir)
+	runGit(t, worktreeDir, "checkout", "--quiet", "-B", "main", "origin/main")
 
 	outsideDir := t.TempDir()
 	if err := os.Symlink(outsideDir, filepath.Join(worktreeDir, "nested")); err != nil {

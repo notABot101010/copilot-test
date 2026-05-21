@@ -165,9 +165,9 @@ const gitCommandTimeout = 10 * time.Minute
 
 // Request body size limits applied by the limitRequestBody middleware.
 const (
-	maxAPIBodySize     = 1 << 20        // 1 MiB  – API JSON payloads
-	maxGitHTTPBodySize = 100 << 20      // 100 MiB – git smart-HTTP push/pull
-	maxLFSObjectSize   = 5 * (1 << 30)  // 5 GiB  – LFS object uploads
+	maxAPIBodySize     = 1 << 20       // 1 MiB  – API JSON payloads
+	maxGitHTTPBodySize = 100 << 20     // 100 MiB – git smart-HTTP push/pull
+	maxLFSObjectSize   = 5 * (1 << 30) // 5 GiB  – LFS object uploads
 )
 
 // lfsObjectRef is a single object entry used in LFS batch requests and responses.
@@ -608,8 +608,8 @@ func (a *app) createIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Title       string `json:"title"`
-		Description string `json:"description"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
 		Tags        []string `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -680,9 +680,9 @@ func (a *app) updateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Title       *string `json:"title"`
-		Description *string `json:"description"`
-		Status      *string `json:"status"`
+		Title       *string   `json:"title"`
+		Description *string   `json:"description"`
+		Status      *string   `json:"status"`
 		Tags        *[]string `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
