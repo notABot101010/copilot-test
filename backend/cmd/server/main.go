@@ -45,11 +45,19 @@ type Organization struct {
 	OwnerID int    `json:"ownerId"`
 }
 
+type OrganizationMember struct {
+	UserID int    `json:"userId"`
+	Role   string `json:"role"`
+}
+
 type Project struct {
-	ID      int    `json:"id"`
-	Name    string `json:"name"`
-	OrgID   int    `json:"orgId"`
-	RepoRel string `json:"repoPath"`
+	ID            int    `json:"id"`
+	Name          string `json:"name"`
+	OrgID         int    `json:"orgId"`
+	RepoRel       string `json:"repoPath"`
+	Description   string `json:"description"`
+	DefaultBranch string `json:"defaultBranch"`
+	Archived      bool   `json:"archived"`
 }
 
 type IssueComment struct {
@@ -96,17 +104,55 @@ type MergeRequestComment struct {
 }
 
 type MergeRequest struct {
-	ID           int                   `json:"id"`
-	ProjectID    int                   `json:"projectId"`
-	AuthorID     int                   `json:"authorId"`
-	Title        string                `json:"title"`
-	Description  string                `json:"description"`
-	SourceBranch string                `json:"sourceBranch"`
-	TargetBranch string                `json:"targetBranch"`
-	Status       string                `json:"status"`
-	Comments     []MergeRequestComment `json:"comments"`
-	CreatedAt    time.Time             `json:"createdAt"`
-	UpdatedAt    time.Time             `json:"updatedAt"`
+	ID             int                   `json:"id"`
+	ProjectID      int                   `json:"projectId"`
+	AuthorID       int                   `json:"authorId"`
+	Title          string                `json:"title"`
+	Description    string                `json:"description"`
+	SourceBranch   string                `json:"sourceBranch"`
+	TargetBranch   string                `json:"targetBranch"`
+	Status         string                `json:"status"`
+	Comments       []MergeRequestComment `json:"comments"`
+	Mergeable      bool                  `json:"mergeable"`
+	HasConflicts   bool                  `json:"hasConflicts"`
+	AlreadyMerged  bool                  `json:"alreadyMerged"`
+	MergedBy       *int                  `json:"mergedBy,omitempty"`
+	MergedAt       *time.Time            `json:"mergedAt,omitempty"`
+	MergedCommitID string                `json:"mergedCommitId,omitempty"`
+	CreatedAt      time.Time             `json:"createdAt"`
+	UpdatedAt      time.Time             `json:"updatedAt"`
+}
+
+type RepoTag struct {
+	Name      string    `json:"name"`
+	Target    string    `json:"target"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type RepoCommit struct {
+	Hash        string    `json:"hash"`
+	ShortHash   string    `json:"shortHash"`
+	AuthorName  string    `json:"authorName"`
+	AuthorEmail string    `json:"authorEmail"`
+	Subject     string    `json:"subject"`
+	Body        string    `json:"body"`
+	Parents     []string  `json:"parents"`
+	AuthoredAt  time.Time `json:"authoredAt"`
+}
+
+type RepoCommitDetails struct {
+	RepoCommit
+	Diff string `json:"diff"`
+}
+
+type RepoBlameLine struct {
+	LineNumber  int       `json:"lineNumber"`
+	CommitHash  string    `json:"commitHash"`
+	AuthorName  string    `json:"authorName"`
+	AuthorEmail string    `json:"authorEmail"`
+	Summary     string    `json:"summary"`
+	CommittedAt time.Time `json:"committedAt"`
+	Content     string    `json:"content"`
 }
 
 type Store struct {
@@ -121,6 +167,7 @@ type Store struct {
 	users         map[int]*User
 	tokens        map[string]int
 	orgs          map[int]*Organization
+	orgMembers    map[int]map[int]*OrganizationMember
 	projects      map[int]*Project
 	issues        map[int]map[int]*Issue
 	mergeRequests map[int]map[int]*MergeRequest
@@ -138,6 +185,7 @@ func newStore() *Store {
 		users:         map[int]*User{},
 		tokens:        map[string]int{},
 		orgs:          map[int]*Organization{},
+		orgMembers:    map[int]map[int]*OrganizationMember{},
 		projects:      map[int]*Project{},
 		issues:        map[int]map[int]*Issue{},
 		mergeRequests: map[int]map[int]*MergeRequest{},
@@ -160,8 +208,16 @@ var lfsOIDPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var errBinaryFile = errors.New("binary file")
 var errNoChanges = errors.New("no changes")
 var errSymlinkAttack = errors.New("symlink attack detected")
+var errMergeConflict = errors.New("merge conflict")
 
 const gitCommandTimeout = 10 * time.Minute
+
+const (
+	orgRoleOwner     = "owner"
+	orgRoleAdmin     = "admin"
+	orgRoleDeveloper = "developer"
+	orgRoleViewer    = "viewer"
+)
 
 // Request body size limits applied by the limitRequestBody middleware.
 const (
@@ -272,12 +328,26 @@ func (a *app) httpRouter() http.Handler {
 	r.Route("/api", func(api chi.Router) {
 		api.Use(limitRequestBody(maxAPIBodySize))
 		api.Post("/users", a.createUser)
+		api.Get("/users", a.listUsers)
 		api.With(a.requireBearerUser).Post("/users/{userID}/ssh-keys", a.addSSHKey)
 		api.With(a.requireBearerUser).Post("/orgs", a.createOrganization)
 		api.Get("/orgs", a.listOrganizations)
+		api.Get("/orgs/{orgID}/members", a.listOrganizationMembers)
+		api.With(a.requireBearerUser).Post("/orgs/{orgID}/members", a.addOrganizationMember)
+		api.With(a.requireBearerUser).Patch("/orgs/{orgID}/members/{memberUserID}", a.updateOrganizationMember)
+		api.With(a.requireBearerUser).Delete("/orgs/{orgID}/members/{memberUserID}", a.removeOrganizationMember)
 		api.Get("/projects", a.listProjects)
 		api.With(a.requireBearerUser).Post("/orgs/{orgID}/projects", a.createProject)
+		api.Get("/projects/{projectID}/settings", a.getProjectSettings)
+		api.With(a.requireBearerUser).Patch("/projects/{projectID}/settings", a.updateProjectSettings)
 		api.Get("/projects/{projectID}/repo/branches", a.listRepoBranches)
+		api.With(a.requireBearerUser).Post("/projects/{projectID}/repo/branches", a.createRepoBranch)
+		api.With(a.requireBearerUser).Delete("/projects/{projectID}/repo/branches/{branchName}", a.deleteRepoBranch)
+		api.Get("/projects/{projectID}/repo/tags", a.listRepoTags)
+		api.With(a.requireBearerUser).Post("/projects/{projectID}/repo/tags", a.createRepoTag)
+		api.Get("/projects/{projectID}/repo/commits", a.listRepoCommits)
+		api.Get("/projects/{projectID}/repo/commits/{commitHash}", a.getRepoCommit)
+		api.Get("/projects/{projectID}/repo/blame", a.getRepoBlame)
 		api.Get("/projects/{projectID}/repo/tree", a.listRepoTree)
 		api.Get("/projects/{projectID}/repo/file", a.getRepoFile)
 		api.With(a.requireBearerUser).Put("/projects/{projectID}/repo/file", a.upsertRepoFile)
@@ -290,6 +360,8 @@ func (a *app) httpRouter() http.Handler {
 		api.Get("/projects/{projectID}/merge-requests", a.listMergeRequests)
 		api.Get("/projects/{projectID}/merge-requests/{mergeRequestID}", a.getMergeRequest)
 		api.Get("/projects/{projectID}/merge-requests/{mergeRequestID}/diff", a.getMergeRequestDiff)
+		api.Get("/projects/{projectID}/merge-requests/{mergeRequestID}/merge-status", a.getMergeRequestMergeStatus)
+		api.With(a.requireBearerUser).Post("/projects/{projectID}/merge-requests/{mergeRequestID}/merge", a.mergeMergeRequest)
 		api.With(a.requireBearerUser).Post("/projects/{projectID}/merge-requests/{mergeRequestID}/comments", a.addMergeRequestComment)
 	})
 
@@ -455,6 +527,19 @@ func (a *app) createUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, u)
 }
 
+func (a *app) listUsers(w http.ResponseWriter, _ *http.Request) {
+	a.store.mu.RLock()
+	defer a.store.mu.RUnlock()
+	users := make([]*User, 0, len(a.store.users))
+	for _, user := range a.store.users {
+		copyUser := *user
+		copyUser.Token = ""
+		users = append(users, &copyUser)
+	}
+	sort.Slice(users, func(i, j int) bool { return users[i].ID < users[j].ID })
+	writeJSON(w, http.StatusOK, users)
+}
+
 func (a *app) addSSHKey(w http.ResponseWriter, r *http.Request) {
 	uid, _ := userIDFromContext(r.Context())
 	paramID, err := strconv.Atoi(chi.URLParam(r, "userID"))
@@ -516,6 +601,9 @@ func (a *app) createOrganization(w http.ResponseWriter, r *http.Request) {
 	a.store.nextOrgID++
 	org := &Organization{ID: id, Name: name, OwnerID: uid}
 	a.store.orgs[id] = org
+	a.store.orgMembers[id] = map[int]*OrganizationMember{
+		uid: {UserID: uid, Role: orgRoleOwner},
+	}
 	writeJSON(w, http.StatusCreated, org)
 }
 
@@ -527,6 +615,162 @@ func (a *app) listOrganizations(w http.ResponseWriter, _ *http.Request) {
 		orgs = append(orgs, org)
 	}
 	writeJSON(w, http.StatusOK, orgs)
+}
+
+func (a *app) listOrganizationMembers(w http.ResponseWriter, r *http.Request) {
+	orgID, err := strconv.Atoi(chi.URLParam(r, "orgID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid org id")
+		return
+	}
+
+	a.store.mu.RLock()
+	defer a.store.mu.RUnlock()
+	if _, ok := a.store.orgs[orgID]; !ok {
+		writeError(w, http.StatusNotFound, "organization not found")
+		return
+	}
+	orgMembers := a.store.orgMembers[orgID]
+	members := make([]*OrganizationMember, 0, len(orgMembers))
+	for _, member := range orgMembers {
+		copyMember := *member
+		members = append(members, &copyMember)
+	}
+	sort.Slice(members, func(i, j int) bool { return members[i].UserID < members[j].UserID })
+	writeJSON(w, http.StatusOK, members)
+}
+
+func (a *app) addOrganizationMember(w http.ResponseWriter, r *http.Request) {
+	uid, _ := userIDFromContext(r.Context())
+	orgID, err := strconv.Atoi(chi.URLParam(r, "orgID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid org id")
+		return
+	}
+	if !a.canUserAdminOrganization(uid, orgID) {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	var req struct {
+		UserID int    `json:"userId"`
+		Role   string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	role, err := normalizeOrganizationRole(req.Role)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	a.store.mu.Lock()
+	defer a.store.mu.Unlock()
+	if _, ok := a.store.orgs[orgID]; !ok {
+		writeError(w, http.StatusNotFound, "organization not found")
+		return
+	}
+	if _, ok := a.store.users[req.UserID]; !ok {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if req.UserID == a.store.orgs[orgID].OwnerID {
+		role = orgRoleOwner
+	}
+	if _, ok := a.store.orgMembers[orgID]; !ok {
+		a.store.orgMembers[orgID] = map[int]*OrganizationMember{}
+	}
+	member := &OrganizationMember{UserID: req.UserID, Role: role}
+	a.store.orgMembers[orgID][req.UserID] = member
+	writeJSON(w, http.StatusCreated, member)
+}
+
+func (a *app) updateOrganizationMember(w http.ResponseWriter, r *http.Request) {
+	uid, _ := userIDFromContext(r.Context())
+	orgID, err := strconv.Atoi(chi.URLParam(r, "orgID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid org id")
+		return
+	}
+	memberUserID, err := strconv.Atoi(chi.URLParam(r, "memberUserID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid member user id")
+		return
+	}
+	if !a.canUserAdminOrganization(uid, orgID) {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	var req struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	role, err := normalizeOrganizationRole(req.Role)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	a.store.mu.Lock()
+	defer a.store.mu.Unlock()
+	org, ok := a.store.orgs[orgID]
+	if !ok {
+		writeError(w, http.StatusNotFound, "organization not found")
+		return
+	}
+	if memberUserID == org.OwnerID {
+		writeError(w, http.StatusBadRequest, "cannot change owner role")
+		return
+	}
+	member, ok := a.store.orgMembers[orgID][memberUserID]
+	if !ok {
+		writeError(w, http.StatusNotFound, "organization member not found")
+		return
+	}
+	member.Role = role
+	writeJSON(w, http.StatusOK, member)
+}
+
+func (a *app) removeOrganizationMember(w http.ResponseWriter, r *http.Request) {
+	uid, _ := userIDFromContext(r.Context())
+	orgID, err := strconv.Atoi(chi.URLParam(r, "orgID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid org id")
+		return
+	}
+	memberUserID, err := strconv.Atoi(chi.URLParam(r, "memberUserID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid member user id")
+		return
+	}
+	if !a.canUserAdminOrganization(uid, orgID) {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	a.store.mu.Lock()
+	defer a.store.mu.Unlock()
+	org, ok := a.store.orgs[orgID]
+	if !ok {
+		writeError(w, http.StatusNotFound, "organization not found")
+		return
+	}
+	if memberUserID == org.OwnerID {
+		writeError(w, http.StatusBadRequest, "cannot remove organization owner")
+		return
+	}
+	if _, ok := a.store.orgMembers[orgID][memberUserID]; !ok {
+		writeError(w, http.StatusNotFound, "organization member not found")
+		return
+	}
+	delete(a.store.orgMembers[orgID], memberUserID)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *app) createProject(w http.ResponseWriter, r *http.Request) {
@@ -560,8 +804,8 @@ func (a *app) createProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "organization not found")
 		return
 	}
-	if org.OwnerID != uid {
-		writeError(w, http.StatusForbidden, "only organization owner can create project")
+	if !organizationRoleCanAdmin(a.organizationRoleLocked(orgID, uid)) {
+		writeError(w, http.StatusForbidden, "only organization admins can create project")
 		return
 	}
 
@@ -584,7 +828,7 @@ func (a *app) createProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p := &Project{ID: id, Name: name, OrgID: orgID, RepoRel: repoRel}
+	p := &Project{ID: id, Name: name, OrgID: orgID, RepoRel: repoRel, DefaultBranch: "main"}
 	a.store.projects[id] = p
 	a.store.issues[id] = map[int]*Issue{}
 	a.store.mergeRequests[id] = map[int]*MergeRequest{}
@@ -599,6 +843,90 @@ func (a *app) listProjects(w http.ResponseWriter, _ *http.Request) {
 		projects = append(projects, p)
 	}
 	writeJSON(w, http.StatusOK, projects)
+}
+
+func (a *app) getProjectSettings(w http.ResponseWriter, r *http.Request) {
+	projectID, err := strconv.Atoi(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+
+	a.store.mu.RLock()
+	defer a.store.mu.RUnlock()
+	project, ok := a.store.projects[projectID]
+	if !ok {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, project)
+}
+
+func (a *app) updateProjectSettings(w http.ResponseWriter, r *http.Request) {
+	uid, _ := userIDFromContext(r.Context())
+	projectID, err := strconv.Atoi(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+
+	var req struct {
+		Description   *string `json:"description"`
+		DefaultBranch *string `json:"defaultBranch"`
+		Archived      *bool   `json:"archived"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	project, repoPath, err := a.projectRepoPath(projectID)
+	if err != nil || project == nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if !a.canUserAdminProject(uid, project) {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	if req.DefaultBranch != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+		defer cancel()
+		branch, err := a.resolveRequestedBranch(ctx, repoPath, *req.DefaultBranch)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid default branch")
+			return
+		}
+		branches, err := a.repoBranches(ctx, repoPath)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to inspect branches")
+			return
+		}
+		if len(branches) > 0 && !a.branchExists(ctx, repoPath, branch) {
+			writeError(w, http.StatusBadRequest, "default branch must exist")
+			return
+		}
+		*req.DefaultBranch = branch
+	}
+
+	a.store.mu.Lock()
+	defer a.store.mu.Unlock()
+	project, ok := a.store.projects[projectID]
+	if !ok {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if req.Description != nil {
+		project.Description = strings.TrimSpace(*req.Description)
+	}
+	if req.DefaultBranch != nil {
+		project.DefaultBranch = strings.TrimSpace(*req.DefaultBranch)
+	}
+	if req.Archived != nil {
+		project.Archived = *req.Archived
+	}
+	writeJSON(w, http.StatusOK, project)
 }
 
 func (a *app) createIssue(w http.ResponseWriter, r *http.Request) {
@@ -811,7 +1139,280 @@ func (a *app) listRepoBranches(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to list branches")
 		return
 	}
+	defaultBranch := a.projectDefaultBranch(project)
+	if defaultBranch != "" {
+		found := false
+		for i := range branches {
+			branches[i].IsDefault = branches[i].Name == defaultBranch
+			found = found || branches[i].IsDefault
+		}
+		if !found && len(branches) == 1 {
+			branches[0].IsDefault = true
+		}
+	}
 	writeJSON(w, http.StatusOK, branches)
+}
+
+func (a *app) createRepoBranch(w http.ResponseWriter, r *http.Request) {
+	uid, _ := userIDFromContext(r.Context())
+	projectID, err := strconv.Atoi(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+
+	var req struct {
+		Name         string `json:"name"`
+		SourceBranch string `json:"sourceBranch"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+
+	project, repoPath, err := a.projectRepoPath(projectID)
+	if err != nil || project == nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if !a.canUserWriteProject(uid, project) {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+	defer cancel()
+	branchName, err := a.resolveRequestedBranch(ctx, repoPath, req.Name)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid branch name")
+		return
+	}
+	sourceBranch, err := a.resolveRequestedBranch(ctx, repoPath, req.SourceBranch)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid source branch")
+		return
+	}
+	if err := a.createBranch(ctx, repoPath, branchName, sourceBranch); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			writeError(w, http.StatusConflict, "branch already exists")
+			return
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(w, http.StatusBadRequest, "source branch must exist")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to create branch")
+		return
+	}
+	writeJSON(w, http.StatusCreated, RepoBranch{Name: branchName, IsDefault: branchName == a.projectDefaultBranch(project)})
+}
+
+func (a *app) deleteRepoBranch(w http.ResponseWriter, r *http.Request) {
+	uid, _ := userIDFromContext(r.Context())
+	projectID, err := strconv.Atoi(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+
+	branchName := strings.TrimSpace(chi.URLParam(r, "branchName"))
+	project, repoPath, err := a.projectRepoPath(projectID)
+	if err != nil || project == nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if !a.canUserWriteProject(uid, project) {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+	defer cancel()
+	resolvedBranch, err := a.resolveRequestedBranch(ctx, repoPath, branchName)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid branch")
+		return
+	}
+	if resolvedBranch == a.projectDefaultBranch(project) {
+		writeError(w, http.StatusBadRequest, "cannot delete default branch")
+		return
+	}
+	if err := a.deleteBranch(ctx, repoPath, resolvedBranch); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(w, http.StatusNotFound, "branch not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to delete branch")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *app) listRepoTags(w http.ResponseWriter, r *http.Request) {
+	projectID, err := strconv.Atoi(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	_, repoPath, err := a.projectRepoPath(projectID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+	defer cancel()
+	tags, err := a.repoTags(ctx, repoPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list tags")
+		return
+	}
+	writeJSON(w, http.StatusOK, tags)
+}
+
+func (a *app) createRepoTag(w http.ResponseWriter, r *http.Request) {
+	uid, _ := userIDFromContext(r.Context())
+	projectID, err := strconv.Atoi(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	var req struct {
+		Name   string `json:"name"`
+		Target string `json:"target"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	project, repoPath, err := a.projectRepoPath(projectID)
+	if err != nil || project == nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if !a.canUserWriteProject(uid, project) {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+	defer cancel()
+	target := strings.TrimSpace(req.Target)
+	if target == "" {
+		target = a.projectDefaultBranch(project)
+	}
+	tag, err := a.createTag(ctx, repoPath, req.Name, target)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			writeError(w, http.StatusConflict, "tag already exists")
+			return
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(w, http.StatusBadRequest, "target not found")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "invalid tag")
+		return
+	}
+	writeJSON(w, http.StatusCreated, tag)
+}
+
+func (a *app) listRepoCommits(w http.ResponseWriter, r *http.Request) {
+	projectID, err := strconv.Atoi(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	repoPathValue, err := normalizeRepoFilePath(r.URL.Query().Get("path"), true)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	project, repoPath, err := a.projectRepoPath(projectID)
+	if err != nil || project == nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	limit := 20
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 100 {
+			writeError(w, http.StatusBadRequest, "invalid limit")
+			return
+		}
+		limit = parsed
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+	defer cancel()
+	branch, err := a.resolveRequestedBranch(ctx, repoPath, r.URL.Query().Get("branch"), a.projectDefaultBranch(project))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid branch")
+		return
+	}
+	commits, err := a.repoCommitLog(ctx, repoPath, branch, repoPathValue, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load commits")
+		return
+	}
+	writeJSON(w, http.StatusOK, commits)
+}
+
+func (a *app) getRepoCommit(w http.ResponseWriter, r *http.Request) {
+	projectID, err := strconv.Atoi(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	_, repoPath, err := a.projectRepoPath(projectID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+	defer cancel()
+	commit, err := a.repoCommitDetails(ctx, repoPath, chi.URLParam(r, "commitHash"))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(w, http.StatusNotFound, "commit not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to load commit")
+		return
+	}
+	writeJSON(w, http.StatusOK, commit)
+}
+
+func (a *app) getRepoBlame(w http.ResponseWriter, r *http.Request) {
+	projectID, err := strconv.Atoi(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	filePath, err := normalizeRepoFilePath(r.URL.Query().Get("path"), false)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	project, repoPath, err := a.projectRepoPath(projectID)
+	if err != nil || project == nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+	defer cancel()
+	branch, err := a.resolveRequestedBranch(ctx, repoPath, r.URL.Query().Get("branch"), a.projectDefaultBranch(project))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid branch")
+		return
+	}
+	lines, err := a.repoBlame(ctx, repoPath, branch, filePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(w, http.StatusNotFound, "file not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to load blame")
+		return
+	}
+	writeJSON(w, http.StatusOK, lines)
 }
 
 func (a *app) listRepoTree(w http.ResponseWriter, r *http.Request) {
@@ -835,7 +1436,7 @@ func (a *app) listRepoTree(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
 	defer cancel()
-	branch, err := a.resolveRequestedBranch(ctx, repoPath, r.URL.Query().Get("branch"))
+	branch, err := a.resolveRequestedBranch(ctx, repoPath, r.URL.Query().Get("branch"), a.projectDefaultBranch(project))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid branch")
 		return
@@ -874,7 +1475,7 @@ func (a *app) getRepoFile(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
 	defer cancel()
-	branch, err := a.resolveRequestedBranch(ctx, repoPath, r.URL.Query().Get("branch"))
+	branch, err := a.resolveRequestedBranch(ctx, repoPath, r.URL.Query().Get("branch"), a.projectDefaultBranch(project))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid branch")
 		return
@@ -933,7 +1534,7 @@ func (a *app) upsertRepoFile(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
 	defer cancel()
-	branch, err := a.resolveRequestedBranch(ctx, repoPath, req.Branch)
+	branch, err := a.resolveRequestedBranch(ctx, repoPath, req.Branch, a.projectDefaultBranch(project))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid branch")
 		return
@@ -991,7 +1592,7 @@ func (a *app) deleteRepoFile(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
 	defer cancel()
-	branch, err := a.resolveRequestedBranch(ctx, repoPath, req.Branch)
+	branch, err := a.resolveRequestedBranch(ctx, repoPath, req.Branch, a.projectDefaultBranch(project))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid branch")
 		return
@@ -1050,12 +1651,12 @@ func (a *app) createMergeRequest(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
 	defer cancel()
-	sourceBranch, err := a.resolveRequestedBranch(ctx, repoPath, req.SourceBranch)
+	sourceBranch, err := a.resolveRequestedBranch(ctx, repoPath, req.SourceBranch, a.projectDefaultBranch(project))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid source branch")
 		return
 	}
-	targetBranch, err := a.resolveRequestedBranch(ctx, repoPath, req.TargetBranch)
+	targetBranch, err := a.resolveRequestedBranch(ctx, repoPath, req.TargetBranch, a.projectDefaultBranch(project))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid target branch")
 		return
@@ -1106,7 +1707,12 @@ func (a *app) createMergeRequest(w http.ResponseWriter, r *http.Request) {
 		a.store.mergeRequests[projectID] = map[int]*MergeRequest{}
 	}
 	a.store.mergeRequests[projectID][mr.ID] = mr
-	writeJSON(w, http.StatusCreated, mr)
+	hydrated, err := a.enrichMergeRequest(r.Context(), repoPath, mr)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to inspect merge request")
+		return
+	}
+	writeJSON(w, http.StatusCreated, hydrated)
 }
 
 func (a *app) listMergeRequests(w http.ResponseWriter, r *http.Request) {
@@ -1125,9 +1731,23 @@ func (a *app) listMergeRequests(w http.ResponseWriter, r *http.Request) {
 	projectMRs := a.store.mergeRequests[projectID]
 	list := make([]*MergeRequest, 0, len(projectMRs))
 	for _, mr := range projectMRs {
-		list = append(list, mr)
+		list = append(list, cloneMergeRequest(mr))
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
+	_, repoPath, err := a.projectRepoPath(projectID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+	defer cancel()
+	for i, mr := range list {
+		list[i], err = a.enrichMergeRequest(ctx, repoPath, mr)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to inspect merge requests")
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, list)
 }
 
@@ -1148,7 +1768,17 @@ func (a *app) getMergeRequest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "merge request not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, mr)
+	_, repoPath, err := a.projectRepoPath(projectID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	hydrated, err := a.enrichMergeRequest(r.Context(), repoPath, mr)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to inspect merge request")
+		return
+	}
+	writeJSON(w, http.StatusOK, hydrated)
 }
 
 func (a *app) getMergeRequestDiff(w http.ResponseWriter, r *http.Request) {
@@ -1184,6 +1814,105 @@ func (a *app) getMergeRequestDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"diff": diff})
+}
+
+func (a *app) getMergeRequestMergeStatus(w http.ResponseWriter, r *http.Request) {
+	projectID, err := strconv.Atoi(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	mergeRequestID, err := strconv.Atoi(chi.URLParam(r, "mergeRequestID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid merge request id")
+		return
+	}
+	mr, err := a.lookupMergeRequest(projectID, mergeRequestID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "merge request not found")
+		return
+	}
+	_, repoPath, err := a.projectRepoPath(projectID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+	defer cancel()
+	mergeable, hasConflicts, alreadyMerged, err := a.mergeRequestState(ctx, repoPath, mr)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to inspect merge status")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{
+		"mergeable":     mergeable,
+		"hasConflicts":  hasConflicts,
+		"alreadyMerged": alreadyMerged,
+	})
+}
+
+func (a *app) mergeMergeRequest(w http.ResponseWriter, r *http.Request) {
+	uid, _ := userIDFromContext(r.Context())
+	projectID, err := strconv.Atoi(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	mergeRequestID, err := strconv.Atoi(chi.URLParam(r, "mergeRequestID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid merge request id")
+		return
+	}
+	project, _, err := a.projectRepoPath(projectID)
+	if err != nil || project == nil {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if !a.canUserWriteProject(uid, project) {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	mr, err := a.lookupMergeRequest(projectID, mergeRequestID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "merge request not found")
+		return
+	}
+	if mr.Status != "open" {
+		writeError(w, http.StatusBadRequest, "merge request is not open")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
+	defer cancel()
+	commitID, err := a.performMergeRequest(ctx, project, mr, uid)
+	if err != nil {
+		if errors.Is(err, errMergeConflict) {
+			writeError(w, http.StatusConflict, "merge request has conflicts")
+			return
+		}
+		if errors.Is(err, os.ErrNotExist) {
+			writeError(w, http.StatusBadRequest, "merge request branches are missing")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to merge merge request")
+		return
+	}
+
+	now := time.Now().UTC()
+	a.store.mu.Lock()
+	if stored, ok := a.store.mergeRequests[projectID][mergeRequestID]; ok {
+		stored.Status = "merged"
+		stored.Mergeable = false
+		stored.HasConflicts = false
+		stored.AlreadyMerged = true
+		stored.MergedAt = &now
+		stored.MergedBy = &uid
+		stored.MergedCommitID = commitID
+		stored.UpdatedAt = now
+		mr = stored
+	}
+	a.store.mu.Unlock()
+	writeJSON(w, http.StatusOK, mr)
 }
 
 func (a *app) addMergeRequestComment(w http.ResponseWriter, r *http.Request) {
@@ -1780,14 +2509,62 @@ func sshUserIDFromSession(s gliderssh.Session) (int, bool) {
 	return userID, ok
 }
 
-func (a *app) canUserWriteProject(userID int, project *Project) bool {
+func normalizeOrganizationRole(role string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(role))
+	switch normalized {
+	case orgRoleOwner, orgRoleAdmin, orgRoleDeveloper, orgRoleViewer:
+		return normalized, nil
+	default:
+		return "", errors.New("role must be owner, admin, developer, or viewer")
+	}
+}
+
+func organizationRoleCanWrite(role string) bool {
+	return role == orgRoleOwner || role == orgRoleAdmin || role == orgRoleDeveloper
+}
+
+func organizationRoleCanAdmin(role string) bool {
+	return role == orgRoleOwner || role == orgRoleAdmin
+}
+
+func (a *app) organizationRoleLocked(orgID, userID int) string {
+	if orgMembers, ok := a.store.orgMembers[orgID]; ok {
+		if member, ok := orgMembers[userID]; ok {
+			return member.Role
+		}
+	}
+	if org, ok := a.store.orgs[orgID]; ok && org.OwnerID == userID {
+		return orgRoleOwner
+	}
+	return ""
+}
+
+func (a *app) organizationRole(orgID, userID int) string {
 	a.store.mu.RLock()
 	defer a.store.mu.RUnlock()
-	org, ok := a.store.orgs[project.OrgID]
-	if !ok {
+	return a.organizationRoleLocked(orgID, userID)
+}
+
+func (a *app) canUserAdminOrganization(userID, orgID int) bool {
+	return organizationRoleCanAdmin(a.organizationRole(orgID, userID))
+}
+
+func (a *app) canUserAdminProject(userID int, project *Project) bool {
+	return organizationRoleCanAdmin(a.organizationRole(project.OrgID, userID))
+}
+
+func (a *app) canUserWriteProject(userID int, project *Project) bool {
+	if project == nil || project.Archived {
 		return false
 	}
-	return org.OwnerID == userID
+	return organizationRoleCanWrite(a.organizationRole(project.OrgID, userID))
+}
+
+func (a *app) projectDefaultBranch(project *Project) string {
+	if project != nil && strings.TrimSpace(project.DefaultBranch) != "" {
+		return strings.TrimSpace(project.DefaultBranch)
+	}
+	return "main"
 }
 
 func (a *app) projectRepoPath(projectID int) (*Project, string, error) {
@@ -1816,6 +2593,54 @@ func (a *app) lookupMergeRequest(projectID, mergeRequestID int) (*MergeRequest, 
 		return nil, os.ErrNotExist
 	}
 	return mr, nil
+}
+
+func cloneMergeRequest(mr *MergeRequest) *MergeRequest {
+	if mr == nil {
+		return nil
+	}
+	copyMR := *mr
+	copyMR.Comments = append([]MergeRequestComment(nil), mr.Comments...)
+	return &copyMR
+}
+
+func (a *app) enrichMergeRequest(ctx context.Context, repoPath string, mr *MergeRequest) (*MergeRequest, error) {
+	copyMR := cloneMergeRequest(mr)
+	mergeable, hasConflicts, alreadyMerged, err := a.mergeRequestState(ctx, repoPath, copyMR)
+	if err != nil {
+		return nil, err
+	}
+	copyMR.Mergeable = mergeable
+	copyMR.HasConflicts = hasConflicts
+	copyMR.AlreadyMerged = alreadyMerged
+	return copyMR, nil
+}
+
+func (a *app) mergeRequestState(ctx context.Context, repoPath string, mr *MergeRequest) (bool, bool, bool, error) {
+	if mr.Status == "merged" {
+		return false, false, true, nil
+	}
+	if mr.Status != "open" {
+		return false, false, false, nil
+	}
+	if !a.branchExists(ctx, repoPath, mr.SourceBranch) || !a.branchExists(ctx, repoPath, mr.TargetBranch) {
+		return false, false, false, os.ErrNotExist
+	}
+	alreadyMerged, err := a.isAncestor(ctx, repoPath, mr.SourceBranch, mr.TargetBranch)
+	if err != nil {
+		return false, false, false, err
+	}
+	if alreadyMerged {
+		return false, false, true, nil
+	}
+	mergeable, err := a.canMergeBranches(ctx, repoPath, mr.SourceBranch, mr.TargetBranch)
+	if err != nil {
+		if errors.Is(err, errMergeConflict) {
+			return false, true, false, nil
+		}
+		return false, false, false, err
+	}
+	return mergeable, false, false, nil
 }
 
 func (a *app) runGit(ctx context.Context, args ...string) ([]byte, error) {
@@ -1968,9 +2793,19 @@ func (a *app) defaultBranchName(branches []string) string {
 	return "main"
 }
 
-func (a *app) resolveRequestedBranch(ctx context.Context, repoPath, raw string) (string, error) {
+func (a *app) resolveRequestedBranch(ctx context.Context, repoPath, raw string, preferredDefault ...string) (string, error) {
 	branch := strings.TrimSpace(raw)
 	if branch == "" {
+		if len(preferredDefault) > 0 {
+			preferred := strings.TrimSpace(preferredDefault[0])
+			if preferred != "" {
+				if branches, err := a.repoBranches(ctx, repoPath); err == nil {
+					if len(branches) == 0 || a.branchExists(ctx, repoPath, preferred) {
+						return preferred, nil
+					}
+				}
+			}
+		}
 		branches, err := a.repoBranches(ctx, repoPath)
 		if err != nil {
 			return "", err
@@ -2106,6 +2941,231 @@ func (a *app) repoDiff(ctx context.Context, repoPath, sourceBranch, targetBranch
 	return string(out), nil
 }
 
+func (a *app) createBranch(ctx context.Context, repoPath, branchName, sourceBranch string) error {
+	if a.branchExists(ctx, repoPath, branchName) {
+		return os.ErrExist
+	}
+	if !a.branchExists(ctx, repoPath, sourceBranch) {
+		return os.ErrNotExist
+	}
+	_, err := a.gitBareOutput(ctx, repoPath, "branch", branchName, "refs/heads/"+sourceBranch)
+	return err
+}
+
+func (a *app) deleteBranch(ctx context.Context, repoPath, branchName string) error {
+	if !a.branchExists(ctx, repoPath, branchName) {
+		return os.ErrNotExist
+	}
+	_, err := a.gitBareOutput(ctx, repoPath, "update-ref", "-d", "refs/heads/"+branchName)
+	return err
+}
+
+func (a *app) repoTags(ctx context.Context, repoPath string) ([]RepoTag, error) {
+	out, err := a.gitBareOutput(ctx, repoPath, "for-each-ref", "--sort=-creatordate", "--format=%(refname:short)%00%(objectname)%00%(creatordate:iso-strict)", "refs/tags")
+	if err != nil {
+		return nil, err
+	}
+	tags := []RepoTag{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		parts := strings.Split(line, "\x00")
+		if len(parts) != 3 {
+			continue
+		}
+		createdAt, _ := time.Parse(time.RFC3339, strings.TrimSpace(parts[2]))
+		tags = append(tags, RepoTag{Name: parts[0], Target: parts[1], CreatedAt: createdAt})
+	}
+	return tags, nil
+}
+
+func (a *app) createTag(ctx context.Context, repoPath, tagName, target string) (*RepoTag, error) {
+	tagName = strings.TrimSpace(tagName)
+	if tagName == "" {
+		return nil, errors.New("tag name required")
+	}
+	if _, err := a.runGit(ctx, "check-ref-format", "refs/tags/"+tagName); err != nil {
+		return nil, err
+	}
+	if _, err := a.gitBareOutput(ctx, repoPath, "rev-parse", "--verify", "--quiet", "refs/tags/"+tagName); err == nil {
+		return nil, os.ErrExist
+	}
+	out, err := a.gitBareOutput(ctx, repoPath, "rev-parse", "--verify", "--quiet", target)
+	if err != nil {
+		if strings.TrimSpace(target) != "" {
+			out, err = a.gitBareOutput(ctx, repoPath, "rev-parse", "--verify", "--quiet", "refs/heads/"+target)
+		}
+		if err != nil {
+			return nil, os.ErrNotExist
+		}
+	}
+	targetHash := strings.TrimSpace(string(out))
+	if _, err := a.gitBareOutput(ctx, repoPath, "update-ref", "refs/tags/"+tagName, targetHash); err != nil {
+		return nil, err
+	}
+	return &RepoTag{Name: tagName, Target: targetHash, CreatedAt: time.Now().UTC()}, nil
+}
+
+func parseGitTime(value string) time.Time {
+	parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
+}
+
+func parseParents(value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return strings.Fields(value)
+}
+
+func (a *app) repoCommitLog(ctx context.Context, repoPath, branch, repoPathValue string, limit int) ([]RepoCommit, error) {
+	args := []string{
+		"log",
+		"--max-count", strconv.Itoa(limit),
+		"--date=iso-strict",
+		"--pretty=format:%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00%b%x00%P%x01",
+		"refs/heads/" + branch,
+	}
+	if repoPathValue != "" {
+		args = append(args, "--", repoPathValue)
+	}
+	out, err := a.gitBareOutput(ctx, repoPath, args...)
+	if err != nil {
+		return nil, err
+	}
+	records := bytes.Split(out, []byte{1})
+	commits := make([]RepoCommit, 0, len(records))
+	for _, record := range records {
+		record = bytes.TrimSpace(record)
+		if len(record) == 0 {
+			continue
+		}
+		parts := strings.Split(string(record), "\x00")
+		if len(parts) < 8 {
+			continue
+		}
+		commits = append(commits, RepoCommit{
+			Hash:        parts[0],
+			ShortHash:   parts[1],
+			AuthorName:  parts[2],
+			AuthorEmail: parts[3],
+			AuthoredAt:  parseGitTime(parts[4]),
+			Subject:     parts[5],
+			Body:        strings.TrimSpace(parts[6]),
+			Parents:     parseParents(parts[7]),
+		})
+	}
+	return commits, nil
+}
+
+func (a *app) repoCommitDetails(ctx context.Context, repoPath, commitHash string) (*RepoCommitDetails, error) {
+	out, err := a.gitBareOutput(ctx, repoPath, "show", "--date=iso-strict", "--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%s%x00%b%x00%P%x00", "--patch", "--stat", "--summary", commitHash)
+	if err != nil {
+		return nil, os.ErrNotExist
+	}
+	parts := bytes.SplitN(out, []byte{0}, 9)
+	if len(parts) < 9 {
+		return nil, errors.New("invalid git show output")
+	}
+	return &RepoCommitDetails{
+		RepoCommit: RepoCommit{
+			Hash:        string(parts[0]),
+			ShortHash:   string(parts[1]),
+			AuthorName:  string(parts[2]),
+			AuthorEmail: string(parts[3]),
+			AuthoredAt:  parseGitTime(string(parts[4])),
+			Subject:     string(parts[5]),
+			Body:        strings.TrimSpace(string(parts[6])),
+			Parents:     parseParents(string(parts[7])),
+		},
+		Diff: strings.TrimSpace(string(parts[8])),
+	}, nil
+}
+
+func (a *app) repoBlame(ctx context.Context, repoPath, branch, filePath string) ([]RepoBlameLine, error) {
+	if !a.branchExists(ctx, repoPath, branch) {
+		return nil, os.ErrNotExist
+	}
+	if _, err := a.repoObjectType(ctx, repoPath, "refs/heads/"+branch+":"+filePath); err != nil {
+		return nil, os.ErrNotExist
+	}
+	out, err := a.gitBareOutput(ctx, repoPath, "blame", "--line-porcelain", "refs/heads/"+branch, "--", filePath)
+	if err != nil {
+		return nil, err
+	}
+	lines := []RepoBlameLine{}
+	var current RepoBlameLine
+	for _, line := range strings.Split(string(out), "\n") {
+		switch {
+		case strings.HasPrefix(line, "\t"):
+			current.Content = strings.TrimPrefix(line, "\t")
+			current.LineNumber = len(lines) + 1
+			lines = append(lines, current)
+		case len(strings.Fields(line)) >= 3 && len(current.CommitHash) == 0:
+			current = RepoBlameLine{CommitHash: strings.Fields(line)[0]}
+		case strings.HasPrefix(line, "author "):
+			current.AuthorName = strings.TrimPrefix(line, "author ")
+		case strings.HasPrefix(line, "author-mail "):
+			current.AuthorEmail = strings.Trim(strings.TrimPrefix(line, "author-mail "), "<>")
+		case strings.HasPrefix(line, "author-time "):
+			seconds, _ := strconv.ParseInt(strings.TrimPrefix(line, "author-time "), 10, 64)
+			current.CommittedAt = time.Unix(seconds, 0).UTC()
+		case strings.HasPrefix(line, "summary "):
+			current.Summary = strings.TrimPrefix(line, "summary ")
+		}
+	}
+	return lines, nil
+}
+
+func (a *app) isAncestor(ctx context.Context, repoPath, sourceBranch, targetBranch string) (bool, error) {
+	cmd := a.gitCmd(ctx, "--git-dir", repoPath, "merge-base", "--is-ancestor", "refs/heads/"+sourceBranch, "refs/heads/"+targetBranch)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return true, nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("git merge-base --is-ancestor: %w (%s)", err, strings.TrimSpace(string(out)))
+}
+
+func (a *app) canMergeBranches(ctx context.Context, repoPath, sourceBranch, targetBranch string) (bool, error) {
+	tmpDir, err := os.MkdirTemp("", "merge-check-*")
+	if err != nil {
+		return false, err
+	}
+	defer os.RemoveAll(tmpDir)
+	worktreeDir := filepath.Join(tmpDir, "repo")
+	if _, err := a.runGit(ctx, "clone", "--quiet", repoPath, worktreeDir); err != nil {
+		return false, err
+	}
+	if _, err := a.gitWorktreeOutput(ctx, worktreeDir, "checkout", "--quiet", "-B", targetBranch, "origin/"+targetBranch); err != nil {
+		return false, err
+	}
+	if _, err := a.gitWorktreeOutput(
+		ctx,
+		worktreeDir,
+		"-c",
+		"user.name=merge-check",
+		"-c",
+		"user.email=merge-check@example.invalid",
+		"merge",
+		"--no-ff",
+		"--no-commit",
+		"origin/"+sourceBranch,
+	); err != nil {
+		_, _ = a.gitWorktreeOutput(ctx, worktreeDir, "merge", "--abort")
+		return false, errMergeConflict
+	}
+	_, _ = a.gitWorktreeOutput(ctx, worktreeDir, "merge", "--abort")
+	return true, nil
+}
+
 func (a *app) commitRepoFile(ctx context.Context, project *Project, userID int, branch, filePath, content, message string) error {
 	return a.withRepoClone(ctx, project, branch, func(dir string) error {
 		fullPath, err := worktreeFilePath(dir, filePath)
@@ -2171,11 +3231,14 @@ func (a *app) withRepoClone(ctx context.Context, project *Project, branch string
 		if err != nil {
 			return err
 		}
-		baseBranch := ""
-		for _, item := range branches {
-			if item.IsDefault {
-				baseBranch = item.Name
-				break
+		baseBranch := a.projectDefaultBranch(project)
+		if baseBranch == "" || !a.branchExists(ctx, repoPath, baseBranch) {
+			baseBranch = ""
+			for _, item := range branches {
+				if item.IsDefault {
+					baseBranch = item.Name
+					break
+				}
 			}
 		}
 		if baseBranch != "" && a.branchExists(ctx, repoPath, baseBranch) {
@@ -2191,6 +3254,53 @@ func (a *app) withRepoClone(ctx context.Context, project *Project, branch string
 	return fn(worktreeDir)
 }
 
+func (a *app) performMergeRequest(ctx context.Context, project *Project, mr *MergeRequest, userID int) (string, error) {
+	repoPath, err := a.resolveRepoPath(project.RepoRel)
+	if err != nil {
+		return "", err
+	}
+	if !a.branchExists(ctx, repoPath, mr.SourceBranch) || !a.branchExists(ctx, repoPath, mr.TargetBranch) {
+		return "", os.ErrNotExist
+	}
+	alreadyMerged, err := a.isAncestor(ctx, repoPath, mr.SourceBranch, mr.TargetBranch)
+	if err != nil {
+		return "", err
+	}
+	if alreadyMerged {
+		out, err := a.gitBareOutput(ctx, repoPath, "rev-parse", "--verify", "refs/heads/"+mr.TargetBranch)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(out)), nil
+	}
+
+	tmpDir, err := os.MkdirTemp("", "mr-merge-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmpDir)
+	worktreeDir := filepath.Join(tmpDir, "repo")
+	if _, err := a.runGit(ctx, "clone", "--quiet", repoPath, worktreeDir); err != nil {
+		return "", err
+	}
+	if _, err := a.gitWorktreeOutput(ctx, worktreeDir, "checkout", "--quiet", "-B", mr.TargetBranch, "origin/"+mr.TargetBranch); err != nil {
+		return "", err
+	}
+	authorName, authorEmail := a.authorIdentity(userID)
+	if _, err := a.gitWorktreeOutput(ctx, worktreeDir, "-c", "user.name="+authorName, "-c", "user.email="+authorEmail, "merge", "--no-ff", "--no-edit", "origin/"+mr.SourceBranch); err != nil {
+		_, _ = a.gitWorktreeOutput(ctx, worktreeDir, "merge", "--abort")
+		return "", errMergeConflict
+	}
+	if err := a.pushExistingCommit(ctx, worktreeDir, mr.TargetBranch); err != nil {
+		return "", err
+	}
+	out, err := a.gitWorktreeOutput(ctx, worktreeDir, "rev-parse", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func (a *app) commitAndPush(ctx context.Context, dir, branch string, userID int, message string) error {
 	status, err := a.gitWorktreeOutput(ctx, dir, "status", "--porcelain")
 	if err != nil {
@@ -2199,6 +3309,14 @@ func (a *app) commitAndPush(ctx context.Context, dir, branch string, userID int,
 	if len(bytes.TrimSpace(status)) == 0 {
 		return errNoChanges
 	}
+	authorName, authorEmail := a.authorIdentity(userID)
+	if _, err := a.gitWorktreeOutput(ctx, dir, "-c", "user.name="+authorName, "-c", "user.email="+authorEmail, "commit", "-m", message); err != nil {
+		return err
+	}
+	return a.pushExistingCommit(ctx, dir, branch)
+}
+
+func (a *app) authorIdentity(userID int) (string, string) {
 	authorName := fmt.Sprintf("user-%d", userID)
 	a.store.mu.RLock()
 	if user, ok := a.store.users[userID]; ok && strings.TrimSpace(user.Username) != "" {
@@ -2206,9 +3324,10 @@ func (a *app) commitAndPush(ctx context.Context, dir, branch string, userID int,
 	}
 	a.store.mu.RUnlock()
 	authorEmail := fmt.Sprintf("%s@example.invalid", strings.ReplaceAll(authorName, " ", "."))
-	if _, err := a.gitWorktreeOutput(ctx, dir, "-c", "user.name="+authorName, "-c", "user.email="+authorEmail, "commit", "-m", message); err != nil {
-		return err
-	}
+	return authorName, authorEmail
+}
+
+func (a *app) pushExistingCommit(ctx context.Context, dir, branch string) error {
 	if _, err := a.gitWorktreeOutput(ctx, dir, "push", "--quiet", "origin", "HEAD:refs/heads/"+branch); err != nil {
 		return err
 	}

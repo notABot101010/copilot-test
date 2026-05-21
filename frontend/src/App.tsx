@@ -32,32 +32,61 @@ import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-rou
 import {
   addIssueComment,
   addMergeRequestComment,
+  addOrganizationMember,
   addSSHKey,
   createIssue,
   createMergeRequest,
   createOrganization,
   createProject,
+  createRepoBranch,
+  createRepoTag,
   createUser,
+  deleteRepoBranch,
   deleteRepoFile,
   getMergeRequest,
   getMergeRequestDiff,
+  getMergeRequestMergeStatus,
+  getProjectSettings,
+  getRepoBlame,
+  getRepoCommit,
   getRepoFile,
   listIssues,
   listMergeRequests,
+  listOrganizationMembers,
   listOrganizations,
   listProjects,
   listRepoBranches,
+  listRepoCommits,
+  listRepoTags,
   listRepoTree,
+  listUsers,
+  mergeMergeRequest,
+  removeOrganizationMember,
   saveRepoFile,
   updateIssue,
+  updateOrganizationMember,
+  updateProjectSettings,
   type Issue,
   type MergeRequest,
   type Organization,
+  type OrganizationMember,
   type Project,
+  type RepoBlameLine,
   type RepoBranch,
+  type RepoCommit,
+  type RepoCommitDetails,
   type RepoEntry,
+  type RepoTag,
+  type User,
 } from './api'
 import { sessionSignal } from './state'
+
+const ROLE_OPTIONS: { value: OrganizationMember['role']; label: string }[] = [
+  { value: 'owner', label: 'Owner' },
+  { value: 'admin', label: 'Admin' },
+  { value: 'developer', label: 'Developer' },
+  { value: 'viewer', label: 'Viewer' },
+]
 
 function App() {
   return (
@@ -142,12 +171,7 @@ function SSHKeyPanel() {
     <Card withBorder>
       <Stack>
         <Title order={4}>SSH keys</Title>
-        <Textarea
-          value={key}
-          minRows={3}
-          onChange={(e) => setKey(e.currentTarget.value)}
-          placeholder="ssh-ed25519 AAAA..."
-        />
+        <Textarea value={key} minRows={3} onChange={(e) => setKey(e.currentTarget.value)} placeholder="ssh-ed25519 AAAA..." />
         <Button onClick={submit}>Add SSH key</Button>
       </Stack>
     </Card>
@@ -155,32 +179,125 @@ function SSHKeyPanel() {
 }
 
 function OrganizationsPanel() {
+  useSignals()
+  const session = sessionSignal.value
   const [name, setName] = useState('')
   const [orgs, setOrgs] = useState<Organization[]>([])
-  const load = () => listOrganizations().then(setOrgs).catch(() => undefined)
+  const [users, setUsers] = useState<User[]>([])
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
+  const [members, setMembers] = useState<OrganizationMember[]>([])
+  const [memberUserId, setMemberUserId] = useState<string | null>(null)
+  const [memberRole, setMemberRole] = useState<OrganizationMember['role']>('developer')
+
+  const load = useCallback(async () => {
+    const [orgData, userData] = await Promise.all([listOrganizations(), listUsers()])
+    setOrgs(orgData)
+    setUsers(userData)
+    const nextOrgId = selectedOrgId ?? (orgData[0] ? String(orgData[0].id) : null)
+    setSelectedOrgId(nextOrgId)
+    if (nextOrgId) {
+      setMembers(await listOrganizationMembers(Number(nextOrgId)))
+    } else {
+      setMembers([])
+    }
+  }, [selectedOrgId])
+
   useEffect(() => {
     queueMicrotask(() => {
-      load()
+      load().catch(() => undefined)
     })
-  }, [])
+  }, [load])
+
   const create = async () => {
     await createOrganization(name)
     setName('')
     await load()
   }
+
+  const addMember = async () => {
+    if (!selectedOrgId || !memberUserId) return
+    await addOrganizationMember(Number(selectedOrgId), Number(memberUserId), memberRole)
+    await load()
+  }
+
+  const changeRole = async (userId: number, role: OrganizationMember['role']) => {
+    if (!selectedOrgId) return
+    await updateOrganizationMember(Number(selectedOrgId), userId, role)
+    await load()
+  }
+
+  const removeMember = async (userId: number) => {
+    if (!selectedOrgId) return
+    await removeOrganizationMember(Number(selectedOrgId), userId)
+    await load()
+  }
+
+  const selectedOrg = orgs.find((org) => String(org.id) === selectedOrgId)
+  const memberOptions = users.map((user) => ({ value: String(user.id), label: `#${user.id} ${user.username}` }))
+
   return (
     <Card withBorder>
       <Stack>
         <Title order={4}>Organizations</Title>
-        <Group>
-          <TextInput value={name} onChange={(e) => setName(e.currentTarget.value)} placeholder="acme" />
+        <Group align="end">
+          <TextInput value={name} onChange={(e) => setName(e.currentTarget.value)} placeholder="acme" label="New organization" />
           <Button onClick={create}>Create</Button>
         </Group>
+        <Select
+          label="Manage organization"
+          data={orgs.map((org) => ({ value: String(org.id), label: `#${org.id} ${org.name}` }))}
+          value={selectedOrgId}
+          onChange={setSelectedOrgId}
+        />
         {orgs.map((org) => (
           <Text key={org.id}>
-            #{org.id} {org.name}
+            #{org.id} {org.name} · owner #{org.ownerId}
           </Text>
         ))}
+        {selectedOrg && (
+          <Card withBorder>
+            <Stack>
+              <Title order={5}>Members for {selectedOrg.name}</Title>
+              <Group align="end">
+                <Select label="User" data={memberOptions} value={memberUserId} onChange={setMemberUserId} searchable />
+                <Select
+                  label="Role"
+                  data={ROLE_OPTIONS}
+                  value={memberRole}
+                  onChange={(value) => setMemberRole((value as OrganizationMember['role']) || 'developer')}
+                />
+                <Button onClick={addMember}>Add member</Button>
+              </Group>
+              {members.length === 0 && <Text size="sm">No members yet.</Text>}
+              {members.map((member) => (
+                <Card key={member.userId} withBorder>
+                  <Group justify="space-between" align="end">
+                    <Text>
+                      User #{member.userId} · {member.role}
+                    </Text>
+                    <Group align="end">
+                      <Select
+                        data={ROLE_OPTIONS}
+                        value={member.role}
+                        onChange={(value) => value && changeRole(member.userId, value as OrganizationMember['role'])}
+                        disabled={member.userId === selectedOrg.ownerId || !session}
+                      />
+                      <Button
+                        size="xs"
+                        color="red"
+                        variant="light"
+                        onClick={() => removeMember(member.userId)}
+                        disabled={member.userId === selectedOrg.ownerId || !session}
+                      >
+                        Remove
+                      </Button>
+                    </Group>
+                  </Group>
+                </Card>
+              ))}
+            </Stack>
+          </Card>
+        )}
       </Stack>
     </Card>
   )
@@ -199,6 +316,7 @@ function ProjectsPanel() {
     setOrgs(orgData)
     if (!orgID && orgData.length > 0) setOrgID(String(orgData[0].id))
   }, [orgID])
+
   useEffect(() => {
     queueMicrotask(() => {
       load().catch(() => undefined)
@@ -234,21 +352,20 @@ function ProjectsPanel() {
                   #{project.id} {project.name}
                 </Text>
                 <Group>
+                  {project.archived && <Badge color="gray">archived</Badge>}
                   <Button size="xs" variant="light" onClick={() => navigate(`/projects/${project.id}/repo`)}>
                     Repository
                   </Button>
                   <Button size="xs" variant="light" onClick={() => navigate(`/projects/${project.id}/issues`)}>
                     Issues
                   </Button>
-                  <Button
-                    size="xs"
-                    variant="light"
-                    onClick={() => navigate(`/projects/${project.id}/merge-requests`)}
-                  >
+                  <Button size="xs" variant="light" onClick={() => navigate(`/projects/${project.id}/merge-requests`)}>
                     Merge requests
                   </Button>
                 </Group>
               </Group>
+              <Text size="sm">{project.description || 'No description'}</Text>
+              <Text size="sm">Default branch: {project.defaultBranch || 'main'}</Text>
               <Text size="sm">SSH: ssh://git@localhost:2222/{project.repoPath}</Text>
               <Text size="sm">HTTP: http://localhost:8080/git/{project.repoPath}</Text>
             </Stack>
@@ -287,40 +404,80 @@ function RepositoryBrowser() {
   const session = sessionSignal.value
   const { projectId } = useParams()
   const pid = Number(projectId)
+  const [project, setProject] = useState<Project | null>(null)
   const [branches, setBranches] = useState<RepoBranch[]>([])
   const [branch, setBranch] = useState('')
   const [currentPath, setCurrentPath] = useState('')
   const [entries, setEntries] = useState<RepoEntry[]>([])
   const [editorPath, setEditorPath] = useState('')
   const [editorContent, setEditorContent] = useState('')
+  const [newBranchName, setNewBranchName] = useState('')
+  const [newBranchSource, setNewBranchSource] = useState('')
+  const [tags, setTags] = useState<RepoTag[]>([])
+  const [tagName, setTagName] = useState('')
+  const [tagTarget, setTagTarget] = useState('')
+  const [commits, setCommits] = useState<RepoCommit[]>([])
+  const [selectedCommit, setSelectedCommit] = useState<RepoCommitDetails | null>(null)
+  const [blame, setBlame] = useState<RepoBlameLine[]>([])
+  const [settingsDescription, setSettingsDescription] = useState('')
+  const [settingsDefaultBranch, setSettingsDefaultBranch] = useState('')
 
   const branchOptions = useMemo(() => branches.map((item) => item.name), [branches])
+  const commitPath = editorPath || currentPath
+
+  const loadProject = useCallback(async () => {
+    const data = await getProjectSettings(pid)
+    setProject(data)
+    setSettingsDescription(data.description || '')
+    setSettingsDefaultBranch(data.defaultBranch || 'main')
+  }, [pid])
 
   const loadBranches = useCallback(async () => {
     const data = await listRepoBranches(pid)
     setBranches(data)
-    setBranch((current) => current || data.find((item) => item.isDefault)?.name || data[0]?.name || 'main')
+    const defaultBranch = data.find((item) => item.isDefault)?.name || data[0]?.name || 'main'
+    setBranch((current) => current || defaultBranch)
+    setNewBranchSource((current) => current || defaultBranch)
+    setTagTarget((current) => current || defaultBranch)
   }, [pid])
 
   const loadTree = useCallback(async () => {
     if (!Number.isFinite(pid) || !branch) return
-    const data = await listRepoTree(pid, branch, currentPath)
-    setEntries(data)
+    setEntries(await listRepoTree(pid, branch, currentPath))
   }, [branch, currentPath, pid])
+
+  const loadTags = useCallback(async () => {
+    if (!Number.isFinite(pid)) return
+    setTags(await listRepoTags(pid))
+  }, [pid])
+
+  const loadCommits = useCallback(async () => {
+    if (!Number.isFinite(pid) || !branch) return
+    setCommits(await listRepoCommits(pid, branch, commitPath))
+  }, [branch, commitPath, pid])
 
   useEffect(() => {
     if (!Number.isFinite(pid)) return
     queueMicrotask(() => {
-      loadBranches().catch(() => undefined)
+      Promise.all([loadProject(), loadBranches(), loadTags()]).catch(() => undefined)
     })
-  }, [loadBranches, pid])
+  }, [loadBranches, loadProject, loadTags, pid])
 
   useEffect(() => {
     if (!branch) return
     queueMicrotask(() => {
-      loadTree().catch(() => undefined)
+      Promise.all([loadTree(), loadCommits()]).catch(() => undefined)
     })
-  }, [branch, loadTree])
+  }, [branch, loadCommits, loadTree])
+
+  useEffect(() => {
+    if (!branch || !editorPath) return
+    queueMicrotask(() => {
+      getRepoBlame(pid, branch, editorPath)
+        .then(setBlame)
+        .catch(() => setBlame([]))
+    })
+  }, [branch, editorPath, pid])
 
   const openFile = async (path: string) => {
     const file = await getRepoFile(pid, branch, path)
@@ -332,8 +489,7 @@ function RepositoryBrowser() {
     if (!editorPath.trim() || !branch.trim()) return
     await saveRepoFile(pid, { branch, path: editorPath.trim(), content: editorContent })
     notifications.show({ title: 'File saved', message: `${editorPath.trim()} updated on ${branch}.` })
-    await loadBranches()
-    await loadTree()
+    await Promise.all([loadProject(), loadBranches(), loadTree(), loadCommits()])
     await openFile(editorPath.trim())
   }
 
@@ -344,7 +500,55 @@ function RepositoryBrowser() {
     notifications.show({ title: 'File deleted', message: `${editorPath.trim()} removed from ${branch}.` })
     setEditorPath('')
     setEditorContent('')
+    setBlame([])
+    await Promise.all([loadTree(), loadCommits()])
+  }
+
+  const createBranch = async () => {
+    if (!newBranchName.trim() || !newBranchSource.trim()) return
+    await createRepoBranch(pid, newBranchName.trim(), newBranchSource.trim())
+    setNewBranchName('')
+    await loadBranches()
+  }
+
+  const removeBranch = async () => {
+    if (!branch.trim()) return
+    await deleteRepoBranch(pid, branch.trim())
+    setEditorPath('')
+    setEditorContent('')
+    await loadBranches()
     await loadTree()
+  }
+
+  const createTag = async () => {
+    if (!tagName.trim()) return
+    await createRepoTag(pid, tagName.trim(), tagTarget.trim())
+    setTagName('')
+    await loadTags()
+  }
+
+  const loadCommit = async (hash: string) => {
+    setSelectedCommit(await getRepoCommit(pid, hash))
+  }
+
+  const saveSettings = async () => {
+    const updated = await updateProjectSettings(pid, {
+      description: settingsDescription,
+      defaultBranch: settingsDefaultBranch,
+    })
+    setProject(updated)
+    notifications.show({ title: 'Repository settings updated', message: `${updated.name} settings saved.` })
+    await loadBranches()
+  }
+
+  const toggleArchive = async () => {
+    if (!project) return
+    const updated = await updateProjectSettings(pid, { archived: !project.archived })
+    setProject(updated)
+    notifications.show({
+      title: updated.archived ? 'Repository archived' : 'Repository unarchived',
+      message: `${updated.name} is now ${updated.archived ? 'read only' : 'writable'}.`,
+    })
   }
 
   const segments = currentPath ? currentPath.split('/') : []
@@ -355,6 +559,68 @@ function RepositoryBrowser() {
         <Title order={3}>Project #{pid} repository</Title>
         <ProjectNav projectId={pid} current="repo" />
       </Group>
+
+      {project && (
+        <Card withBorder>
+          <Stack>
+            <Group justify="space-between">
+              <Title order={4}>Repository settings</Title>
+              {project.archived && <Badge color="gray">archived</Badge>}
+            </Group>
+            <TextInput
+              label="Description"
+              value={settingsDescription}
+              onChange={(e) => setSettingsDescription(e.currentTarget.value)}
+            />
+            <Autocomplete
+              label="Default branch"
+              data={branchOptions}
+              value={settingsDefaultBranch}
+              onChange={setSettingsDefaultBranch}
+            />
+            <Group>
+              <Button onClick={saveSettings} disabled={!session}>
+                Save settings
+              </Button>
+              <Button variant="light" color={project.archived ? 'green' : 'gray'} onClick={toggleArchive} disabled={!session}>
+                {project.archived ? 'Unarchive' : 'Archive'}
+              </Button>
+            </Group>
+          </Stack>
+        </Card>
+      )}
+
+      <Card withBorder>
+        <Stack>
+          <Title order={4}>Branches and tags</Title>
+          <Group align="end">
+            <Autocomplete label="Current branch" data={branchOptions} value={branch} onChange={setBranch} />
+            <Button variant="light" color="red" onClick={removeBranch} disabled={!session || branches.find((item) => item.name === branch)?.isDefault}>
+              Delete branch
+            </Button>
+          </Group>
+          <Group align="end">
+            <TextInput label="New branch" value={newBranchName} onChange={(e) => setNewBranchName(e.currentTarget.value)} />
+            <Autocomplete label="From branch" data={branchOptions} value={newBranchSource} onChange={setNewBranchSource} />
+            <Button onClick={createBranch} disabled={!session || !newBranchName.trim()}>
+              Create branch
+            </Button>
+          </Group>
+          <Group align="end">
+            <TextInput label="New tag" value={tagName} onChange={(e) => setTagName(e.currentTarget.value)} />
+            <Autocomplete label="Target" data={branchOptions} value={tagTarget} onChange={setTagTarget} />
+            <Button onClick={createTag} disabled={!session || !tagName.trim()}>
+              Create tag
+            </Button>
+          </Group>
+          {tags.length === 0 && <Text size="sm">No tags yet.</Text>}
+          {tags.map((tag) => (
+            <Text key={tag.name} size="sm">
+              {tag.name} → {tag.target.slice(0, 12)}
+            </Text>
+          ))}
+        </Stack>
+      </Card>
 
       <Card withBorder>
         <Stack>
@@ -398,11 +664,7 @@ function RepositoryBrowser() {
                 <Text>
                   {entry.type === 'dir' ? '📁' : '📄'} {entry.name}
                 </Text>
-                <Button
-                  size="xs"
-                  variant="subtle"
-                  onClick={() => (entry.type === 'dir' ? setCurrentPath(entry.path) : openFile(entry.path))}
-                >
+                <Button size="xs" variant="subtle" onClick={() => (entry.type === 'dir' ? setCurrentPath(entry.path) : openFile(entry.path))}>
                   {entry.type === 'dir' ? 'Open' : 'Edit'}
                 </Button>
               </Group>
@@ -428,16 +690,65 @@ function RepositoryBrowser() {
             placeholder="File content"
           />
           <Group>
-            <Button onClick={save} disabled={!session || !branch.trim() || !editorPath.trim()}>
+            <Button onClick={save} disabled={!session || !branch.trim() || !editorPath.trim() || project?.archived}>
               Save file
             </Button>
-            <Button variant="light" color="red" onClick={remove} disabled={!session || !editorPath.trim()}>
+            <Button variant="light" color="red" onClick={remove} disabled={!session || !editorPath.trim() || project?.archived}>
               Delete file
             </Button>
           </Group>
           {!session && <Text size="sm">Sign in first to edit or delete files.</Text>}
         </Stack>
       </Card>
+
+      <Card withBorder>
+        <Stack>
+          <Title order={4}>Commit history</Title>
+          {commits.length === 0 && <Text size="sm">No commits yet.</Text>}
+          {commits.map((commit) => (
+            <Card key={commit.hash} withBorder>
+              <Group justify="space-between">
+                <Stack gap={2}>
+                  <Text fw={700}>
+                    {commit.shortHash} {commit.subject}
+                  </Text>
+                  <Text size="sm">
+                    {commit.authorName} · {new Date(commit.authoredAt).toLocaleString()}
+                  </Text>
+                </Stack>
+                <Button size="xs" variant="light" onClick={() => loadCommit(commit.hash)}>
+                  Show
+                </Button>
+              </Group>
+            </Card>
+          ))}
+          {selectedCommit && (
+            <Card withBorder>
+              <Stack>
+                <Title order={5}>
+                  {selectedCommit.shortHash} {selectedCommit.subject}
+                </Title>
+                <Text size="sm">{selectedCommit.authorName}</Text>
+                <Textarea readOnly autosize minRows={10} value={selectedCommit.diff || 'No diff available.'} />
+              </Stack>
+            </Card>
+          )}
+        </Stack>
+      </Card>
+
+      {editorPath && (
+        <Card withBorder>
+          <Stack>
+            <Title order={4}>Blame for {editorPath}</Title>
+            {blame.length === 0 && <Text size="sm">No blame data available.</Text>}
+            {blame.slice(0, 20).map((line) => (
+              <Text key={`${line.lineNumber}-${line.commitHash}`} size="sm">
+                {line.lineNumber}. {line.commitHash.slice(0, 8)} · {line.authorName} · {line.content}
+              </Text>
+            ))}
+          </Stack>
+        </Card>
+      )}
     </Stack>
   )
 }
@@ -474,11 +785,7 @@ function IssueColumn({
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: status })
   return (
-    <Card
-      ref={setNodeRef}
-      withBorder
-      style={{ width: '100%', backgroundColor: isOver ? '#eef7ff' : undefined, minHeight: 220 }}
-    >
+    <Card ref={setNodeRef} withBorder style={{ width: '100%', backgroundColor: isOver ? '#eef7ff' : undefined, minHeight: 220 }}>
       <Stack>
         <Group justify="space-between">
           <Title order={5}>{title}</Title>
@@ -590,23 +897,21 @@ function IssueBoard() {
   const [newIssueTags, setNewIssueTags] = useState('')
   const [commentBody, setCommentBody] = useState<Record<number, string>>({})
   const [tagDrafts, setTagDrafts] = useState<Record<number, string>>({})
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor),
-  )
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor))
 
   const load = useCallback(async () => {
     const data = await listIssues(pid)
     setIssues(data)
     setTagDrafts(Object.fromEntries(data.map((issue) => [issue.id, issue.tags.join(', ')])))
   }, [pid])
+
   useEffect(() => {
     if (Number.isFinite(pid)) {
       queueMicrotask(() => {
         load().catch(() => undefined)
       })
     }
-  }, [pid, load])
+  }, [load, pid])
 
   const create = async () => {
     await createIssue(pid, title, description, parseIssueTags(newIssueTags))
@@ -655,17 +960,8 @@ function IssueBoard() {
       <Card withBorder>
         <Stack>
           <TextInput label="Title" value={title} onChange={(e) => setTitle(e.currentTarget.value)} />
-          <Textarea
-            label="Description"
-            value={description}
-            onChange={(e) => setDescription(e.currentTarget.value)}
-          />
-          <TextInput
-            label="Tags"
-            placeholder="bug, docs"
-            value={newIssueTags}
-            onChange={(e) => setNewIssueTags(e.currentTarget.value)}
-          />
+          <Textarea label="Description" value={description} onChange={(e) => setDescription(e.currentTarget.value)} />
+          <TextInput label="Tags" placeholder="bug, docs" value={newIssueTags} onChange={(e) => setNewIssueTags(e.currentTarget.value)} />
           <Button onClick={create}>Open issue</Button>
         </Stack>
       </Card>
@@ -749,11 +1045,7 @@ function MergeRequestBoard() {
         <Stack>
           <Title order={4}>Open merge request</Title>
           <TextInput label="Title" value={title} onChange={(e) => setTitle(e.currentTarget.value)} />
-          <Textarea
-            label="Description"
-            value={description}
-            onChange={(e) => setDescription(e.currentTarget.value)}
-          />
+          <Textarea label="Description" value={description} onChange={(e) => setDescription(e.currentTarget.value)} />
           <Group align="end">
             <Autocomplete label="Source branch" data={branchOptions} value={sourceBranch} onChange={setSourceBranch} />
             <Autocomplete label="Target branch" data={branchOptions} value={targetBranch} onChange={setTargetBranch} />
@@ -770,18 +1062,20 @@ function MergeRequestBoard() {
               <Text fw={700}>
                 #{mr.id} {mr.title}
               </Text>
-              <Badge color={mr.status === 'open' ? 'blue' : 'gray'}>{mr.status}</Badge>
+              <Group>
+                <Badge color={mr.status === 'merged' ? 'green' : mr.hasConflicts ? 'red' : 'blue'}>{mr.status}</Badge>
+                {mr.mergeable && <Badge color="teal">mergeable</Badge>}
+                {mr.hasConflicts && <Badge color="red">conflicts</Badge>}
+              </Group>
             </Group>
             <Text size="sm">
               {mr.sourceBranch} → {mr.targetBranch}
             </Text>
             <Text size="sm">{mr.description || 'No description'}</Text>
             <Text size="sm">Comments: {mr.comments.length}</Text>
-            <Group>
-              <Button component={Link} to={`/projects/${pid}/merge-requests/${mr.id}`} size="xs" variant="light">
-                View
-              </Button>
-            </Group>
+            <Button component={Link} to={`/projects/${pid}/merge-requests/${mr.id}`} size="xs" variant="light">
+              View
+            </Button>
           </Stack>
         </Card>
       ))}
@@ -800,8 +1094,12 @@ function MergeRequestDetails() {
   const [comment, setComment] = useState('')
 
   const load = useCallback(async () => {
-    const [mr, diffResponse] = await Promise.all([getMergeRequest(pid, mrid), getMergeRequestDiff(pid, mrid)])
-    setMergeRequest(mr)
+    const [mr, diffResponse, mergeStatus] = await Promise.all([
+      getMergeRequest(pid, mrid),
+      getMergeRequestDiff(pid, mrid),
+      getMergeRequestMergeStatus(pid, mrid),
+    ])
+    setMergeRequest({ ...mr, ...mergeStatus })
     setDiff(diffResponse.diff)
   }, [mrid, pid])
 
@@ -819,6 +1117,13 @@ function MergeRequestDetails() {
     await load()
   }
 
+  const merge = async () => {
+    const mr = await mergeMergeRequest(pid, mrid)
+    setMergeRequest(mr)
+    notifications.show({ title: 'Merge request merged', message: `MR #${mr.id} merged into ${mr.targetBranch}.` })
+    await load()
+  }
+
   if (!mergeRequest) return <Text>Loading merge request…</Text>
 
   return (
@@ -833,12 +1138,22 @@ function MergeRequestDetails() {
       <Card withBorder>
         <Stack gap="xs">
           <Group>
-            <Badge color={mergeRequest.status === 'open' ? 'blue' : 'gray'}>{mergeRequest.status}</Badge>
+            <Badge color={mergeRequest.status === 'merged' ? 'green' : mergeRequest.hasConflicts ? 'red' : 'blue'}>
+              {mergeRequest.status}
+            </Badge>
+            {mergeRequest.mergeable && <Badge color="teal">mergeable</Badge>}
+            {mergeRequest.hasConflicts && <Badge color="red">conflicts</Badge>}
+            {mergeRequest.alreadyMerged && <Badge color="green">already merged</Badge>}
             <Text size="sm">
               {mergeRequest.sourceBranch} → {mergeRequest.targetBranch}
             </Text>
           </Group>
           <Text>{mergeRequest.description || 'No description'}</Text>
+          {mergeRequest.mergedCommitId && <Text size="sm">Merge commit: {mergeRequest.mergedCommitId}</Text>}
+          <Button onClick={merge} disabled={!session || !mergeRequest.mergeable || mergeRequest.status !== 'open'}>
+            Merge request
+          </Button>
+          {!session && <Text size="sm">Sign in first to merge.</Text>}
         </Stack>
       </Card>
 
@@ -861,16 +1176,10 @@ function MergeRequestDetails() {
               </Stack>
             </Card>
           ))}
-          <Textarea
-            label="New comment"
-            minRows={3}
-            value={comment}
-            onChange={(e) => setComment(e.currentTarget.value)}
-          />
+          <Textarea label="New comment" minRows={3} value={comment} onChange={(e) => setComment(e.currentTarget.value)} />
           <Button onClick={addComment} disabled={!session}>
             Add comment
           </Button>
-          {!session && <Text size="sm">Sign in first to leave comments.</Text>}
         </Stack>
       </Card>
     </Stack>

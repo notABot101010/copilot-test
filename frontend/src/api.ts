@@ -1,7 +1,17 @@
 import { authHeaderSignal, apiBaseSignal, sessionSignal, type Session } from './state'
 
+export type User = { id: number; username: string; sshKeys?: string[] }
 export type Organization = { id: number; name: string; ownerId: number }
-export type Project = { id: number; name: string; orgId: number; repoPath: string }
+export type OrganizationMember = { userId: number; role: 'owner' | 'admin' | 'developer' | 'viewer' }
+export type Project = {
+  id: number
+  name: string
+  orgId: number
+  repoPath: string
+  description: string
+  defaultBranch: string
+  archived: boolean
+}
 export type IssueComment = { id: number; authorId: number; body: string; createdAt: string }
 export type Issue = {
   id: number
@@ -15,8 +25,29 @@ export type Issue = {
   updatedAt: string
 }
 export type RepoBranch = { name: string; isDefault: boolean }
+export type RepoTag = { name: string; target: string; createdAt: string }
 export type RepoEntry = { name: string; path: string; type: 'dir' | 'file' }
 export type RepoFile = { branch: string; path: string; content: string }
+export type RepoCommit = {
+  hash: string
+  shortHash: string
+  authorName: string
+  authorEmail: string
+  subject: string
+  body: string
+  parents: string[]
+  authoredAt: string
+}
+export type RepoCommitDetails = RepoCommit & { diff: string }
+export type RepoBlameLine = {
+  lineNumber: number
+  commitHash: string
+  authorName: string
+  authorEmail: string
+  summary: string
+  committedAt: string
+  content: string
+}
 export type MergeRequestComment = { id: number; authorId: number; body: string; createdAt: string }
 export type MergeRequest = {
   id: number
@@ -28,6 +59,12 @@ export type MergeRequest = {
   targetBranch: string
   status: 'open' | 'closed' | 'merged'
   comments: MergeRequestComment[]
+  mergeable: boolean
+  hasConflicts: boolean
+  alreadyMerged: boolean
+  mergedBy?: number
+  mergedAt?: string
+  mergedCommitId?: string
   createdAt: string
   updatedAt: string
 }
@@ -62,6 +99,10 @@ export async function createUser(username: string): Promise<Session> {
   return session
 }
 
+export function listUsers() {
+  return request<User[]>('/api/users')
+}
+
 export function addSSHKey(userId: number, key: string) {
   return request(`/api/users/${userId}/ssh-keys`, {
     method: 'POST',
@@ -71,6 +112,30 @@ export function addSSHKey(userId: number, key: string) {
 
 export function listOrganizations() {
   return request<Organization[]>('/api/orgs')
+}
+
+export function listOrganizationMembers(orgId: number) {
+  return request<OrganizationMember[]>(`/api/orgs/${orgId}/members`)
+}
+
+export function addOrganizationMember(orgId: number, userId: number, role: OrganizationMember['role']) {
+  return request<OrganizationMember>(`/api/orgs/${orgId}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ userId, role }),
+  })
+}
+
+export function updateOrganizationMember(orgId: number, userId: number, role: OrganizationMember['role']) {
+  return request<OrganizationMember>(`/api/orgs/${orgId}/members/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  })
+}
+
+export function removeOrganizationMember(orgId: number, userId: number) {
+  return request<void>(`/api/orgs/${orgId}/members/${userId}`, {
+    method: 'DELETE',
+  })
 }
 
 export function createOrganization(name: string) {
@@ -88,8 +153,61 @@ export function createProject(orgId: number, name: string) {
   })
 }
 
+export function getProjectSettings(projectId: number) {
+  return request<Project>(`/api/projects/${projectId}/settings`)
+}
+
+export function updateProjectSettings(
+  projectId: number,
+  payload: Partial<Pick<Project, 'description' | 'defaultBranch' | 'archived'>>,
+) {
+  return request<Project>(`/api/projects/${projectId}/settings`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
 export function listRepoBranches(projectId: number) {
   return request<RepoBranch[]>(`/api/projects/${projectId}/repo/branches`)
+}
+
+export function createRepoBranch(projectId: number, name: string, sourceBranch: string) {
+  return request<RepoBranch>(`/api/projects/${projectId}/repo/branches`, {
+    method: 'POST',
+    body: JSON.stringify({ name, sourceBranch }),
+  })
+}
+
+export function deleteRepoBranch(projectId: number, branchName: string) {
+  return request<void>(`/api/projects/${projectId}/repo/branches/${encodeURIComponent(branchName)}`, {
+    method: 'DELETE',
+  })
+}
+
+export function listRepoTags(projectId: number) {
+  return request<RepoTag[]>(`/api/projects/${projectId}/repo/tags`)
+}
+
+export function createRepoTag(projectId: number, name: string, target: string) {
+  return request<RepoTag>(`/api/projects/${projectId}/repo/tags`, {
+    method: 'POST',
+    body: JSON.stringify({ name, target }),
+  })
+}
+
+export function listRepoCommits(projectId: number, branch: string, path = '', limit = 20) {
+  const query = new URLSearchParams({ branch, limit: String(limit) })
+  if (path) query.set('path', path)
+  return request<RepoCommit[]>(`/api/projects/${projectId}/repo/commits?${query.toString()}`)
+}
+
+export function getRepoCommit(projectId: number, commitHash: string) {
+  return request<RepoCommitDetails>(`/api/projects/${projectId}/repo/commits/${encodeURIComponent(commitHash)}`)
+}
+
+export function getRepoBlame(projectId: number, branch: string, path: string) {
+  const query = new URLSearchParams({ branch, path })
+  return request<RepoBlameLine[]>(`/api/projects/${projectId}/repo/blame?${query.toString()}`)
 }
 
 export function listRepoTree(projectId: number, branch: string, path = '') {
@@ -165,6 +283,18 @@ export function createMergeRequest(
 
 export function getMergeRequestDiff(projectId: number, mergeRequestId: number) {
   return request<{ diff: string }>(`/api/projects/${projectId}/merge-requests/${mergeRequestId}/diff`)
+}
+
+export function getMergeRequestMergeStatus(projectId: number, mergeRequestId: number) {
+  return request<{ mergeable: boolean; hasConflicts: boolean; alreadyMerged: boolean }>(
+    `/api/projects/${projectId}/merge-requests/${mergeRequestId}/merge-status`,
+  )
+}
+
+export function mergeMergeRequest(projectId: number, mergeRequestId: number) {
+  return request<MergeRequest>(`/api/projects/${projectId}/merge-requests/${mergeRequestId}/merge`, {
+    method: 'POST',
+  })
 }
 
 export function addMergeRequestComment(projectId: number, mergeRequestId: number, body: string) {
