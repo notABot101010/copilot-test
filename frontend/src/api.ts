@@ -9,6 +9,7 @@ export type Issue = {
   title: string
   description: string
   status: 'open' | 'closed'
+  tags: string[]
   comments: IssueComment[]
   createdAt: string
   updatedAt: string
@@ -120,10 +121,10 @@ export function listIssues(projectId: number) {
   return request<Issue[]>(`/api/projects/${projectId}/issues`)
 }
 
-export function createIssue(projectId: number, title: string, description: string) {
+export function createIssue(projectId: number, title: string, description: string, tags: string[] = []) {
   return request<Issue>(`/api/projects/${projectId}/issues`, {
     method: 'POST',
-    body: JSON.stringify({ title, description }),
+    body: JSON.stringify({ title, description, tags }),
   })
 }
 
