@@ -7,6 +7,7 @@ import {
   Card,
   Container,
   Group,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -194,7 +195,7 @@ function ProjectsPanel() {
   }, [load])
 
   const submit = async () => {
-    if (!orgID) return
+    if (!orgID || !orgs.some((org) => String(org.id) === orgID)) return
     await createProject(Number(orgID), name)
     setName('')
     await load()
@@ -205,7 +206,7 @@ function ProjectsPanel() {
       <Stack>
         <Title order={4}>Projects (1 project = 1 git repository)</Title>
         <Group align="end">
-          <Autocomplete
+          <Select
             label="Organization"
             data={orgs.map((org) => ({ value: String(org.id), label: org.name }))}
             value={orgID ?? ''}

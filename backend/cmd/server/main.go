@@ -118,6 +118,7 @@ type Store struct {
 	nextMergeID   int
 	nextMRComment int
 	users         map[int]*User
+	tokens        map[string]int
 	orgs          map[int]*Organization
 	projects      map[int]*Project
 	issues        map[int]map[int]*Issue
@@ -134,6 +135,7 @@ func newStore() *Store {
 		nextMergeID:   1,
 		nextMRComment: 1,
 		users:         map[int]*User{},
+		tokens:        map[string]int{},
 		orgs:          map[int]*Organization{},
 		projects:      map[int]*Project{},
 		issues:        map[int]map[int]*Issue{},
@@ -414,6 +416,7 @@ func (a *app) createUser(w http.ResponseWriter, r *http.Request) {
 	a.store.nextUserID++
 	u := &User{ID: id, Username: req.Username, Token: token}
 	a.store.users[id] = u
+	a.store.tokens[token] = id
 	writeJSON(w, http.StatusCreated, u)
 }
 
@@ -1631,10 +1634,13 @@ func writeLFSError(w http.ResponseWriter, status int, message string) {
 func (a *app) authenticateHTTPGit(username, token string) (*User, error) {
 	a.store.mu.RLock()
 	defer a.store.mu.RUnlock()
-	for _, u := range a.store.users {
-		if u.Username == username && u.Token == token {
-			return u, nil
-		}
+	userID, ok := a.store.tokens[token]
+	if !ok {
+		return nil, errors.New("invalid credentials")
+	}
+	u, ok := a.store.users[userID]
+	if ok && u.Username == username {
+		return u, nil
 	}
 	return nil, errors.New("invalid credentials")
 }
@@ -1919,7 +1925,10 @@ func (a *app) repoDiff(ctx context.Context, repoPath, sourceBranch, targetBranch
 
 func (a *app) commitRepoFile(ctx context.Context, project *Project, userID int, branch, filePath, content, message string) error {
 	return a.withRepoClone(ctx, project, branch, func(dir string) error {
-		fullPath := filepath.Join(dir, filepath.FromSlash(filePath))
+		fullPath, err := worktreeFilePath(dir, filePath)
+		if err != nil {
+			return err
+		}
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
 			return err
 		}
@@ -1935,7 +1944,10 @@ func (a *app) commitRepoFile(ctx context.Context, project *Project, userID int, 
 
 func (a *app) removeRepoFile(ctx context.Context, project *Project, userID int, branch, filePath, message string) error {
 	return a.withRepoClone(ctx, project, branch, func(dir string) error {
-		fullPath := filepath.Join(dir, filepath.FromSlash(filePath))
+		fullPath, err := worktreeFilePath(dir, filePath)
+		if err != nil {
+			return err
+		}
 		info, err := os.Stat(fullPath)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -2027,6 +2039,18 @@ func messageOrDefault(message, fallback string) string {
 	return strings.TrimSpace(message)
 }
 
+func worktreeFilePath(dir, filePath string) (string, error) {
+	fullPath := filepath.Clean(filepath.Join(dir, filepath.FromSlash(filePath)))
+	rel, err := filepath.Rel(dir, fullPath)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", errors.New("invalid path")
+	}
+	return fullPath, nil
+}
+
 func (a *app) resolveRepoPath(repoRel string) (string, error) {
 	repoRel = filepath.Clean(strings.TrimSpace(repoRel))
 	if repoRel == "." || repoRel == "" || filepath.IsAbs(repoRel) {
@@ -2057,15 +2081,7 @@ func (a *app) requireBearerUser(next http.Handler) http.Handler {
 		}
 
 		a.store.mu.RLock()
-		var userID int
-		found := false
-		for _, u := range a.store.users {
-			if u.Token == token {
-				userID = u.ID
-				found = true
-				break
-			}
-		}
+		userID, found := a.store.tokens[token]
 		a.store.mu.RUnlock()
 		if found {
 			ctx := context.WithValue(r.Context(), userContextKey{}, userID)
