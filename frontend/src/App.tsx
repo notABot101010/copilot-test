@@ -550,6 +550,7 @@ function DraggableIssueCard({
         <Group align="end">
           <TextInput
             label="Tags"
+            aria-label={`Tags for issue ${issue.id}`}
             placeholder="bug, docs"
             value={tagValue}
             onChange={(e) => onTagChange(e.currentTarget.value)}
@@ -564,7 +565,12 @@ function DraggableIssueCard({
           </Text>
         ))}
         <Group align="end">
-          <TextInput placeholder="Add comment" value={commentValue} onChange={(e) => onCommentChange(e.currentTarget.value)} />
+          <TextInput
+            aria-label={`Comment for issue ${issue.id}`}
+            placeholder="Add comment"
+            value={commentValue}
+            onChange={(e) => onCommentChange(e.currentTarget.value)}
+          />
           <Button size="xs" onClick={onAddComment}>
             Comment
           </Button>

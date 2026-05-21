@@ -695,9 +695,6 @@ func (a *app) updateIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 func normalizeIssueTags(tags []string) []string {
-	if len(tags) == 0 {
-		return []string{}
-	}
 	normalized := make([]string, 0, len(tags))
 	seen := make(map[string]struct{}, len(tags))
 	for _, tag := range tags {
