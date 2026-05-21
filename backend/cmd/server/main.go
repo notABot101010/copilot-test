@@ -3146,7 +3146,18 @@ func (a *app) canMergeBranches(ctx context.Context, repoPath, sourceBranch, targ
 	if _, err := a.gitWorktreeOutput(ctx, worktreeDir, "checkout", "--quiet", "-B", targetBranch, "origin/"+targetBranch); err != nil {
 		return false, err
 	}
-	if _, err := a.gitWorktreeOutput(ctx, worktreeDir, "merge", "--no-ff", "--no-commit", "origin/"+sourceBranch); err != nil {
+	if _, err := a.gitWorktreeOutput(
+		ctx,
+		worktreeDir,
+		"-c",
+		"user.name=merge-check",
+		"-c",
+		"user.email=merge-check@example.invalid",
+		"merge",
+		"--no-ff",
+		"--no-commit",
+		"origin/"+sourceBranch,
+	); err != nil {
 		_, _ = a.gitWorktreeOutput(ctx, worktreeDir, "merge", "--abort")
 		return false, errMergeConflict
 	}
