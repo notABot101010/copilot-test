@@ -13,6 +13,23 @@ export type Issue = {
   createdAt: string
   updatedAt: string
 }
+export type RepoBranch = { name: string; isDefault: boolean }
+export type RepoEntry = { name: string; path: string; type: 'dir' | 'file' }
+export type RepoFile = { branch: string; path: string; content: string }
+export type MergeRequestComment = { id: number; authorId: number; body: string; createdAt: string }
+export type MergeRequest = {
+  id: number
+  projectId: number
+  authorId: number
+  title: string
+  description: string
+  sourceBranch: string
+  targetBranch: string
+  status: 'open' | 'closed' | 'merged'
+  comments: MergeRequestComment[]
+  createdAt: string
+  updatedAt: string
+}
 
 type UserResponse = { id: number; username: string; token: string }
 
@@ -70,6 +87,35 @@ export function createProject(orgId: number, name: string) {
   })
 }
 
+export function listRepoBranches(projectId: number) {
+  return request<RepoBranch[]>(`/api/projects/${projectId}/repo/branches`)
+}
+
+export function listRepoTree(projectId: number, branch: string, path = '') {
+  const query = new URLSearchParams({ branch })
+  if (path) query.set('path', path)
+  return request<RepoEntry[]>(`/api/projects/${projectId}/repo/tree?${query.toString()}`)
+}
+
+export function getRepoFile(projectId: number, branch: string, path: string) {
+  const query = new URLSearchParams({ branch, path })
+  return request<RepoFile>(`/api/projects/${projectId}/repo/file?${query.toString()}`)
+}
+
+export function saveRepoFile(projectId: number, payload: { branch: string; path: string; content: string }) {
+  return request<RepoFile>(`/api/projects/${projectId}/repo/file`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function deleteRepoFile(projectId: number, payload: { branch: string; path: string }) {
+  return request<void>(`/api/projects/${projectId}/repo/file`, {
+    method: 'DELETE',
+    body: JSON.stringify(payload),
+  })
+}
+
 export function listIssues(projectId: number) {
   return request<Issue[]>(`/api/projects/${projectId}/issues`)
 }
@@ -90,6 +136,38 @@ export function updateIssue(projectId: number, issueId: number, payload: Partial
 
 export function addIssueComment(projectId: number, issueId: number, body: string) {
   return request<IssueComment>(`/api/projects/${projectId}/issues/${issueId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  })
+}
+
+export function listMergeRequests(projectId: number) {
+  return request<MergeRequest[]>(`/api/projects/${projectId}/merge-requests`)
+}
+
+export function getMergeRequest(projectId: number, mergeRequestId: number) {
+  return request<MergeRequest>(`/api/projects/${projectId}/merge-requests/${mergeRequestId}`)
+}
+
+export function createMergeRequest(
+  projectId: number,
+  title: string,
+  description: string,
+  sourceBranch: string,
+  targetBranch: string,
+) {
+  return request<MergeRequest>(`/api/projects/${projectId}/merge-requests`, {
+    method: 'POST',
+    body: JSON.stringify({ title, description, sourceBranch, targetBranch }),
+  })
+}
+
+export function getMergeRequestDiff(projectId: number, mergeRequestId: number) {
+  return request<{ diff: string }>(`/api/projects/${projectId}/merge-requests/${mergeRequestId}/diff`)
+}
+
+export function addMergeRequestComment(projectId: number, mergeRequestId: number, body: string) {
+  return request<MergeRequestComment>(`/api/projects/${projectId}/merge-requests/${mergeRequestId}/comments`, {
     method: 'POST',
     body: JSON.stringify({ body }),
   })
