@@ -15,6 +15,11 @@ This monorepo contains:
 - Git push support:
   - HTTP (`git-http-backend`, basic auth with username + token)
   - SSH (public key auth)
+- Git LFS support over HTTP and SSH:
+  - LFS Batch API (`POST /git/<org>/<project>.git/info/lfs/objects/batch`)
+  - LFS object upload (`PUT /git/<org>/<project>.git/info/lfs/objects/<oid>`)
+  - LFS object download (`GET /git/<org>/<project>.git/info/lfs/objects/<oid>`)
+  - SSH `git-lfs-authenticate` for credential handoff
 - Issue tracking per project:
   - create/list/update issues
   - add comments
@@ -67,3 +72,22 @@ docker run --rm -p 8080:8080 -p 2222:2222 git-platform
 - Repository paths are validated and constrained to stay under `REPOS_ROOT` before any Git command executes.
 - SSH and HTTP push (`receive-pack`) enforce authorization so only the owning organization user can write to a project repo.
 - Git subprocesses run with context deadlines to avoid unbounded command execution.
+
+## Git LFS
+
+Git LFS objects are stored per-repository on the server filesystem at
+`<REPOS_ROOT>/<org>/<project>.git/lfs/objects/<oid[0:2]>/<oid[2:4]>/<oid>`.
+
+The HTTP base URL used in LFS batch responses defaults to `http://localhost:8080` and
+can be overridden with the `HTTP_BASE_URL` environment variable (useful behind a reverse proxy).
+
+Configure your local git-lfs client:
+
+```bash
+git lfs install
+git lfs track "*.bin"   # or whatever file types you want to store in LFS
+git add .gitattributes
+git push
+```
+
+LFS objects are pushed automatically by `git push` when git-lfs is installed.
