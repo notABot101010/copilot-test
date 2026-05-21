@@ -18,7 +18,7 @@
     "@preact/signals-react": "^3.10.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-router-dom": "^7.15.1"
+    "react-router": "^7.15.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
