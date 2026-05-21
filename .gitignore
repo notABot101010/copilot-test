@@ -37,3 +37,4 @@ frontend/dist/
 
 # Runtime data
 backend/data/
+backend/server
