@@ -406,6 +406,10 @@ func (a *app) handleSSHSession(s gliderssh.Session) {
 		gitMode = "receive-pack"
 	}
 	execCmd := a.gitCmd(ctx, gitMode, repoPath)
+	// GIT_PROTOCOL signals the desired wire protocol version to git-upload-pack
+	// and git-receive-pack. gitConfigHardenEnv also sets protocol.version=2 via
+	// git config, but GIT_PROTOCOL is the SSH-transport-level signal that the
+	// client and server negotiate during capability advertisement; both are needed.
 	execCmd.Env = append(execCmd.Env, "GIT_PROTOCOL=version=2")
 	execCmd.Stdin = s
 	execCmd.Stdout = s
@@ -1812,6 +1816,11 @@ func (a *app) gitCmd(ctx context.Context, args ...string) *exec.Cmd {
 // cloud credentials, etc.) into untrusted git hook processes or via git's own
 // config loading. The returned env includes just what git needs for local
 // operations plus hardened config overrides.
+//
+// The optional extra arguments append additional KEY=VALUE pairs after the
+// base environment. Callers use this for transport-specific variables (e.g.
+// GIT_PROTOCOL for SSH sessions, or CGI variables for http-backend) that are
+// not secret and are safe to expose to the subprocess.
 func (a *app) gitSafeEnv(extra ...string) []string {
 	env := []string{
 		"PATH=" + os.Getenv("PATH"),

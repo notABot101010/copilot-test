@@ -47,7 +47,10 @@ func landlockRestrict(gitBinary, reposRoot, staticRoot string) error {
 		}
 		return fmt.Errorf("abi version probe: %w", errno)
 	}
-	_ = int(abiRaw) // abiVersion; V1 rights are sufficient for our use-case
+	// abiVersion is available for future use (e.g. enabling V2/V3 rights);
+	// currently we only rely on V1 rights which all Landlock kernels support.
+	abiVersion := int(abiRaw)
+	_ = abiVersion
 
 	// V1 Landlock access rights (Linux 5.13+). We only claim rights we
 	// actually need; the kernel rejects unknown bits, so never use V2/V3/V4
