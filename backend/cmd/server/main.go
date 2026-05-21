@@ -150,6 +150,9 @@ type app struct {
 	staticRoot  string
 	gitBinary   string
 	httpBaseURL string
+	// noHooksDir is an empty directory used as core.hooksPath for all git
+	// commands, preventing hook execution inside repositories.
+	noHooksDir string
 }
 
 var repoNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
@@ -158,6 +161,13 @@ var errBinaryFile = errors.New("binary file")
 var errNoChanges = errors.New("no changes")
 
 const gitCommandTimeout = 10 * time.Minute
+
+// Request body size limits applied by the limitRequestBody middleware.
+const (
+	maxAPIBodySize     = 1 << 20        // 1 MiB  – API JSON payloads
+	maxGitHTTPBodySize = 100 << 20      // 100 MiB – git smart-HTTP push/pull
+	maxLFSObjectSize   = 5 * (1 << 30)  // 5 GiB  – LFS object uploads
+)
 
 // lfsObjectRef is a single object entry used in LFS batch requests and responses.
 type lfsObjectRef struct {
@@ -213,7 +223,23 @@ func main() {
 		log.Fatalf("failed to create repos root: %v", err)
 	}
 
-	a := &app{store: newStore(), reposRoot: reposRoot, staticRoot: staticRoot, gitBinary: gitBinary, httpBaseURL: strings.TrimRight(httpBaseURL, "/")}
+	// noHooksDir is a permanent empty directory used as core.hooksPath so
+	// that git never executes hooks stored inside a repository.
+	noHooksDir := filepath.Join(reposRoot, ".nohooks")
+	if err := os.MkdirAll(noHooksDir, 0o755); err != nil {
+		log.Fatalf("failed to create no-hooks dir: %v", err)
+	}
+
+	// Resolve staticRoot to an absolute path so Landlock can allow it.
+	staticRoot, err = filepath.Abs(staticRoot)
+	if err != nil {
+		log.Fatalf("failed to resolve static root: %v", err)
+	}
+
+	// Apply Landlock filesystem sandboxing to this process and all children.
+	setupSandbox(gitBinary, reposRoot, staticRoot)
+
+	a := &app{store: newStore(), reposRoot: reposRoot, staticRoot: staticRoot, gitBinary: gitBinary, httpBaseURL: strings.TrimRight(httpBaseURL, "/"), noHooksDir: noHooksDir}
 	httpServer := &http.Server{
 		Addr:              ":" + httpPort,
 		Handler:           a.httpRouter(),
@@ -243,6 +269,7 @@ func (a *app) httpRouter() http.Handler {
 	r.Use(middleware.Logger)
 
 	r.Route("/api", func(api chi.Router) {
+		api.Use(limitRequestBody(maxAPIBodySize))
 		api.Post("/users", a.createUser)
 		api.With(a.requireBearerUser).Post("/users/{userID}/ssh-keys", a.addSSHKey)
 		api.With(a.requireBearerUser).Post("/orgs", a.createOrganization)
@@ -265,7 +292,9 @@ func (a *app) httpRouter() http.Handler {
 		api.With(a.requireBearerUser).Post("/projects/{projectID}/merge-requests/{mergeRequestID}/comments", a.addMergeRequestComment)
 	})
 
-	r.HandleFunc("/git/*", a.handleGitHTTP)
+	// Git smart-HTTP and LFS endpoints share a larger body limit; LFS object
+	// uploads are limited further inside handleLFSUpload.
+	r.With(limitRequestBody(maxGitHTTPBodySize)).HandleFunc("/git/*", a.handleGitHTTP)
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -376,11 +405,11 @@ func (a *app) handleSSHSession(s gliderssh.Session) {
 	if gitCommand == "git-receive-pack" {
 		gitMode = "receive-pack"
 	}
-	execCmd := exec.CommandContext(ctx, a.gitBinary, gitMode, repoPath)
+	execCmd := a.gitCmd(ctx, gitMode, repoPath)
+	execCmd.Env = append(execCmd.Env, "GIT_PROTOCOL=version=2")
 	execCmd.Stdin = s
 	execCmd.Stdout = s
 	execCmd.Stderr = s.Stderr()
-	execCmd.Env = append(os.Environ(), "GIT_PROTOCOL=version=2")
 
 	if err := execCmd.Run(); err != nil {
 		_, _ = io.WriteString(s.Stderr(), fmt.Sprintf("git command failed: %v\n", err))
@@ -545,7 +574,7 @@ func (a *app) createProject(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
 	defer cancel()
-	if err := exec.CommandContext(ctx, a.gitBinary, "init", "--bare", repoPath).Run(); err != nil {
+	if _, err := a.runGit(ctx, "init", "--bare", repoPath); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to initialize repository")
 		return
 	}
@@ -1242,8 +1271,8 @@ func (a *app) handleGitHTTP(w http.ResponseWriter, r *http.Request) {
 	cmdPathInfo := "/" + filepath.ToSlash(project.RepoRel) + strings.TrimPrefix(pathInfo, "/"+project.RepoRel)
 	ctx, cancel := context.WithTimeout(r.Context(), gitCommandTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, a.gitBinary, "http-backend")
-	cmd.Env = append(os.Environ(),
+	cmd := a.gitCmd(ctx, "http-backend")
+	cmd.Env = append(cmd.Env,
 		"GIT_PROJECT_ROOT="+a.reposRoot,
 		"GIT_HTTP_EXPORT_ALL=1",
 		"PATH_INFO="+cmdPathInfo,
@@ -1402,6 +1431,9 @@ func (a *app) routeLFSRequest(w http.ResponseWriter, r *http.Request, pathInfo s
 func (a *app) handleLFSBatch(w http.ResponseWriter, r *http.Request, project *Project, repoPath string) {
 	w.Header().Set("Content-Type", "application/vnd.git-lfs+json")
 
+	// Batch payloads are small JSON; cap to prevent oversized requests.
+	r.Body = http.MaxBytesReader(w, r.Body, maxAPIBodySize)
+
 	var req lfsBatchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -1528,6 +1560,9 @@ func (a *app) handleLFSUpload(w http.ResponseWriter, r *http.Request, project *P
 		writeLFSError(w, http.StatusForbidden, "forbidden")
 		return
 	}
+
+	// Enforce a maximum LFS object size to prevent storage exhaustion.
+	r.Body = http.MaxBytesReader(w, r.Body, maxLFSObjectSize)
 
 	objPath := a.lfsObjectPath(repoPath, oid)
 
@@ -1754,13 +1789,102 @@ func (a *app) lookupMergeRequest(projectID, mergeRequestID int) (*MergeRequest, 
 }
 
 func (a *app) runGit(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, a.gitBinary, args...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd := a.gitCmd(ctx, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("git %s: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return out, nil
+}
+
+// gitCmd returns a hardened exec.Cmd for the given git arguments. It uses a
+// sanitized environment (no inherited secrets) and applies OS-level process
+// isolation via hardenCmd.
+func (a *app) gitCmd(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, a.gitBinary, args...)
+	cmd.Env = a.gitSafeEnv()
+	hardenCmd(cmd)
+	return cmd
+}
+
+// gitSafeEnv returns a minimal, sanitized environment for git subprocesses.
+// Inheriting the full process environment risks leaking secrets (database URLs,
+// cloud credentials, etc.) into untrusted git hook processes or via git's own
+// config loading. The returned env includes just what git needs for local
+// operations plus hardened config overrides.
+func (a *app) gitSafeEnv(extra ...string) []string {
+	env := []string{
+		"PATH=" + os.Getenv("PATH"),
+		// Use noHooksDir as HOME so git cannot read a ~/.gitconfig that might
+		// contain unsafe settings or credential helpers.
+		"HOME=" + a.noHooksDir,
+		// Prevent git from prompting for passwords (no TTY in a server context).
+		"GIT_TERMINAL_PROMPT=0",
+		// Skip /etc/gitconfig so the server's system git config doesn't affect
+		// repository operations.
+		"GIT_CONFIG_NOSYSTEM=1",
+		// Use a consistent locale for predictable git output parsing.
+		"LANG=C",
+		"LC_ALL=C",
+	}
+	env = append(env, a.gitConfigHardenEnv()...)
+	return append(env, extra...)
+}
+
+// gitConfigHardenEnv returns environment variables that inject hardened git
+// configuration overrides (GIT_CONFIG_COUNT / GIT_CONFIG_KEY_N / GIT_CONFIG_VALUE_N).
+// These take precedence over repo-local and user git config, so they cannot be
+// overridden by content inside a repository. Requires git ≥ 2.31; older
+// versions silently ignore the unknown env vars (safe degradation).
+func (a *app) gitConfigHardenEnv() []string {
+	configs := [][2]string{
+		// Redirect hooks to an empty directory, preventing hook execution for
+		// both upload-pack (pre/post-receive) and local operations.
+		{"core.hooksPath", a.noHooksDir},
+		// Disable automatic GC to prevent resource-exhaustion via crafted repos.
+		{"gc.auto", "0"},
+		// Enable fsck on transfer, receive, and fetch to reject malformed objects.
+		{"transfer.fsckObjects", "true"},
+		{"receive.fsckObjects", "true"},
+		{"fetch.fsckObjects", "true"},
+		// Disable partial-clone filters (reduces attack surface).
+		{"uploadpack.allowFilter", "false"},
+		// Disable custom pack-objects hook.
+		{"uploadpack.packObjectsHook", ""},
+		// Request protocol v2 for push/pull (more efficient and more auditable).
+		{"protocol.version", "2"},
+		// Cap pack threads to prevent CPU exhaustion via a large push.
+		{"pack.threads", "1"},
+		// Block all network protocols except local file:// so git subprocesses
+		// cannot make outbound connections (SSRF via submodule URLs, etc.).
+		{"protocol.allow", "never"},
+		{"protocol.file.allow", "always"},
+		// Disable automatic submodule recursion.
+		{"fetch.recurseSubmodules", "no"},
+		{"submodule.recurse", "false"},
+		// Clear any credential helper that might exfiltrate credentials.
+		{"credential.helper", ""},
+	}
+
+	result := []string{fmt.Sprintf("GIT_CONFIG_COUNT=%d", len(configs))}
+	for i, kv := range configs {
+		result = append(result,
+			fmt.Sprintf("GIT_CONFIG_KEY_%d=%s", i, kv[0]),
+			fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", i, kv[1]),
+		)
+	}
+	return result
+}
+
+// limitRequestBody returns a middleware that caps the request body size to
+// maxBytes. Requests that exceed the limit receive a 413 response.
+func limitRequestBody(maxBytes int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func (a *app) gitBareOutput(ctx context.Context, repoPath string, args ...string) ([]byte, error) {
