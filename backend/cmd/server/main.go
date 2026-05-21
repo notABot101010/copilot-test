@@ -2510,9 +2510,10 @@ func sshUserIDFromSession(s gliderssh.Session) (int, bool) {
 }
 
 func normalizeOrganizationRole(role string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(role)) {
+	normalized := strings.ToLower(strings.TrimSpace(role))
+	switch normalized {
 	case orgRoleOwner, orgRoleAdmin, orgRoleDeveloper, orgRoleViewer:
-		return strings.ToLower(strings.TrimSpace(role)), nil
+		return normalized, nil
 	default:
 		return "", errors.New("role must be owner, admin, developer, or viewer")
 	}
