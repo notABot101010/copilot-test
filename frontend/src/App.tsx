@@ -28,7 +28,7 @@ import {
 import { notifications } from '@mantine/notifications'
 import { useSignals } from '@preact/signals-react/runtime'
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router'
 import {
   addIssueComment,
   addMergeRequestComment,
