@@ -159,6 +159,7 @@ var repoNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 var lfsOIDPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var errBinaryFile = errors.New("binary file")
 var errNoChanges = errors.New("no changes")
+var errSymlinkAttack = errors.New("symlink attack detected")
 
 const gitCommandTimeout = 10 * time.Minute
 
@@ -943,6 +944,10 @@ func (a *app) upsertRepoFile(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "no changes to commit")
 			return
 		}
+		if errors.Is(err, errSymlinkAttack) {
+			writeError(w, http.StatusConflict, "symlink attack detected")
+			return
+		}
 		log.Printf("save repo file failed: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to save file")
 		return
@@ -999,6 +1004,10 @@ func (a *app) deleteRepoFile(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, errNoChanges) {
 			writeError(w, http.StatusBadRequest, "no changes to commit")
+			return
+		}
+		if errors.Is(err, errSymlinkAttack) {
+			writeError(w, http.StatusConflict, "symlink attack detected")
 			return
 		}
 		log.Printf("delete repo file failed: %v", err)
@@ -1360,7 +1369,11 @@ func (a *app) isReceivePackRequest(r *http.Request) bool {
 
 // lfsObjectPath returns the filesystem path for an LFS object stored under a repository.
 func (a *app) lfsObjectPath(repoPath, oid string) string {
-	return filepath.Join(repoPath, "lfs", "objects", oid[:2], oid[2:4], oid)
+	objPath, err := securePathWithinRoot(repoPath, filepath.Join("lfs", "objects", oid[:2], oid[2:4], oid))
+	if err != nil {
+		return ""
+	}
+	return objPath
 }
 
 // lfsBaseURL returns the base HTTP URL to use in LFS response hrefs.
@@ -1492,6 +1505,11 @@ func (a *app) handleLFSBatch(w http.ResponseWriter, r *http.Request, project *Pr
 		objectURL := baseURL + repoURLPath + "/info/lfs/objects/" + obj.OID
 
 		objResp := lfsObjectResponse{OID: obj.OID, Size: obj.Size}
+		if objPath == "" {
+			objResp.Error = &lfsObjectError{Code: http.StatusConflict, Message: "symlink attack detected"}
+			objects = append(objects, objResp)
+			continue
+		}
 		if req.Operation == "upload" {
 			if _, err := os.Stat(objPath); os.IsNotExist(err) {
 				// Object not yet stored; provide an upload action.
@@ -1522,6 +1540,10 @@ func (a *app) handleLFSBatch(w http.ResponseWriter, r *http.Request, project *Pr
 
 func (a *app) handleLFSDownload(w http.ResponseWriter, _ *http.Request, repoPath, oid string) {
 	objPath := a.lfsObjectPath(repoPath, oid)
+	if objPath == "" {
+		writeError(w, http.StatusConflict, "symlink attack detected")
+		return
+	}
 	f, err := os.Open(objPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -1569,6 +1591,10 @@ func (a *app) handleLFSUpload(w http.ResponseWriter, r *http.Request, project *P
 	r.Body = http.MaxBytesReader(w, r.Body, maxLFSObjectSize)
 
 	objPath := a.lfsObjectPath(repoPath, oid)
+	if objPath == "" {
+		writeLFSError(w, http.StatusConflict, "symlink attack detected")
+		return
+	}
 
 	// Object already present; nothing to do.
 	if _, err := os.Stat(objPath); err == nil {
@@ -2197,31 +2223,77 @@ func messageOrDefault(message, fallback string) string {
 }
 
 func worktreeFilePath(dir, filePath string) (string, error) {
-	fullPath := filepath.Clean(filepath.Join(dir, filepath.FromSlash(filePath)))
-	rel, err := filepath.Rel(dir, fullPath)
-	if err != nil {
-		return "", err
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return "", errors.New("invalid path")
-	}
-	return fullPath, nil
+	return securePathWithinRoot(dir, filepath.FromSlash(filePath))
 }
 
 func (a *app) resolveRepoPath(repoRel string) (string, error) {
-	repoRel = filepath.Clean(strings.TrimSpace(repoRel))
-	if repoRel == "." || repoRel == "" || filepath.IsAbs(repoRel) {
-		return "", errors.New("invalid repository path")
+	return securePathWithinRoot(a.reposRoot, repoRel)
+}
+
+func securePathWithinRoot(root, rel string) (string, error) {
+	rel = filepath.Clean(strings.TrimSpace(rel))
+	if rel == "." || rel == "" || filepath.IsAbs(rel) {
+		return "", errors.New("invalid path")
 	}
-	full := filepath.Clean(filepath.Join(a.reposRoot, repoRel))
-	rel, err := filepath.Rel(a.reposRoot, full)
+
+	rootPath, err := filepath.EvalSymlinks(root)
 	if err != nil {
-		return "", errors.New("invalid repository path")
+		return "", err
 	}
-	if rel == "." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || rel == ".." {
-		return "", errors.New("invalid repository path")
+	rootPath = filepath.Clean(rootPath)
+
+	full := filepath.Clean(filepath.Join(rootPath, rel))
+	if !pathWithinRoot(rootPath, full) {
+		return "", errors.New("invalid path")
 	}
-	return full, nil
+
+	resolved, err := resolvePathWithExistingSymlinks(full)
+	if err != nil {
+		return "", err
+	}
+	if resolved != full {
+		return "", errSymlinkAttack
+	}
+	if !pathWithinRoot(rootPath, resolved) {
+		return "", errSymlinkAttack
+	}
+	return resolved, nil
+}
+
+func resolvePathWithExistingSymlinks(full string) (string, error) {
+	var suffix []string
+	current := filepath.Clean(full)
+	for {
+		_, err := os.Lstat(current)
+		switch {
+		case err == nil:
+			resolved, err := filepath.EvalSymlinks(current)
+			if err != nil {
+				return "", err
+			}
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			return filepath.Clean(resolved), nil
+		case errors.Is(err, os.ErrNotExist):
+			parent := filepath.Dir(current)
+			if parent == current {
+				return "", err
+			}
+			suffix = append(suffix, filepath.Base(current))
+			current = parent
+		default:
+			return "", err
+		}
+	}
+}
+
+func pathWithinRoot(root, full string) bool {
+	rel, err := filepath.Rel(root, full)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
 func (a *app) requireBearerUser(next http.Handler) http.Handler {
