@@ -168,6 +168,7 @@ func (a *app) httpRouter() http.Handler {
 }
 
 func spaFallback(next http.Handler, staticRoot string) http.HandlerFunc {
+	absRoot, _ := filepath.Abs(staticRoot)
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := filepath.Clean(strings.TrimPrefix(r.URL.Path, "/"))
 		if path == "." {
@@ -175,7 +176,16 @@ func spaFallback(next http.Handler, staticRoot string) http.HandlerFunc {
 			return
 		}
 		candidate := filepath.Join(staticRoot, path)
-		if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+		absCandidate, err := filepath.Abs(candidate)
+		if err != nil {
+			http.ServeFile(w, r, filepath.Join(staticRoot, "index.html"))
+			return
+		}
+		if absCandidate != absRoot && !strings.HasPrefix(absCandidate, absRoot+string(os.PathSeparator)) {
+			http.ServeFile(w, r, filepath.Join(staticRoot, "index.html"))
+			return
+		}
+		if st, err := os.Stat(absCandidate); err == nil && !st.IsDir() {
 			next.ServeHTTP(w, r)
 			return
 		}
