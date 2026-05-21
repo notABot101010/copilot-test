@@ -670,7 +670,7 @@ function IssueBoard() {
         </Stack>
       </Card>
 
-      <DndContext sensors={sensors} onDragEnd={(event) => void handleDragEnd(event)}>
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <Group align="start" grow>
           {ISSUE_COLUMNS.map((column) => {
             const columnIssues = issues.filter((issue) => issue.status === column.status)
@@ -684,10 +684,10 @@ function IssueBoard() {
                       onToggleStatus={toggleStatus}
                       tagValue={tagDrafts[issue.id] ?? ''}
                       onTagChange={(value) => setTagDrafts((curr) => ({ ...curr, [issue.id]: value }))}
-                      onSaveTags={() => void saveTags(issue.id)}
+                      onSaveTags={() => saveTags(issue.id)}
                       commentValue={commentBody[issue.id] ?? ''}
                       onCommentChange={(value) => setCommentBody((curr) => ({ ...curr, [issue.id]: value }))}
-                      onAddComment={() => void addComment(issue.id)}
+                      onAddComment={() => addComment(issue.id)}
                     />
                   ))}
                   {columnIssues.length === 0 && <Text size="sm">No issues.</Text>}
