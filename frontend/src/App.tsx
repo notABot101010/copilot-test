@@ -668,12 +668,12 @@ function IssueBoard() {
 
       <DndContext sensors={sensors} onDragEnd={(event) => void handleDragEnd(event)}>
         <Group align="start" grow>
-          {ISSUE_COLUMNS.map((column) => (
-            <IssueColumn key={column.status} status={column.status} title={column.title} color={column.color}>
-              <Stack>
-                {issues
-                  .filter((issue) => issue.status === column.status)
-                  .map((issue) => (
+          {ISSUE_COLUMNS.map((column) => {
+            const columnIssues = issues.filter((issue) => issue.status === column.status)
+            return (
+              <IssueColumn key={column.status} status={column.status} title={column.title} color={column.color}>
+                <Stack>
+                  {columnIssues.map((issue) => (
                     <DraggableIssueCard
                       key={issue.id}
                       issue={issue}
@@ -686,10 +686,11 @@ function IssueBoard() {
                       onAddComment={() => void addComment(issue.id)}
                     />
                   ))}
-                {issues.every((issue) => issue.status !== column.status) && <Text size="sm">No issues.</Text>}
-              </Stack>
-            </IssueColumn>
-          ))}
+                  {columnIssues.length === 0 && <Text size="sm">No issues.</Text>}
+                </Stack>
+              </IssueColumn>
+            )
+          })}
         </Group>
       </DndContext>
     </Stack>
